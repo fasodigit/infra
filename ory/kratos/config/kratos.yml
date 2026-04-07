@@ -84,9 +84,9 @@ selfservice:
     password:
       enabled: true
       config:
-        haveibeenpwned_enabled: true
-        min_password_length: 12
-        identifier_similarity_check_enabled: true
+        haveibeenpwned_enabled: false
+        min_password_length: 8
+        identifier_similarity_check_enabled: false
     totp:
       enabled: true
       config:
@@ -104,10 +104,6 @@ selfservice:
     login:
       ui_url: http://localhost:4801/auth/login
       lifespan: 10m
-      after:
-        password:
-          hooks:
-            - hook: require_verified_address
 
     registration:
       enabled: true

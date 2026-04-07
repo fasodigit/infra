@@ -161,13 +161,25 @@ test.describe('01 - Authentication', () => {
     // The layout should have a language-switcher component
     const langSwitcher = page.locator('app-language-switcher');
     if (await langSwitcher.isVisible()) {
+      // Dismiss any open overlay/backdrop first
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+
       // Click it to switch to EN
-      await langSwitcher.click();
+      await langSwitcher.click({ force: true });
       await page.waitForTimeout(500);
 
+      // Dismiss the overlay if language switcher opened a menu
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
+
       // Switch back to FR
-      await langSwitcher.click();
+      await langSwitcher.click({ force: true });
       await page.waitForTimeout(500);
+
+      // Dismiss overlay
+      await page.keyboard.press('Escape');
+      await page.waitForTimeout(300);
     }
 
     // Verify the app is still functional

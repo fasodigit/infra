@@ -26,9 +26,11 @@ impl CommandRouter {
             "PING" => handler.ping(cmd),
             "ECHO" => handler.echo(cmd),
             "AUTH" => handler.auth(cmd),
+            "HELLO" => handler.hello(cmd),
             "SELECT" => handler.select_cmd(cmd),
             "CLIENT" => handler.client_cmd(cmd),
             "QUIT" => Ok(Frame::ok()),
+            "RESET" => Ok(Frame::ok()),
 
             // -- string commands -----------------------------------------------
             "GET" => handler.get(cmd),

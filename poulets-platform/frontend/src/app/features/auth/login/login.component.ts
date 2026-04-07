@@ -42,7 +42,7 @@ import { AuthService } from '@core/services/auth.service';
           @if (errorMessage()) {
             <div class="error-banner">
               <mat-icon>error_outline</mat-icon>
-              <span>{{ errorMessage() }}</span>
+              <span>{{ errorMessage() | translate }}</span>
             </div>
           }
 

@@ -2,12 +2,12 @@ import { bootstrapApplication } from '@angular/platform-browser';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
 import { provideHttpClient, withInterceptors, withFetch } from '@angular/common/http';
-import { importProvidersFrom, inject } from '@angular/core';
+import { inject } from '@angular/core';
 import { provideApollo } from 'apollo-angular';
 import { HttpLink } from 'apollo-angular/http';
 import { InMemoryCache } from '@apollo/client';
-import { TranslateModule } from '@ngx-translate/core';
-import { TranslateHttpLoader, provideTranslateHttpLoader } from '@ngx-translate/http-loader';
+import { provideTranslateService } from '@ngx-translate/core';
+import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
 
 import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
@@ -23,15 +23,10 @@ bootstrapApplication(AppComponent, {
       withInterceptors([authInterceptor]),
     ),
     // i18n: ngx-translate
-    importProvidersFrom(
-      TranslateModule.forRoot({
-        defaultLanguage: 'fr',
-        loader: {
-          provide: TranslateHttpLoader,
-          useClass: TranslateHttpLoader,
-        },
-      }),
-    ),
+    provideTranslateService({
+      defaultLanguage: 'fr',
+      fallbackLang: 'fr',
+    }),
     provideTranslateHttpLoader({
       prefix: './assets/i18n/',
       suffix: '.json',

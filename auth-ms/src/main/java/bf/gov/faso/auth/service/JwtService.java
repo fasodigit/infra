@@ -80,6 +80,7 @@ public class JwtService {
 
     /**
      * Ensure at least one active signing key exists. If not, generate one.
+     * If the existing key cannot be loaded (e.g. corrupt PEM), rotate to a new key.
      */
     @Transactional
     public void ensureActiveKeyExists() {
@@ -88,7 +89,13 @@ public class JwtService {
             log.info("No active JWT signing key found. Generating initial ES384 keypair.");
             generateAndStoreNewKey();
         } else {
-            loadActiveKey(activeKey.get());
+            try {
+                loadActiveKey(activeKey.get());
+            } catch (Exception e) {
+                log.warn("Failed to load existing active key kid={}: {}. Rotating to new key.",
+                        activeKey.get().getKid(), e.getMessage());
+                rotateKeys();
+            }
         }
     }
 
@@ -264,7 +271,7 @@ public class JwtService {
             signingKey.setKid(kid);
             signingKey.setAlgorithm("ES384");
             signingKey.setPublicKeyPem(encodePem(publicKey));
-            signingKey.setPrivateKeyPem(encodePem(privateKey));
+            signingKey.setPrivateKeyPem(encodePrivateKeyPkcs8Pem(privateKey));
             signingKey.setActive(true);
             signingKey.setExpiresAt(expiresAt);
 
@@ -288,10 +295,30 @@ public class JwtService {
         }
     }
 
-    private String encodePem(Key key) throws Exception {
+    /**
+     * Encode a public key as PEM (BEGIN PUBLIC KEY).
+     */
+    private String encodePem(PublicKey key) throws Exception {
         StringWriter sw = new StringWriter();
         try (JcaPEMWriter writer = new JcaPEMWriter(sw)) {
             writer.writeObject(key);
+        }
+        return sw.toString();
+    }
+
+    /**
+     * Encode a private key as PKCS#8 PEM (BEGIN PRIVATE KEY).
+     * <p>
+     * This format includes the full algorithm identifier with the EC curve OID,
+     * ensuring BouncyCastle and the JDK can both load it back without errors.
+     * (JcaPEMWriter writes EC keys in SEC1 format which drops curve info.)
+     */
+    private String encodePrivateKeyPkcs8Pem(PrivateKey key) throws Exception {
+        byte[] pkcs8 = key.getEncoded(); // PKCS#8 DER with full algorithm identifier
+        StringWriter sw = new StringWriter();
+        try (JcaPEMWriter writer = new JcaPEMWriter(sw)) {
+            writer.writeObject(new org.bouncycastle.openssl.PKCS8Generator(
+                    PrivateKeyInfo.getInstance(pkcs8), null));
         }
         return sw.toString();
     }
@@ -310,12 +337,32 @@ public class JwtService {
     private ECPrivateKey loadPrivateKey(String pem) throws Exception {
         try (PEMParser parser = new PEMParser(new StringReader(pem))) {
             Object obj = parser.readObject();
-            JcaPEMKeyConverter converter = new JcaPEMKeyConverter();
-            if (obj instanceof PEMKeyPair) {
-                return (ECPrivateKey) converter.getKeyPair((PEMKeyPair) obj).getPrivate();
-            }
             if (obj instanceof PrivateKeyInfo) {
-                return (ECPrivateKey) converter.getPrivateKey((PrivateKeyInfo) obj);
+                // PKCS#8 format (BEGIN PRIVATE KEY) — preferred format with curve OID
+                KeyFactory kf = KeyFactory.getInstance("EC");
+                return (ECPrivateKey) kf.generatePrivate(
+                        new java.security.spec.PKCS8EncodedKeySpec(
+                                ((PrivateKeyInfo) obj).getEncoded()));
+            }
+            if (obj instanceof PEMKeyPair) {
+                // SEC1 format (BEGIN EC PRIVATE KEY)
+                PEMKeyPair pemKeyPair = (PEMKeyPair) obj;
+                if (pemKeyPair.getPublicKeyInfo() != null) {
+                    // Full key pair: both private + public present
+                    JcaPEMKeyConverter converter = new JcaPEMKeyConverter();
+                    return (ECPrivateKey) converter.getKeyPair(pemKeyPair).getPrivate();
+                }
+                // SEC1 with only private key — rebuild PKCS#8 with secp384r1 curve OID
+                org.bouncycastle.asn1.ASN1ObjectIdentifier curveOid =
+                        org.bouncycastle.asn1.sec.SECObjectIdentifiers.secp384r1;
+                org.bouncycastle.asn1.x509.AlgorithmIdentifier algId =
+                        new org.bouncycastle.asn1.x509.AlgorithmIdentifier(
+                                org.bouncycastle.asn1.x9.X9ObjectIdentifiers.id_ecPublicKey, curveOid);
+                PrivateKeyInfo rebuiltInfo = new PrivateKeyInfo(algId,
+                        pemKeyPair.getPrivateKeyInfo().parsePrivateKey().toASN1Primitive());
+                KeyFactory kf = KeyFactory.getInstance("EC");
+                return (ECPrivateKey) kf.generatePrivate(
+                        new java.security.spec.PKCS8EncodedKeySpec(rebuiltInfo.getEncoded()));
             }
             throw new IllegalArgumentException("Not a valid private key PEM");
         }

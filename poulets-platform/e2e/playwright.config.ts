@@ -4,6 +4,7 @@ export default defineConfig({
   testDir: './tests',
   timeout: 60000,
   retries: 1,
+  workers: 1,
   use: {
     baseURL: 'http://localhost:4801',
     browserName: 'chromium',

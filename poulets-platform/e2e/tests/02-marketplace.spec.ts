@@ -33,8 +33,8 @@ test.describe('02 - Marketplace', () => {
     const a = annonces[0];
 
     // Fill the annonce form
-    // Race dropdown
-    await page.locator('mat-select[formControlName="race"]').click();
+    // Race dropdown (force click to bypass mat-label overlay)
+    await page.locator('mat-select[formControlName="race"]').click({ force: true });
     await page.locator('mat-option').filter({ hasText: a.race }).click();
 
     // Quantity
@@ -90,7 +90,7 @@ test.describe('02 - Marketplace', () => {
 
     const a = annonces[1];
 
-    await page.locator('mat-select[formControlName="race"]').click();
+    await page.locator('mat-select[formControlName="race"]').click({ force: true });
     await page.locator('mat-option').filter({ hasText: a.race }).click();
     await page.locator('input[formControlName="quantity"]').fill(String(a.quantity));
     await page.locator('input[formControlName="currentWeight"]').fill(String(a.currentWeight));
