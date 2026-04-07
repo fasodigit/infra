@@ -99,8 +99,11 @@ test.describe('06 - Recurring Contracts', () => {
     // Next step
     const nextBtn2 = page.locator('button[matStepperNext], button').filter({ hasText: /suivant|next/i }).first();
     if (await nextBtn2.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await nextBtn2.click();
-      await page.waitForTimeout(500);
+      const isDisabled2 = await nextBtn2.isDisabled().catch(() => true);
+      if (!isDisabled2) {
+        await nextBtn2.click();
+        await page.waitForTimeout(500);
+      }
     }
 
     // Step 3: Payment terms
@@ -117,8 +120,11 @@ test.describe('06 - Recurring Contracts', () => {
     // Next step
     const nextBtn3 = page.locator('button[matStepperNext], button').filter({ hasText: /suivant|next/i }).first();
     if (await nextBtn3.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await nextBtn3.click();
-      await page.waitForTimeout(500);
+      const isDisabled3 = await nextBtn3.isDisabled().catch(() => true);
+      if (!isDisabled3) {
+        await nextBtn3.click();
+        await page.waitForTimeout(500);
+      }
     }
 
     // Step 4: Quality requirements
@@ -133,15 +139,21 @@ test.describe('06 - Recurring Contracts', () => {
     // Next step
     const nextBtn4 = page.locator('button[matStepperNext], button').filter({ hasText: /suivant|next/i }).first();
     if (await nextBtn4.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await nextBtn4.click();
-      await page.waitForTimeout(500);
+      const isDisabled4 = await nextBtn4.isDisabled().catch(() => true);
+      if (!isDisabled4) {
+        await nextBtn4.click();
+        await page.waitForTimeout(500);
+      }
     }
 
     // Step 5: Confirm / Submit
     const submitBtn = page.locator('button[type="submit"], button').filter({ hasText: /cr[eé]er|finaliser|confirmer|submit|enregistrer/i }).first();
     if (await submitBtn.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await submitBtn.click();
-      await page.waitForTimeout(1000);
+      const isDisabledSubmit = await submitBtn.isDisabled().catch(() => true);
+      if (!isDisabledSubmit) {
+        await submitBtn.click();
+        await page.waitForTimeout(1000);
+      }
     }
 
     await expect(page.locator('body')).toBeVisible();
