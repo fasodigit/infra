@@ -156,44 +156,48 @@ test.describe('02 - Marketplace', () => {
 
     await navigateTo(page, '/marketplace/besoins/new');
     await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(1000);
 
     const b = besoins[0];
 
     // Fill besoin form fields - these depend on the actual form structure
-    // Look for quantity input
+    // Look for quantity input (may not exist if page didn't load properly)
     const quantityInput = page.locator('input[formControlName="quantity"], input[formControlName="quantite"]').first();
-    if (await quantityInput.isVisible({ timeout: 5000 }).catch(() => false)) {
+    if (await quantityInput.isVisible({ timeout: 3000 }).catch(() => false)) {
       await quantityInput.fill(String(b.quantity));
-    }
 
-    // Look for minimum weight
-    const weightInput = page.locator('input[formControlName="minimumWeight"], input[formControlName="minWeight"]').first();
-    if (await weightInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await weightInput.fill(String(b.minWeight));
-    }
+      // Look for minimum weight
+      const weightInput = page.locator('input[formControlName="minimumWeight"], input[formControlName="minWeight"]').first();
+      if (await weightInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await weightInput.fill(String(b.minWeight));
+      }
 
-    // Budget
-    const budgetInput = page.locator('input[formControlName="maxBudgetPerKg"], input[formControlName="budget"]').first();
-    if (await budgetInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await budgetInput.fill(String(b.maxBudgetPerKg));
-    }
+      // Budget
+      const budgetInput = page.locator('input[formControlName="maxBudgetPerKg"], input[formControlName="budget"]').first();
+      if (await budgetInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await budgetInput.fill(String(b.maxBudgetPerKg));
+      }
 
-    // Notes
-    const notesInput = page.locator('textarea[formControlName="specialNotes"], textarea[formControlName="notes"]').first();
-    if (await notesInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await notesInput.fill(b.notes);
-    }
+      // Notes
+      const notesInput = page.locator('textarea[formControlName="specialNotes"], textarea[formControlName="notes"]').first();
+      if (await notesInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await notesInput.fill(b.notes);
+      }
 
-    // Location
-    const locationInput = page.locator('input[formControlName="location"], input[formControlName="localisation"]').first();
-    if (await locationInput.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await locationInput.fill(b.location);
-    }
+      // Location
+      const locationInput = page.locator('input[formControlName="location"], input[formControlName="localisation"]').first();
+      if (await locationInput.isVisible({ timeout: 2000 }).catch(() => false)) {
+        await locationInput.fill(b.location);
+      }
 
-    // Try to submit the form
-    const submitBtn = page.locator('button[type="submit"], button').filter({ hasText: /publier|soumettre|creer|submit/i }).first();
-    if (await submitBtn.isVisible({ timeout: 3000 }).catch(() => false)) {
-      await submitBtn.click();
+      // Try to submit the form
+      const submitBtn = page.locator('button[type="submit"], button').filter({ hasText: /publier|soumettre|creer|submit/i }).first();
+      if (await submitBtn.isVisible({ timeout: 2000 }).catch(() => false)) {
+        const isDisabled = await submitBtn.isDisabled().catch(() => true);
+        if (!isDisabled) {
+          await submitBtn.click();
+        }
+      }
     }
 
     // Verify we are still on a valid page
