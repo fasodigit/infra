@@ -42,6 +42,9 @@ RUN cargo build --release 2>/dev/null || true
 # Copy actual source code
 COPY xds-controller/ .
 
+# Touch all source files to invalidate Cargo's fingerprint cache
+RUN find . -name "*.rs" -exec touch {} + && touch Cargo.toml Cargo.lock
+
 # Build the server binary
 RUN cargo build --release --bin xds-server
 

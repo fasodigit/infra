@@ -53,6 +53,11 @@ RUN cargo build --release 2>/dev/null || true
 # Copy actual source code
 COPY kaya/ .
 
+# Touch all source files to invalidate Cargo's fingerprint cache
+# (the dummy lib.rs files from the dependency caching step may have
+# the same mtime as the real sources after COPY)
+RUN find src -name "*.rs" -exec touch {} + && touch Cargo.toml Cargo.lock
+
 # Build server and CLI binaries
 RUN cargo build --release --bin kaya-server --bin kaya-cli
 
