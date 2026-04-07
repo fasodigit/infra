@@ -2,6 +2,15 @@ import { Routes } from '@angular/router';
 import { authGuard } from './core/guards/auth.guard';
 
 export const routes: Routes = [
+  // Public: Landing page (root)
+  {
+    path: '',
+    loadComponent: () =>
+      import('./features/landing/landing.component').then(m => m.LandingComponent),
+    pathMatch: 'full',
+    title: 'Poulets BF - Marketplace volailles Burkina Faso',
+  },
+
   // Public: Auth routes (login, register, forgot-password)
   {
     path: 'auth',
@@ -80,18 +89,12 @@ export const routes: Routes = [
         path: 'profile',
         loadChildren: () => import('./features/profile/routes'),
       },
-      // Default redirect to dashboard
-      {
-        path: '',
-        redirectTo: 'dashboard',
-        pathMatch: 'full',
-      },
     ],
   },
 
-  // Wildcard redirect
+  // Wildcard redirect to landing
   {
     path: '**',
-    redirectTo: 'auth/login',
+    redirectTo: '',
   },
 ];

@@ -1,4 +1,91 @@
 {
+  "landing": {
+    "nav": {
+      "accueil": "Home",
+      "presentation": "How it works",
+      "fonctionnalites": "Features",
+      "securites": "Security",
+      "apropos": "About",
+      "connexion": "Sign in"
+    },
+    "hero": {
+      "title": "The platform connecting poultry farmers and buyers in Burkina Faso",
+      "subtitle": "Find the right chicken, at the right weight, at the right time. Simplify your buying and selling.",
+      "cta_eleveur": "I am a farmer",
+      "cta_acheteur": "I am a buyer",
+      "stat_eleveurs": "Farmers",
+      "stat_clients": "Clients",
+      "stat_transactions": "Transactions",
+      "stat_regions": "Regions"
+    },
+    "presentation": {
+      "title": "How does it work?",
+      "subtitle": "Three simple steps to connect poultry supply and demand in Burkina Faso.",
+      "step1_title": "Sign up",
+      "step1_desc": "Create your profile as a farmer, buyer, or feed producer.",
+      "step2_title": "Post or search",
+      "step2_desc": "Farmers post their listings, clients post their needs.",
+      "step3_title": "Connect and trade",
+      "step3_desc": "Smart matching connects you with the right partner."
+    },
+    "features": {
+      "title": "Everything you need",
+      "subtitle": "A complete suite of tools to manage your poultry business.",
+      "f1_title": "Marketplace",
+      "f1_desc": "Farmer listings and client needs with smart matching.",
+      "f2_title": "Calendar",
+      "f2_desc": "Plan your deliveries and track supply and demand in real time.",
+      "f3_title": "Recurring contracts",
+      "f3_desc": "Weekly or monthly subscriptions with mutual commitment.",
+      "f4_title": "Growth tracking",
+      "f4_desc": "Weight curves, feeding plans, production goals.",
+      "f5_title": "Veterinary certification",
+      "f5_desc": "Mandatory health records, vaccinations, treatments.",
+      "f6_title": "Halal certification",
+      "f6_desc": "Complete slaughter traceability with verifiable QR code.",
+      "f7_title": "Messaging",
+      "f7_desc": "Built-in chat with price negotiation between farmers and clients.",
+      "f8_title": "Delivery",
+      "f8_desc": "Delivery by the farmer or a third-party driver of your choice.",
+      "f9_title": "Cooperatives",
+      "f9_desc": "Farmer cooperatives can publish listings collectively."
+    },
+    "security": {
+      "title": "Your security, our priority",
+      "subtitle": "Sovereign infrastructure and digital trust at the heart of the platform.",
+      "s1_title": "Protected data",
+      "s1_desc": "AES-256 encryption, sovereign hosting in Burkina Faso.",
+      "s2_title": "Verified identity",
+      "s2_desc": "Strong authentication via Ory Kratos, MFA available.",
+      "s3_title": "Secure transactions",
+      "s3_desc": "Mobile money payment (Orange Money, Moov Money).",
+      "s4_title": "Mandatory certification",
+      "s4_desc": "Every farmer must provide a veterinary health record.",
+      "s5_title": "Transparent reputation",
+      "s5_desc": "Verified ratings and reviews after every transaction.",
+      "s6_title": "Sovereign infrastructure",
+      "s6_desc": "ARMAGEDDON gateway + KAYA database, 100% Burkina."
+    },
+    "about": {
+      "title": "FASO DIGITALISATION",
+      "description": "Sovereign digital transformation program of Burkina Faso. Poulets BF is one of 7 digital platforms developed to modernize public and private services in the country.",
+      "p_etat_civil": "Civil Registry",
+      "p_sante": "Health",
+      "p_agriculture": "Agriculture",
+      "p_commerce": "Commerce",
+      "p_education": "Education",
+      "p_transport": "Transport",
+      "p_volailles": "Poultry",
+      "contact": "contact@fasodigitalisation.bf"
+    },
+    "footer": {
+      "terms": "Terms of service",
+      "privacy": "Privacy policy",
+      "help": "Help",
+      "copyright": "\u00a9 2026 FASO DIGITALISATION \u2014 Burkina Faso",
+      "powered": "Powered by ARMAGEDDON + KAYA"
+    }
+  },
   "app": {
     "title": "Poulets Platform",
     "subtitle": "FASO DIGITALISATION",
