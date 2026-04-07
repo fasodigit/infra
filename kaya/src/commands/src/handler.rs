@@ -211,7 +211,7 @@ impl CommandHandler {
 
     pub fn info(&self, _cmd: &Command) -> Result<Frame, CommandError> {
         let info = format!(
-            "# Server\r\nkaya_version:0.1.0\r\nuptime_in_seconds:{}\r\n\r\n# Keyspace\r\ndb0:keys={}\r\n",
+            "# Server\r\nredis_version:7.0.0\r\nkaya_version:0.1.0\r\nredis_mode:standalone\r\ntcp_port:6380\r\nuptime_in_seconds:{}\r\n\r\n# Keyspace\r\ndb0:keys={}\r\n",
             self.ctx.store.uptime_secs(),
             self.ctx.store.key_count(),
         );
@@ -528,6 +528,34 @@ impl CommandHandler {
             "LIST" => Ok(Frame::BulkString(Bytes::from("id=1 addr=127.0.0.1:0 fd=0 name= db=0\r\n"))),
             _ => Ok(Frame::ok()),
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // HELLO command (RESP3 protocol negotiation — we always reply RESP2)
+    // -----------------------------------------------------------------------
+
+    pub fn hello(&self, _cmd: &Command) -> Result<Frame, CommandError> {
+        // Lettuce sends HELLO 3 to negotiate RESP3. KAYA speaks RESP2,
+        // so we reply with a map-like array indicating server info and proto=2.
+        // If the client requests proto 3, we still respond with proto 2
+        // (the client will gracefully fall back to RESP2).
+        let resp = vec![
+            Frame::BulkString(Bytes::from("server")),
+            Frame::BulkString(Bytes::from("kaya")),
+            Frame::BulkString(Bytes::from("version")),
+            Frame::BulkString(Bytes::from("0.1.0")),
+            Frame::BulkString(Bytes::from("proto")),
+            Frame::Integer(2),
+            Frame::BulkString(Bytes::from("id")),
+            Frame::Integer(1),
+            Frame::BulkString(Bytes::from("mode")),
+            Frame::BulkString(Bytes::from("standalone")),
+            Frame::BulkString(Bytes::from("role")),
+            Frame::BulkString(Bytes::from("master")),
+            Frame::BulkString(Bytes::from("modules")),
+            Frame::Array(vec![]),
+        ];
+        Ok(Frame::Array(resp))
     }
 
     // -----------------------------------------------------------------------

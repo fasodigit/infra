@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { kratosFrontend, mapKratosSession } from '@/lib/kratos';
+import { mapKratosSession } from '@/lib/kratos';
+
+const KRATOS_PUBLIC_URL = process.env.KRATOS_PUBLIC_URL || 'http://localhost:4433';
 
 /**
  * POST /api/auth/login
  * Login endpoint that proxies to Kratos native login flow.
+ * Uses direct HTTP calls instead of @ory/client for reliability.
  *
  * Body: { email: string, password: string }
  * Response: UserSession on success, error on failure.
@@ -21,20 +24,58 @@ export async function POST(request: NextRequest) {
     }
 
     // Step 1: Create a native login flow
-    const { data: flow } = await kratosFrontend.createNativeLoginFlow();
+    const flowRes = await fetch(`${KRATOS_PUBLIC_URL}/self-service/login/api`, {
+      method: 'GET',
+    });
+    if (!flowRes.ok) {
+      console.error('[BFF] Failed to create login flow:', flowRes.status);
+      return NextResponse.json(
+        { error: 'Authentication service unavailable' },
+        { status: 503 },
+      );
+    }
+    const flow = await flowRes.json();
 
     // Step 2: Submit credentials to Kratos
-    const { data: loginResult, headers: responseHeaders } =
-      await kratosFrontend.updateLoginFlow({
-        flow: flow.id,
-        updateLoginFlowBody: {
+    const loginRes = await fetch(
+      `${KRATOS_PUBLIC_URL}/self-service/login?flow=${flow.id}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
           method: 'password',
           identifier: email,
-          password: password,
-        },
-      });
+          password,
+        }),
+      },
+    );
 
-    if (!loginResult.session) {
+    const loginData = await loginRes.json();
+
+    if (!loginRes.ok) {
+      // Collect error messages
+      const nodeMessages = (loginData?.ui?.nodes || []).flatMap(
+        (n: any) => (n.messages || []).map((m: any) => m.text),
+      );
+      const topMessages = (loginData?.ui?.messages || []).map((m: any) => m.text);
+      const allMessages = [...topMessages, ...nodeMessages].filter(Boolean);
+
+      console.error('[BFF] Login failed:', loginRes.status, allMessages);
+
+      if (loginRes.status === 400 || loginRes.status === 401) {
+        return NextResponse.json(
+          { error: allMessages[0] || 'Invalid email or password' },
+          { status: 401 },
+        );
+      }
+
+      return NextResponse.json(
+        { error: 'Authentication failed' },
+        { status: loginRes.status },
+      );
+    }
+
+    if (!loginData.session) {
       return NextResponse.json(
         { error: 'Login failed: no session returned' },
         { status: 401 },
@@ -42,29 +83,22 @@ export async function POST(request: NextRequest) {
     }
 
     // Build response with user session data
-    const userSession = mapKratosSession(loginResult.session);
+    const userSession = mapKratosSession(loginData.session);
     const response = NextResponse.json(userSession);
 
-    // Forward Kratos session cookies to the client
-    const setCookies = responseHeaders?.['set-cookie'];
-    if (setCookies) {
-      const cookies = Array.isArray(setCookies) ? setCookies : [setCookies];
-      for (const cookie of cookies) {
-        response.headers.append('Set-Cookie', cookie);
-      }
+    // Forward session token as cookie
+    const sessionToken = loginData.session_token;
+    if (sessionToken) {
+      response.cookies.set('ory_kratos_session', sessionToken, {
+        httpOnly: true,
+        sameSite: 'lax',
+        path: '/',
+        domain: 'localhost',
+      });
     }
 
     return response;
   } catch (error: any) {
-    const status = error?.response?.status;
-
-    if (status === 400 || status === 401) {
-      return NextResponse.json(
-        { error: 'Invalid email or password' },
-        { status: 401 },
-      );
-    }
-
     console.error('[BFF] Login error:', error?.message);
     return NextResponse.json(
       { error: 'Authentication service unavailable' },

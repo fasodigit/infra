@@ -6,7 +6,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- ============================================================
 -- CATEGORIES
 -- ============================================================
-CREATE TABLE categories (
+CREATE TABLE IF NOT EXISTS categories (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name        VARCHAR(50) NOT NULL UNIQUE,
     description TEXT
@@ -17,12 +17,13 @@ INSERT INTO categories (name, description) VALUES
     ('POULET_PONDEUSE', 'Poule pondeuse - elevage pour les oeufs'),
     ('PINTADE', 'Pintade - volaille locale prisee'),
     ('OEUF', 'Oeufs frais de ferme'),
-    ('ALIMENT', 'Aliment pour volaille');
+    ('ALIMENT', 'Aliment pour volaille')
+ON CONFLICT (name) DO NOTHING;
 
 -- ============================================================
 -- ELEVEURS (farmers)
 -- ============================================================
-CREATE TABLE eleveurs (
+CREATE TABLE IF NOT EXISTS eleveurs (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id     VARCHAR(255) NOT NULL,
     name        VARCHAR(200) NOT NULL,
@@ -35,13 +36,13 @@ CREATE TABLE eleveurs (
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_eleveurs_user_id ON eleveurs(user_id);
-CREATE INDEX idx_eleveurs_location ON eleveurs(location);
+CREATE INDEX IF NOT EXISTS idx_eleveurs_user_id ON eleveurs(user_id);
+CREATE INDEX IF NOT EXISTS idx_eleveurs_location ON eleveurs(location);
 
 -- ============================================================
 -- CLIENTS (buyers)
 -- ============================================================
-CREATE TABLE clients (
+CREATE TABLE IF NOT EXISTS clients (
     id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     user_id     VARCHAR(255) NOT NULL,
     name        VARCHAR(200) NOT NULL,
@@ -52,12 +53,12 @@ CREATE TABLE clients (
     updated_at  TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_clients_user_id ON clients(user_id);
+CREATE INDEX IF NOT EXISTS idx_clients_user_id ON clients(user_id);
 
 -- ============================================================
 -- POULETS (chickens)
 -- ============================================================
-CREATE TABLE poulets (
+CREATE TABLE IF NOT EXISTS poulets (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     eleveur_id    UUID         NOT NULL REFERENCES eleveurs(id) ON DELETE CASCADE,
     race          VARCHAR(20)  NOT NULL,
@@ -71,15 +72,15 @@ CREATE TABLE poulets (
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_poulets_eleveur_id ON poulets(eleveur_id);
-CREATE INDEX idx_poulets_race ON poulets(race);
-CREATE INDEX idx_poulets_available ON poulets(available) WHERE available = true;
-CREATE INDEX idx_poulets_categorie_id ON poulets(categorie_id);
+CREATE INDEX IF NOT EXISTS idx_poulets_eleveur_id ON poulets(eleveur_id);
+CREATE INDEX IF NOT EXISTS idx_poulets_race ON poulets(race);
+CREATE INDEX IF NOT EXISTS idx_poulets_available ON poulets(available) WHERE available = true;
+CREATE INDEX IF NOT EXISTS idx_poulets_categorie_id ON poulets(categorie_id);
 
 -- ============================================================
 -- COMMANDES (orders)
 -- ============================================================
-CREATE TABLE commandes (
+CREATE TABLE IF NOT EXISTS commandes (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     client_id     UUID         NOT NULL REFERENCES clients(id),
     eleveur_id    UUID         NOT NULL REFERENCES eleveurs(id),
@@ -90,14 +91,14 @@ CREATE TABLE commandes (
     updated_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_commandes_client_id ON commandes(client_id);
-CREATE INDEX idx_commandes_eleveur_id ON commandes(eleveur_id);
-CREATE INDEX idx_commandes_status ON commandes(status);
+CREATE INDEX IF NOT EXISTS idx_commandes_client_id ON commandes(client_id);
+CREATE INDEX IF NOT EXISTS idx_commandes_eleveur_id ON commandes(eleveur_id);
+CREATE INDEX IF NOT EXISTS idx_commandes_status ON commandes(status);
 
 -- ============================================================
 -- COMMANDE_ITEMS
 -- ============================================================
-CREATE TABLE commande_items (
+CREATE TABLE IF NOT EXISTS commande_items (
     id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     commande_id   UUID         NOT NULL REFERENCES commandes(id) ON DELETE CASCADE,
     poulet_id     UUID         NOT NULL REFERENCES poulets(id),
@@ -106,4 +107,4 @@ CREATE TABLE commande_items (
     created_at    TIMESTAMPTZ  NOT NULL DEFAULT now()
 );
 
-CREATE INDEX idx_commande_items_commande_id ON commande_items(commande_id);
+CREATE INDEX IF NOT EXISTS idx_commande_items_commande_id ON commande_items(commande_id);

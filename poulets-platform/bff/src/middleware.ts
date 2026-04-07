@@ -41,18 +41,27 @@ export async function middleware(request: NextRequest) {
   // For all other /api/* routes, validate Kratos session
   if (pathname.startsWith('/api/')) {
     const cookie = request.headers.get('cookie') || '';
+    const sessionToken = request.cookies.get('ory_kratos_session')?.value;
 
-    if (!cookie) {
+    if (!cookie && !sessionToken) {
       return addCorsHeaders(
         NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
       );
     }
 
     try {
+      const kratosHeaders: Record<string, string> = {};
+      if (sessionToken) {
+        kratosHeaders['X-Session-Token'] = sessionToken;
+      }
+      if (cookie) {
+        kratosHeaders['Cookie'] = cookie;
+      }
+
       const sessionResponse = await fetch(
         `${kratosPublicUrl}/sessions/whoami`,
         {
-          headers: { cookie },
+          headers: kratosHeaders,
           // Don't follow redirects
           redirect: 'manual',
         },

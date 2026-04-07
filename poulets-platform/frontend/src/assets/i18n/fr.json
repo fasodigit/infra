@@ -76,6 +76,38 @@
       "location": "Localisation",
       "status": "Statut",
       "reset": "Réinitialiser les filtres"
+    },
+    "annonces": {
+      "create": {
+        "title": "Publier une annonce",
+        "sectionPoulet": "Informations sur le poulet",
+        "race": "Race",
+        "quantity": "Quantité",
+        "currentWeight": "Poids actuel",
+        "estimatedWeight": "Poids estimé",
+        "targetDate": "Date cible",
+        "sectionPricing": "Tarification",
+        "pricePerKg": "Prix au kg",
+        "pricePerUnit": "Prix unitaire",
+        "sectionLocation": "Localisation",
+        "location": "Lieu",
+        "availabilityStart": "Début de disponibilité",
+        "availabilityEnd": "Fin de disponibilité",
+        "sectionDescription": "Description",
+        "description": "Description détaillée",
+        "photos": "Photos",
+        "maxPhotos": "max 5 photos",
+        "addPhoto": "Ajouter une photo",
+        "sectionCertifications": "Certifications",
+        "ficheSanitaire": "Fiche sanitaire",
+        "ficheSanitaireHint": "Référence de la fiche sanitaire associée",
+        "halalCertified": "Certifié halal",
+        "sectionPublishing": "Publication",
+        "publishAs": "Publier en tant que",
+        "publishIndividual": "Individuel",
+        "publishCooperative": "Coopérative",
+        "submit": "Publier l'annonce"
+      }
     }
   },
   "calendar": {

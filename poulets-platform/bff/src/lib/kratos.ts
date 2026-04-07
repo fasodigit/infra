@@ -40,6 +40,7 @@ export function extractCookies(headers: Headers): string {
 export interface UserSession {
   id: string;
   email: string;
+  nom: string;
   name: string;
   role: 'client' | 'eleveur' | 'admin';
   verified: boolean;
@@ -49,10 +50,17 @@ export function mapKratosSession(session: any): UserSession {
   const identity = session.identity;
   const traits = identity?.traits || {};
 
+  // Reconstruct name from first_name + last_name (Kratos schema)
+  const fullName = traits.name
+    || [traits.first_name, traits.last_name].filter(Boolean).join(' ')
+    || traits.email
+    || '';
+
   return {
     id: identity?.id || '',
     email: traits.email || '',
-    name: traits.name || traits.email || '',
+    nom: fullName,
+    name: fullName,
     role: traits.role || 'client',
     verified: identity?.verifiable_addresses?.[0]?.verified || false,
   };

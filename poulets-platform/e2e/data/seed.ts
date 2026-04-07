@@ -7,7 +7,7 @@ export const eleveurs = [
   {
     name: 'Ouedraogo Amadou',
     email: 'amadou.ouedraogo@test.bf',
-    password: 'Test1234!@#$',
+    password: 'FasoP0ulet$2026Xk9m',
     phone: '+22670112233',
     role: 'eleveur' as const,
     location: 'Ouagadougou, Secteur 30',
@@ -17,7 +17,7 @@ export const eleveurs = [
   {
     name: 'Compaore Fatimata',
     email: 'fatimata.compaore@test.bf',
-    password: 'Test1234!@#$',
+    password: 'FasoP0ulet$2026Xk9m',
     phone: '+22676445566',
     role: 'eleveur' as const,
     location: 'Bobo-Dioulasso, Secteur 8',
@@ -31,7 +31,7 @@ export const clients = [
   {
     name: 'Restaurant Le Sahel',
     email: 'contact@lesahel.bf',
-    password: 'Test1234!@#$',
+    password: 'FasoP0ulet$2026Xk9m',
     phone: '+22625334455',
     role: 'client' as const,
     type: 'restaurant' as const,
@@ -40,7 +40,7 @@ export const clients = [
   {
     name: 'Traiteur Wendkuni',
     email: 'wendkuni@test.bf',
-    password: 'Test1234!@#$',
+    password: 'FasoP0ulet$2026Xk9m',
     phone: '+22670998877',
     role: 'client' as const,
     type: 'evenement' as const,

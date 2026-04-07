@@ -108,11 +108,40 @@ export async function logout(page: Page): Promise<void> {
 }
 
 /**
- * Navigate to a sidebar route.
+ * Navigate to a route within the authenticated SPA.
+ * Uses Angular's router via location change to avoid full page reload.
  */
 export async function navigateTo(page: Page, route: string): Promise<void> {
-  await page.goto(route);
-  await page.waitForLoadState('domcontentloaded');
+  const currentUrl = page.url();
+
+  // If we're already in the app (not on login page), use Angular router
+  if (!currentUrl.includes('/auth/')) {
+    // Use Angular's Location service to navigate without full reload
+    await page.evaluate((r: string) => {
+      // Try to access Angular's router via zone.js context
+      const ngRef = (window as any).ng;
+      if (ngRef) {
+        try {
+          const appRef = ngRef.getComponent(document.querySelector('app-root'));
+          if (appRef) {
+            // Navigate via Angular's injector
+            const injector = ngRef.getOwningNgModule(appRef)?.injector
+              || (document.querySelector('app-root') as any)?.__ngContext__?.[0];
+            // Fallback: use location to trigger Angular routing
+          }
+        } catch {}
+      }
+      // Use popstate event which Angular's router listens to
+      window.history.pushState({}, '', r);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+    }, route);
+    await page.waitForTimeout(1500);
+    await page.waitForLoadState('domcontentloaded');
+  } else {
+    // If on auth page, do a full navigation
+    await page.goto(route);
+    await page.waitForLoadState('domcontentloaded');
+  }
 }
 
 /**

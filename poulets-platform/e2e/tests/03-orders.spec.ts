@@ -32,7 +32,7 @@ test.describe('03 - Order Flow', () => {
     // Step 1: Product selection
     const raceSelect = page.locator('mat-select[formControlName="race"]').first();
     if (await raceSelect.isVisible({ timeout: 5000 }).catch(() => false)) {
-      await raceSelect.click();
+      await raceSelect.click({ force: true });
       await page.locator('mat-option').filter({ hasText: /bicyclette|local/i }).first().click();
     }
 

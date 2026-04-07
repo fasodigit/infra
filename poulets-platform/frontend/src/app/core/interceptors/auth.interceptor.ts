@@ -13,11 +13,18 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
-      if (error.status === 401) {
+      // Don't redirect for auth-related API calls (login, register, session check)
+      const isAuthRequest = req.url.includes('/api/auth/');
+
+      if (error.status === 401 && !isAuthRequest) {
         // Session expired or not authenticated
-        router.navigate(['/auth/login'], {
-          queryParams: { returnUrl: router.url },
-        });
+        const currentUrl = router.url;
+        // Only redirect if not already on an auth page
+        if (!currentUrl.startsWith('/auth')) {
+          router.navigate(['/auth/login'], {
+            queryParams: { returnUrl: currentUrl },
+          });
+        }
       }
 
       if (error.status === 403) {
