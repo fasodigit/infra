@@ -111,6 +111,9 @@ observe:
   # OpenTelemetry tracing
   tracing_enabled: false
   otlp_endpoint: "http://localhost:4317"
+  # Jaeger distributed tracing
+  jaeger_endpoint: http://localhost:4317
+  service_name: kaya
   # Log level: trace | debug | info | warn | error
   log_level: "info"
   # Structured JSON logging
