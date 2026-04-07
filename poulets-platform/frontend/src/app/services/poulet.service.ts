@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Apollo } from 'apollo-angular';
-import { Observable, map } from 'rxjs';
+import { Observable, map, filter as rxFilter } from 'rxjs';
 
 import {
   GET_POULETS,
@@ -43,7 +43,10 @@ export class PouletService {
         query: GET_POULETS,
         variables: { filter, page, size },
       })
-      .valueChanges.pipe(map((result) => result.data.poulets));
+      .valueChanges.pipe(
+        rxFilter((result) => !!result.data),
+        map((result) => result.data!.poulets as Page<Poulet>),
+      );
   }
 
   /**
@@ -55,7 +58,10 @@ export class PouletService {
         query: GET_POULET_BY_ID,
         variables: { id },
       })
-      .valueChanges.pipe(map((result) => result.data.poulet));
+      .valueChanges.pipe(
+        rxFilter((result) => !!result.data),
+        map((result) => result.data!.poulet as Poulet),
+      );
   }
 
   /**
@@ -67,7 +73,10 @@ export class PouletService {
         query: GET_MES_POULETS,
         variables: { page, size },
       })
-      .valueChanges.pipe(map((result) => result.data.mesPoulets));
+      .valueChanges.pipe(
+        rxFilter((result) => !!result.data),
+        map((result) => result.data!.mesPoulets as Page<Poulet>),
+      );
   }
 
   /**
@@ -79,7 +88,10 @@ export class PouletService {
         query: GET_MES_COMMANDES,
         variables: { page, size },
       })
-      .valueChanges.pipe(map((result) => result.data.mesCommandes));
+      .valueChanges.pipe(
+        rxFilter((result) => !!result.data),
+        map((result) => result.data!.mesCommandes as Page<Commande>),
+      );
   }
 
   /**
@@ -90,7 +102,10 @@ export class PouletService {
       .watchQuery<{ eleveurStats: EleveurStats }>({
         query: GET_ELEVEUR_STATS,
       })
-      .valueChanges.pipe(map((result) => result.data.eleveurStats));
+      .valueChanges.pipe(
+        rxFilter((result) => !!result.data),
+        map((result) => result.data!.eleveurStats as EleveurStats),
+      );
   }
 
   // =========================================================================
@@ -107,7 +122,7 @@ export class PouletService {
         variables: { input },
         refetchQueries: [{ query: GET_MES_POULETS }],
       })
-      .pipe(map((result) => result.data!.createPoulet));
+      .pipe(map((result) => result.data!.createPoulet as Poulet));
   }
 
   /**
@@ -119,7 +134,7 @@ export class PouletService {
         mutation: UPDATE_POULET,
         variables: { id, input },
       })
-      .pipe(map((result) => result.data!.updatePoulet));
+      .pipe(map((result) => result.data!.updatePoulet as Poulet));
   }
 
   /**
@@ -132,7 +147,7 @@ export class PouletService {
         variables: { id },
         refetchQueries: [{ query: GET_MES_POULETS }],
       })
-      .pipe(map((result) => result.data!.deletePoulet));
+      .pipe(map((result) => result.data!.deletePoulet as boolean));
   }
 
   /**
@@ -145,6 +160,6 @@ export class PouletService {
         variables: { input },
         refetchQueries: [{ query: GET_MES_COMMANDES }],
       })
-      .pipe(map((result) => result.data!.passerCommande));
+      .pipe(map((result) => result.data!.passerCommande as Commande));
   }
 }

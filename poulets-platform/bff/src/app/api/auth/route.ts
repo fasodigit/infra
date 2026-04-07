@@ -200,16 +200,14 @@ async function handleLogout(request: NextRequest) {
   const cookie = extractCookies(request.headers);
 
   try {
-    // Create a logout URL/token from Kratos
-    const { data: logoutFlow } = await kratosFrontend.createNativeLogoutFlow({
+    // Create a browser logout flow to get the token
+    const { data: logoutFlow } = await kratosFrontend.createBrowserLogoutFlow({
       cookie,
     });
 
-    // Perform the actual logout
-    await kratosFrontend.performNativeLogout({
-      performNativeLogoutBody: {
-        session_token: logoutFlow.logout_token,
-      },
+    // Finalize the logout using the token
+    await kratosFrontend.updateLogoutFlow({
+      token: logoutFlow.logout_token,
     });
 
     // Clear session cookies

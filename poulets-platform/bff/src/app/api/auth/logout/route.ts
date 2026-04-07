@@ -10,16 +10,14 @@ export async function POST(request: NextRequest) {
 
   try {
     if (cookie) {
-      // Create a logout flow to get the token
-      const { data: logoutFlow } = await kratosFrontend.createNativeLogoutFlow({
+      // Create a browser logout flow to get the token
+      const { data: logoutFlow } = await kratosFrontend.createBrowserLogoutFlow({
         cookie,
       });
 
-      // Perform the logout
-      await kratosFrontend.performNativeLogout({
-        performNativeLogoutBody: {
-          session_token: logoutFlow.logout_token,
-        },
+      // Finalize the logout using the token
+      await kratosFrontend.updateLogoutFlow({
+        token: logoutFlow.logout_token,
       });
     }
   } catch (error: any) {
