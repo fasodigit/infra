@@ -1,0 +1,11 @@
+[package]
+name = "kaya-protocol"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+thiserror = { workspace = true }
+smallvec = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }

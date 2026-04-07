@@ -1,0 +1,18 @@
+[package]
+name = "xds-spire"
+description = "SPIRE integration for automatic mTLS certificate distribution"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+chrono = { workspace = true }
+
+xds-store = { workspace = true }

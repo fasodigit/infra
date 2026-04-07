@@ -1,0 +1,117 @@
+# KAYA Distributed In-Memory Database Configuration
+# FASO DIGITALISATION Project
+
+server:
+  # RESP3+ protocol port
+  resp_port: 6380
+  # gRPC API port
+  grpc_port: 6381
+  # Bind address
+  bind: "0.0.0.0"
+  # Max concurrent connections
+  max_connections: 10000
+  # TCP backlog
+  backlog: 1024
+  # Connection timeout (seconds)
+  timeout: 300
+  # Pipeline max commands per batch
+  pipeline_max: 1000
+
+store:
+  # Number of shards (power of 2 recommended)
+  num_shards: 64
+  # Default eviction policy: lru | lfu | ttl | none
+  eviction_policy: "lru"
+  # Max memory per shard (bytes, 0 = unlimited)
+  max_memory_per_shard: 0
+  # Global max memory (bytes, 0 = unlimited)
+  max_memory: 0
+  # Arena allocator block size (bytes)
+  arena_block_size: 65536
+  # Default TTL (seconds, 0 = no expiry)
+  default_ttl: 0
+
+compression:
+  # Default algorithm: none | lz4 | zstd
+  algorithm: "lz4"
+  # Minimum value size to trigger compression (bytes)
+  min_size: 256
+  # zstd compression level (1-22)
+  zstd_level: 3
+  # lz4 acceleration factor
+  lz4_acceleration: 1
+
+tls:
+  enabled: false
+  cert_path: ""
+  key_path: ""
+  ca_path: ""
+  require_client_auth: false
+
+security:
+  # Enable ACL
+  acl_enabled: false
+  # Default user password (empty = no auth)
+  default_password: ""
+  # ACL file path
+  acl_file: ""
+
+cluster:
+  # Enable clustering
+  enabled: false
+  # Node ID (auto-generated if empty)
+  node_id: ""
+  # Cluster seeds for discovery
+  seeds: []
+  # Raft heartbeat interval (ms)
+  raft_heartbeat_ms: 150
+  # Raft election timeout (ms)
+  raft_election_timeout_ms: 1000
+  # Virtual nodes per physical node for consistent hashing
+  virtual_nodes: 256
+  # Replication factor
+  replication_factor: 3
+
+sync:
+  # CDC with YugabyteDB
+  enabled: false
+  # YugabyteDB connection string
+  yugabyte_url: ""
+  # Outbox poll interval (ms)
+  outbox_poll_ms: 100
+  # Batch size for CDC
+  batch_size: 1000
+  # Warm-up on startup
+  warmup_on_start: true
+
+streams:
+  # Max entries per stream (0 = unlimited)
+  max_entries: 0
+  # Consumer group idle timeout (ms)
+  consumer_idle_timeout_ms: 300000
+  # Compaction interval (seconds)
+  compaction_interval_secs: 3600
+
+scripting:
+  # Enable Rhai scripting
+  rhai_enabled: true
+  # Enable WASM execution
+  wasm_enabled: false
+  # Enable Lua compatibility
+  lua_enabled: false
+  # Script cache size
+  cache_size: 256
+  # Max script execution time (ms)
+  max_execution_ms: 5000
+
+observe:
+  # Prometheus metrics endpoint
+  metrics_enabled: true
+  metrics_port: 9100
+  # OpenTelemetry tracing
+  tracing_enabled: false
+  otlp_endpoint: "http://localhost:4317"
+  # Log level: trace | debug | info | warn | error
+  log_level: "info"
+  # Structured JSON logging
+  json_logging: false

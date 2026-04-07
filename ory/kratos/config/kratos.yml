@@ -1,0 +1,192 @@
+# =============================================================================
+# ORY Kratos Configuration - FASO DIGITALISATION (DEV)
+# =============================================================================
+# Architecture: Angular -> BFF (Next.js) -> ARMAGEDDON:8080 -> Oathkeeper -> Kratos -> Backend
+# Cache: KAYA on port 6380
+# Auth-MS: HTTP 8801 / gRPC 9801
+# =============================================================================
+
+version: v1.3.1
+
+dsn: postgres://kratos:kratos@localhost:5433/kratos?sslmode=disable&max_conns=20&max_idle_conns=4
+
+serve:
+  public:
+    base_url: http://localhost:4433/
+    host: 0.0.0.0
+    port: 4433
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:4200   # Angular frontend
+        - http://localhost:4801   # Self-service UI
+        - http://localhost:3000   # BFF (Next.js)
+        - http://localhost:8080   # ARMAGEDDON gateway
+      allowed_methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowed_headers:
+        - Authorization
+        - Cookie
+        - Content-Type
+        - X-Session-Token
+        - X-CSRF-Token
+      exposed_headers:
+        - Content-Type
+        - Set-Cookie
+        - X-CSRF-Token
+      allow_credentials: true
+
+  admin:
+    base_url: http://localhost:4434/
+    host: 0.0.0.0
+    port: 4434
+
+# ---------------------------------------------------------------------------
+# Session configuration
+# ---------------------------------------------------------------------------
+session:
+  cookie:
+    name: ory_kratos_session
+    domain: localhost
+    path: /
+    same_site: Lax
+    persistent: true
+  lifespan: 8h
+  whoami:
+    required_aal: aal1
+
+# ---------------------------------------------------------------------------
+# Identity configuration
+# ---------------------------------------------------------------------------
+identity:
+  default_schema_id: user_v1
+  schemas:
+    - id: user_v1
+      url: file:///etc/config/kratos/schemas/identity.schema.json
+
+# ---------------------------------------------------------------------------
+# Self-service flows
+# ---------------------------------------------------------------------------
+selfservice:
+  default_browser_return_url: http://localhost:4801/
+
+  allowed_return_urls:
+    - http://localhost:4200
+    - http://localhost:4801
+    - http://localhost:3000
+
+  methods:
+    password:
+      enabled: true
+      config:
+        haveibeenpwned_enabled: true
+        min_password_length: 12
+        identifier_similarity_check_enabled: true
+    totp:
+      enabled: true
+      config:
+        issuer: FasoDigitalisation
+    code:
+      enabled: true
+      config:
+        lifespan: 15m
+    link:
+      enabled: true
+      config:
+        lifespan: 1h
+
+  flows:
+    login:
+      ui_url: http://localhost:4801/auth/login
+      lifespan: 10m
+      after:
+        password:
+          hooks:
+            - hook: require_verified_address
+
+    registration:
+      enabled: true
+      ui_url: http://localhost:4801/auth/registration
+      lifespan: 10m
+      after:
+        password:
+          hooks:
+            - hook: session
+            - hook: show_verification_ui
+
+    recovery:
+      enabled: true
+      ui_url: http://localhost:4801/auth/recovery
+      use: code
+      lifespan: 1h
+      notify_unknown_recipients: false
+
+    verification:
+      enabled: true
+      ui_url: http://localhost:4801/auth/verification
+      use: code
+      lifespan: 24h
+      after:
+        default_browser_return_url: http://localhost:4801/auth/login
+
+    settings:
+      ui_url: http://localhost:4801/auth/settings
+      privileged_session_max_age: 15m
+      required_aal: aal1
+
+    error:
+      ui_url: http://localhost:4801/auth/error
+
+    logout:
+      after:
+        default_browser_return_url: http://localhost:4801/auth/login
+
+# ---------------------------------------------------------------------------
+# Courier (email delivery)
+# ---------------------------------------------------------------------------
+courier:
+  smtp:
+    connection_uri: smtps://test:test@localhost:1025/?skip_ssl_verify=true&legacy_ssl=true
+    from_address: noreply@faso-digitalisation.dev
+    from_name: Faso Digitalisation (DEV)
+  template_override_path: /etc/config/kratos/templates
+
+# ---------------------------------------------------------------------------
+# Hashing (Argon2id - DEV settings, lighter than production)
+# ---------------------------------------------------------------------------
+hashers:
+  algorithm: argon2
+  argon2:
+    memory: 131072        # 128 MB (prod: 1048576 / 1 GB)
+    iterations: 4
+    parallelism: 2
+    salt_length: 16
+    key_length: 32
+
+# ---------------------------------------------------------------------------
+# Secrets (DEV only - must be rotated for production)
+# ---------------------------------------------------------------------------
+secrets:
+  cookie:
+    - faso-dev-cookie-secret-change-in-production-minimum-32-chars
+  cipher:
+    - faso-dev-cipher-secret-change-in-production-minimum-32-chars
+
+# ---------------------------------------------------------------------------
+# Ciphers
+# ---------------------------------------------------------------------------
+ciphers:
+  algorithm: xchacha20-poly1305
+
+# ---------------------------------------------------------------------------
+# Logging (DEV)
+# ---------------------------------------------------------------------------
+log:
+  level: debug
+  format: json
+  leak_sensitive_values: true  # DEV only - NEVER in production

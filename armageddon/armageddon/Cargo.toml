@@ -1,0 +1,32 @@
+[package]
+name = "armageddon"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "armageddon"
+path = "src/main.rs"
+
+[dependencies]
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+armageddon-forge = { workspace = true }
+armageddon-sentinel = { workspace = true }
+armageddon-arbiter = { workspace = true }
+armageddon-oracle = { workspace = true }
+armageddon-aegis = { workspace = true }
+armageddon-nexus = { workspace = true }
+armageddon-veil = { workspace = true }
+armageddon-wasm = { workspace = true }
+armageddon-ai = { workspace = true }
+tokio = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

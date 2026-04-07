@@ -1,0 +1,232 @@
+type Query {
+    """List poulets with optional filter and pagination"""
+    poulets(filter: PouletFilter, page: Int = 0, size: Int = 20): PouletPage!
+
+    """Get a single poulet by ID"""
+    poulet(id: ID!): Poulet
+
+    """List eleveurs with optional location filter and pagination"""
+    eleveurs(location: String, page: Int = 0, size: Int = 20): EleveurPage!
+
+    """Get a single eleveur by ID"""
+    eleveur(id: ID!): Eleveur
+
+    """List orders for the current user"""
+    mesCommandes(status: CommandeStatus, page: Int = 0, size: Int = 20): CommandePage!
+
+    """Get a single commande by ID"""
+    commande(id: ID!): Commande
+
+    """List all categories"""
+    categories: [Categorie!]!
+}
+
+type Mutation {
+    # Eleveur operations
+    """Register a new eleveur (farmer)"""
+    registerEleveur(input: EleveurInput!): Eleveur!
+
+    """Update an existing eleveur"""
+    updateEleveur(id: ID!, input: EleveurInput!): Eleveur!
+
+    """Add a new poulet listing"""
+    addPoulet(input: PouletInput!): Poulet!
+
+    """Update an existing poulet listing"""
+    updatePoulet(id: ID!, input: PouletInput!): Poulet!
+
+    """Delete a poulet listing"""
+    deletePoulet(id: ID!): Boolean!
+
+    # Client operations
+    """Register a new client (buyer)"""
+    registerClient(input: ClientInput!): Client!
+
+    """Create a new commande (order)"""
+    createCommande(input: CommandeInput!): Commande!
+
+    """Cancel an existing commande"""
+    cancelCommande(id: ID!): Commande!
+
+    # Eleveur order management
+    """Confirm a pending commande"""
+    confirmCommande(id: ID!): Commande!
+
+    """Mark a commande as ready for pickup/delivery"""
+    markReady(id: ID!): Commande!
+
+    """Mark a commande as delivered"""
+    markDelivered(id: ID!): Commande!
+}
+
+# ------ Enums ------
+
+enum Race {
+    LOCAL
+    BICYCLETTE
+    PINTADE
+    BRAHMA
+}
+
+enum CommandeStatus {
+    PENDING
+    CONFIRMED
+    PREPARING
+    READY
+    DELIVERED
+    CANCELLED
+}
+
+enum CategorieNom {
+    POULET_CHAIR
+    POULET_PONDEUSE
+    PINTADE
+    OEUF
+    ALIMENT
+}
+
+# ------ Types ------
+
+type Eleveur {
+    id: ID!
+    userId: String!
+    name: String!
+    phone: String!
+    location: String!
+    description: String
+    rating: Float!
+    active: Boolean!
+    poulets: [Poulet!]!
+    createdAt: String!
+    updatedAt: String!
+}
+
+type Client {
+    id: ID!
+    userId: String!
+    name: String!
+    phone: String!
+    address: String!
+    active: Boolean!
+    createdAt: String!
+    updatedAt: String!
+}
+
+type Poulet {
+    id: ID!
+    eleveurId: ID!
+    eleveur: Eleveur
+    race: Race!
+    weight: Float!
+    price: Float!
+    quantity: Int!
+    description: String
+    available: Boolean!
+    categorieId: ID
+    categorie: Categorie
+    createdAt: String!
+    updatedAt: String!
+}
+
+type Commande {
+    id: ID!
+    clientId: ID!
+    client: Client
+    eleveurId: ID!
+    eleveur: Eleveur
+    status: CommandeStatus!
+    totalAmount: Float!
+    items: [CommandeItem!]!
+    createdAt: String!
+    deliveredAt: String
+    updatedAt: String!
+}
+
+type CommandeItem {
+    id: ID!
+    commandeId: ID!
+    pouletId: ID!
+    poulet: Poulet
+    quantity: Int!
+    unitPrice: Float!
+}
+
+type Categorie {
+    id: ID!
+    name: CategorieNom!
+    description: String
+}
+
+# ------ Pagination ------
+
+type PouletPage {
+    content: [Poulet!]!
+    totalElements: Int!
+    totalPages: Int!
+    page: Int!
+    size: Int!
+}
+
+type EleveurPage {
+    content: [Eleveur!]!
+    totalElements: Int!
+    totalPages: Int!
+    page: Int!
+    size: Int!
+}
+
+type CommandePage {
+    content: [Commande!]!
+    totalElements: Int!
+    totalPages: Int!
+    page: Int!
+    size: Int!
+}
+
+# ------ Input Types ------
+
+input EleveurInput {
+    userId: String
+    name: String!
+    phone: String!
+    location: String!
+    description: String
+}
+
+input ClientInput {
+    userId: String
+    name: String!
+    phone: String!
+    address: String!
+}
+
+input PouletInput {
+    eleveurId: ID!
+    race: Race!
+    weight: Float!
+    price: Float!
+    quantity: Int!
+    description: String
+    categorieId: ID
+}
+
+input PouletFilter {
+    race: Race
+    minPrice: Float
+    maxPrice: Float
+    location: String
+    available: Boolean
+    categorieId: ID
+    eleveurId: ID
+}
+
+input CommandeInput {
+    clientId: ID!
+    eleveurId: ID!
+    items: [CommandeItemInput!]!
+}
+
+input CommandeItemInput {
+    pouletId: ID!
+    quantity: Int!
+}

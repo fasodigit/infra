@@ -1,0 +1,24 @@
+[package]
+name = "armageddon-sentinel"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+dashmap = { workspace = true }
+maxminddb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+regex = { workspace = true }
+ipnet = { workspace = true }
+chrono = { workspace = true }
+aho-corasick = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

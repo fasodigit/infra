@@ -1,0 +1,204 @@
+# =============================================================================
+# ORY Oathkeeper Configuration - FASO DIGITALISATION (DEV)
+# =============================================================================
+# Identity & Access Proxy
+# Chain: ARMAGEDDON:8080 -> Oathkeeper:4455 -> Kratos/Keto -> Backend
+# =============================================================================
+
+version: v0.40.8
+
+# ---------------------------------------------------------------------------
+# Serve configuration
+# ---------------------------------------------------------------------------
+serve:
+  proxy:
+    host: 0.0.0.0
+    port: 4455
+    timeout:
+      read: 5s
+      write: 10s
+      idle: 120s
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:4200   # Angular frontend
+        - http://localhost:3000   # BFF (Next.js)
+        - http://localhost:8080   # ARMAGEDDON gateway
+      allowed_methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+        - OPTIONS
+      allowed_headers:
+        - Authorization
+        - Cookie
+        - Content-Type
+        - X-Session-Token
+        - X-Forwarded-For
+        - X-Forwarded-Proto
+      exposed_headers:
+        - Content-Type
+        - Set-Cookie
+      allow_credentials: true
+
+  api:
+    host: 0.0.0.0
+    port: 4456
+
+# ---------------------------------------------------------------------------
+# Access rules
+# ---------------------------------------------------------------------------
+access_rules:
+  matching_strategy: regexp
+  repositories:
+    - file:///etc/config/oathkeeper/access-rules.yml
+
+# ---------------------------------------------------------------------------
+# Authenticators
+# ---------------------------------------------------------------------------
+authenticators:
+  # Anonymous access (public routes)
+  anonymous:
+    enabled: true
+    config:
+      subject: anonymous
+
+  # Cookie-based session validation via Kratos
+  cookie_session:
+    enabled: true
+    config:
+      check_session_url: http://kratos:4433/sessions/whoami
+      preserve_path: true
+      preserve_query: true
+      force_method: GET
+      extra_from: "@this"
+      subject_from: "identity.id"
+      only:
+        - ory_kratos_session
+
+  # Bearer token (for API-to-API or service accounts)
+  bearer_token:
+    enabled: true
+    config:
+      check_session_url: http://kratos:4433/sessions/whoami
+      preserve_path: true
+      preserve_query: true
+      force_method: GET
+      token_from:
+        header: Authorization
+      subject_from: "identity.id"
+
+  # No-op (used for health endpoints)
+  noop:
+    enabled: true
+
+# ---------------------------------------------------------------------------
+# Authorizers
+# ---------------------------------------------------------------------------
+authorizers:
+  # Allow all (for public endpoints)
+  allow:
+    enabled: true
+
+  # Deny all (fallback)
+  deny:
+    enabled: true
+
+  # Keto permission check
+  keto_engine_acp_ory:
+    enabled: true
+    config:
+      base_url: http://keto:4466
+      required_action: "access"
+      required_resource: "resources:default"
+      subject: "{{ print .Subject }}"
+      flavor: exact
+
+  # Remote JSON authorizer (for complex auth-ms logic)
+  remote_json:
+    enabled: true
+    config:
+      remote: http://auth-ms:8801/api/v1/authorize
+      forward_response_headers_to_upstream:
+        - X-User-Roles
+        - X-User-Permissions
+        - X-User-Platform
+      payload: |
+        {
+          "subject": "{{ print .Subject }}",
+          "resource": "{{ printIndex .MatchContext.RegexpCaptureGroups 0 }}",
+          "action": "{{ print .MatchContext.Method }}",
+          "context": {
+            "remote_ip": "{{ print .Extra.remote_ip }}"
+          }
+        }
+
+# ---------------------------------------------------------------------------
+# Mutators
+# ---------------------------------------------------------------------------
+mutators:
+  # No-op mutator
+  noop:
+    enabled: true
+
+  # ID Token mutator (JWT for downstream services)
+  id_token:
+    enabled: true
+    config:
+      issuer_url: http://localhost:4455
+      jwks_url: file:///etc/config/oathkeeper/jwks.json
+      claims: |
+        {
+          "session": {{ .Extra | toJson }},
+          "sub": "{{ print .Subject }}",
+          "iss": "oathkeeper.faso-digitalisation.dev",
+          "iat": {{ now | unixEpoch }},
+          "exp": {{ add (now | unixEpoch) 3600 }}
+        }
+      ttl: 1h
+
+  # Header mutator (pass identity info as headers)
+  header:
+    enabled: true
+    config:
+      headers:
+        X-User-Id: "{{ print .Subject }}"
+        X-Session-Data: "{{ .Extra | toJson | b64enc }}"
+
+# ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+errors:
+  fallback:
+    - json
+
+  handlers:
+    json:
+      enabled: true
+      config:
+        verbose: true    # DEV only - disable in production
+        when:
+          - request:
+              header:
+                accept:
+                  - application/json
+    redirect:
+      enabled: true
+      config:
+        to: http://localhost:4801/auth/login
+        when:
+          - request:
+              header:
+                accept:
+                  - text/html
+        return_to_query_param: return_to
+
+# ---------------------------------------------------------------------------
+# Logging (DEV)
+# ---------------------------------------------------------------------------
+log:
+  level: debug
+  format: json
+  leak_sensitive_values: true   # DEV only - NEVER in production

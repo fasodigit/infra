@@ -1,0 +1,198 @@
+# =============================================================================
+# ORY Keto Namespaces - FASO DIGITALISATION (DEV)
+# =============================================================================
+# Zanzibar-style namespace definitions
+#
+# Relationship model:
+#   User --[member]--> Role
+#   User --[assigned]--> Platform
+#   User --[belongs_to]--> Department
+#   Role --[member/owner/viewer/editor/admin]--> Platform
+#   Platform --[parent]--> Resource
+#   Subject --[viewer/editor/owner/admin]--> Resource
+#
+# Permission checks follow transitive relations:
+#   User is member of Role, Role has admin on Platform => User has admin on Platform
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# User namespace
+# ---------------------------------------------------------------------------
+- name: User
+  config:
+    relations:
+      member:
+        description: "User is a member of a role or group"
+      assigned:
+        description: "User is assigned to a platform"
+      belongs_to:
+        description: "User belongs to a department"
+
+# ---------------------------------------------------------------------------
+# Role namespace
+# Roles: admin, operator, eleveur, client
+# ---------------------------------------------------------------------------
+- name: Role
+  config:
+    relations:
+      member:
+        description: "Subject is a member of this role"
+        types:
+          - User
+      owner:
+        description: "Subject owns this role (can manage members)"
+        types:
+          - User
+      admin:
+        description: "Subject has admin privileges via this role"
+        types:
+          - User
+    permissions:
+      manage:
+        description: "Can manage role membership"
+        union:
+          - owner
+          - admin
+
+# ---------------------------------------------------------------------------
+# Platform namespace
+# Platforms: etat-civil, hospital, vouchers, sogesy, faso-kalan,
+#            e-school, e-ticket, poulets
+# ---------------------------------------------------------------------------
+- name: Platform
+  config:
+    relations:
+      viewer:
+        description: "Can view resources on this platform"
+        types:
+          - User
+          - Role#member
+      editor:
+        description: "Can create/edit resources on this platform"
+        types:
+          - User
+          - Role#member
+      admin:
+        description: "Full administrative access to this platform"
+        types:
+          - User
+          - Role#member
+      owner:
+        description: "Platform owner (super-admin level)"
+        types:
+          - User
+      member:
+        description: "General membership on this platform"
+        types:
+          - User
+          - Role#member
+    permissions:
+      view:
+        description: "Computed: can view"
+        union:
+          - viewer
+          - editor
+          - admin
+          - owner
+      edit:
+        description: "Computed: can edit"
+        union:
+          - editor
+          - admin
+          - owner
+      manage:
+        description: "Computed: can manage"
+        union:
+          - admin
+          - owner
+
+# ---------------------------------------------------------------------------
+# Resource namespace
+# Generic resource access control within platforms
+# ---------------------------------------------------------------------------
+- name: Resource
+  config:
+    relations:
+      parent:
+        description: "Parent platform of this resource"
+        types:
+          - Platform
+      viewer:
+        description: "Can view this resource"
+        types:
+          - User
+          - Role#member
+      editor:
+        description: "Can edit this resource"
+        types:
+          - User
+          - Role#member
+      owner:
+        description: "Owns this resource"
+        types:
+          - User
+      admin:
+        description: "Admin access on this resource"
+        types:
+          - User
+          - Role#member
+    permissions:
+      view:
+        description: "Computed: can view (direct or inherited from platform)"
+        union:
+          - viewer
+          - editor
+          - owner
+          - admin
+          - parent.view
+      edit:
+        description: "Computed: can edit (direct or inherited from platform)"
+        union:
+          - editor
+          - owner
+          - admin
+          - parent.edit
+      manage:
+        description: "Computed: can manage (direct or inherited from platform)"
+        union:
+          - owner
+          - admin
+          - parent.manage
+      delete:
+        description: "Computed: can delete"
+        union:
+          - owner
+          - admin
+          - parent.manage
+
+# ---------------------------------------------------------------------------
+# Department namespace
+# Organizational departments
+# ---------------------------------------------------------------------------
+- name: Department
+  config:
+    relations:
+      member:
+        description: "User belongs to this department"
+        types:
+          - User
+      manager:
+        description: "User manages this department"
+        types:
+          - User
+      admin:
+        description: "Administrative access to department resources"
+        types:
+          - User
+    permissions:
+      view:
+        description: "Can view department info"
+        union:
+          - member
+          - manager
+          - admin
+      manage:
+        description: "Can manage department"
+        union:
+          - manager
+          - admin

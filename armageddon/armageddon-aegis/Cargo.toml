@@ -1,0 +1,16 @@
+[package]
+name = "armageddon-aegis"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+regorus = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

@@ -1,0 +1,17 @@
+// Aggregated Discovery Service (ADS).
+// Single gRPC stream for all xDS resource types.
+// ARMAGEDDON connects here for unified configuration streaming.
+syntax = "proto3";
+
+package envoy.service.discovery.v3;
+
+import "envoy/service/discovery/v3/discovery.proto";
+
+service AggregatedDiscoveryService {
+  // Full-state ADS streaming. ARMAGEDDON opens one bidirectional stream
+  // and receives CDS, EDS, RDS, LDS, SDS resources over it.
+  rpc StreamAggregatedResources(stream DiscoveryRequest) returns (stream DiscoveryResponse) {}
+
+  // Delta ADS streaming (incremental updates, future use).
+  rpc DeltaAggregatedResources(stream DeltaDiscoveryRequest) returns (stream DeltaDiscoveryResponse) {}
+}

@@ -1,0 +1,14 @@
+[package]
+name = "kaya-relational"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+bytes = { workspace = true }
+parking_lot = { workspace = true }
+ahash = { workspace = true }
+kaya-store = { workspace = true }

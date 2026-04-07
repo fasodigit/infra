@@ -1,0 +1,107 @@
+// Listener configuration for xDS LDS.
+// Defines network listeners and filter chains that ARMAGEDDON creates.
+syntax = "proto3";
+
+package envoy.config.listener.v3;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/wrappers.proto";
+
+// Listener: top-level LDS resource.
+message Listener {
+  // Unique listener name.
+  string name = 1;
+
+  // Bind address for the listener.
+  Address address = 2;
+
+  // Filter chains for processing connections.
+  repeated FilterChain filter_chains = 3;
+
+  // Default filter chain if no match.
+  FilterChain default_filter_chain = 25;
+
+  // Per-connection buffer size.
+  google.protobuf.UInt32Value per_connection_buffer_limit_bytes = 5;
+
+  // Listener metadata.
+  map<string, string> metadata = 7;
+
+  // Listener filters (e.g. TLS inspector).
+  repeated ListenerFilter listener_filters = 9;
+}
+
+message Address {
+  oneof address {
+    SocketAddress socket_address = 1;
+    Pipe pipe = 2;
+  }
+}
+
+message SocketAddress {
+  string address = 1;
+  uint32 port_value = 2;
+  string protocol = 3;
+}
+
+message Pipe {
+  string path = 1;
+  uint32 mode = 2;
+}
+
+message FilterChain {
+  // Filter chain match criteria.
+  FilterChainMatch filter_chain_match = 1;
+
+  // Network filters in this chain.
+  repeated Filter filters = 3;
+
+  // TLS context for this filter chain.
+  DownstreamTlsContext transport_socket_tls = 6;
+
+  // Filter chain name for debugging.
+  string name = 7;
+}
+
+message FilterChainMatch {
+  // Destination port for matching.
+  google.protobuf.UInt32Value destination_port = 8;
+
+  // Server names (SNI) for TLS matching.
+  repeated string server_names = 11;
+
+  // Application protocols (ALPN).
+  repeated string application_protocols = 10;
+
+  // Source IP CIDR ranges.
+  repeated CidrRange source_prefix_ranges = 6;
+
+  // Source ports.
+  repeated uint32 source_ports = 7;
+}
+
+message CidrRange {
+  string address_prefix = 1;
+  google.protobuf.UInt32Value prefix_len = 2;
+}
+
+message Filter {
+  // Filter name (e.g. "envoy.filters.network.http_connection_manager").
+  string name = 1;
+
+  // Filter-specific configuration.
+  google.protobuf.Any typed_config = 4;
+}
+
+message ListenerFilter {
+  string name = 1;
+  google.protobuf.Any typed_config = 3;
+}
+
+message DownstreamTlsContext {
+  // SPIRE SVID reference for automatic mTLS.
+  string spiffe_id = 1;
+
+  // Require client certificate.
+  bool require_client_certificate = 3;
+}

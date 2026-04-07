@@ -1,0 +1,11 @@
+[package]
+name = "kaya-compress"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+lz4_flex = { workspace = true }
+zstd = { workspace = true }
+thiserror = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }

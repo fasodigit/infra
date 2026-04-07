@@ -1,0 +1,30 @@
+[package]
+name = "xds-server"
+description = "xDS v3 gRPC control plane server for ARMAGEDDON"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+tonic = { workspace = true }
+prost = { workspace = true }
+prost-types = { workspace = true }
+tokio = { workspace = true }
+tokio-stream = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+uuid = { workspace = true }
+dashmap = { workspace = true }
+async-trait = { workspace = true }
+
+xds-store = { workspace = true }
+xds-discovery = { workspace = true }
+xds-spire = { workspace = true }
+
+[build-dependencies]
+tonic-build = { workspace = true }

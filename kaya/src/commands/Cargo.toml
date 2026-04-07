@@ -1,0 +1,15 @@
+[package]
+name = "kaya-commands"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+parking_lot = { workspace = true }
+kaya-store = { workspace = true }
+kaya-protocol = { workspace = true }
+kaya-streams = { workspace = true }
+kaya-scripting = { workspace = true }

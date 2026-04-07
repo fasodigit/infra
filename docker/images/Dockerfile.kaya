@@ -1,0 +1,85 @@
+# =============================================================================
+# Dockerfile - KAYA In-Memory Database
+# =============================================================================
+# Multi-stage build: Rust compilation -> minimal Debian runtime
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build
+# ---------------------------------------------------------------------------
+FROM rust:1.82-slim AS builder
+
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy workspace manifests for dependency caching
+COPY kaya/Cargo.toml kaya/Cargo.lock ./
+
+# Copy all member Cargo.toml files
+COPY kaya/src/store/Cargo.toml ./src/store/Cargo.toml
+COPY kaya/src/protocol/Cargo.toml ./src/protocol/Cargo.toml
+COPY kaya/src/network/Cargo.toml ./src/network/Cargo.toml
+COPY kaya/src/commands/Cargo.toml ./src/commands/Cargo.toml
+COPY kaya/src/relational/Cargo.toml ./src/relational/Cargo.toml
+COPY kaya/src/streams/Cargo.toml ./src/streams/Cargo.toml
+COPY kaya/src/cluster/Cargo.toml ./src/cluster/Cargo.toml
+COPY kaya/src/sync/Cargo.toml ./src/sync/Cargo.toml
+COPY kaya/src/views/Cargo.toml ./src/views/Cargo.toml
+COPY kaya/src/scripting/Cargo.toml ./src/scripting/Cargo.toml
+COPY kaya/src/compress/Cargo.toml ./src/compress/Cargo.toml
+COPY kaya/src/security/Cargo.toml ./src/security/Cargo.toml
+COPY kaya/src/observe/Cargo.toml ./src/observe/Cargo.toml
+COPY kaya/src/cli/Cargo.toml ./src/cli/Cargo.toml
+COPY kaya/src/server/Cargo.toml ./src/server/Cargo.toml
+COPY kaya/src/bench/Cargo.toml ./src/bench/Cargo.toml
+COPY kaya/src/sdk/Cargo.toml ./src/sdk/Cargo.toml
+
+# Create dummy source files for dependency caching
+RUN for d in store protocol network commands relational streams cluster \
+             sync views scripting compress security observe cli server bench sdk; do \
+        mkdir -p src/$d/src && echo "fn main() {}" > src/$d/src/lib.rs; \
+    done && \
+    echo "fn main() {}" > src/server/src/main.rs && \
+    echo "fn main() {}" > src/cli/src/main.rs
+
+# Build dependencies only
+RUN cargo build --release 2>/dev/null || true
+
+# Copy actual source code
+COPY kaya/ .
+
+# Build server and CLI binaries
+RUN cargo build --release --bin kaya-server --bin kaya-cli
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r kaya && useradd -r -g kaya kaya
+
+COPY --from=builder /build/target/release/kaya-server /usr/local/bin/kaya-server
+COPY --from=builder /build/target/release/kaya-cli /usr/local/bin/kaya-cli
+COPY kaya/config /etc/kaya
+
+RUN chmod +x /usr/local/bin/kaya-server /usr/local/bin/kaya-cli && \
+    mkdir -p /data/kaya && chown -R kaya:kaya /data/kaya
+
+USER kaya
+
+EXPOSE 6379
+
+VOLUME ["/data/kaya"]
+
+ENTRYPOINT ["/usr/local/bin/kaya-server"]
+CMD ["--config", "/etc/kaya/kaya.yml"]

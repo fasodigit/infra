@@ -1,0 +1,107 @@
+[workspace]
+resolver = "2"
+members = [
+    "src/store",
+    "src/protocol",
+    "src/network",
+    "src/commands",
+    "src/relational",
+    "src/streams",
+    "src/cluster",
+    "src/sync",
+    "src/views",
+    "src/scripting",
+    "src/compress",
+    "src/security",
+    "src/observe",
+    "src/cli",
+    "src/server",
+    "src/bench",
+    "src/sdk",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0"
+repository = "https://github.com/faso-digitalisation/kaya"
+
+[workspace.dependencies]
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-util = { version = "0.7", features = ["codec"] }
+
+# Concurrency
+dashmap = "6"
+parking_lot = "0.12"
+crossbeam = "0.8"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+bytes = "1"
+
+# Compression
+lz4_flex = "0.11"
+zstd = "0.13"
+
+# TLS
+tokio-rustls = "0.26"
+rustls = "0.23"
+rustls-pemfile = "2"
+
+# Scripting
+rhai = { version = "1", features = ["sync", "serde"] }
+wasmtime = "25"
+mlua = { version = "0.10", features = ["luau", "async", "serialize"] }
+
+# Raft consensus
+openraft = { version = "0.10.0-alpha.17", features = ["serde"] }
+
+# Observability
+prometheus = "0.13"
+opentelemetry = "0.27"
+opentelemetry_sdk = "0.27"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.28"
+
+# Hashing and data structures
+ahash = "0.8"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+
+# Misc
+anyhow = "1"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+uuid = { version = "1", features = ["v7", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+rand = "0.8"
+smallvec = { version = "1", features = ["serde"] }
+arc-swap = "1"
+
+# Internal crates
+kaya-store = { path = "src/store" }
+kaya-protocol = { path = "src/protocol" }
+kaya-network = { path = "src/network" }
+kaya-commands = { path = "src/commands" }
+kaya-relational = { path = "src/relational" }
+kaya-streams = { path = "src/streams" }
+kaya-cluster = { path = "src/cluster" }
+kaya-sync = { path = "src/sync" }
+kaya-views = { path = "src/views" }
+kaya-scripting = { path = "src/scripting" }
+kaya-compress = { path = "src/compress" }
+kaya-security = { path = "src/security" }
+kaya-observe = { path = "src/observe" }
+kaya-cli = { path = "src/cli" }
+kaya-server = { path = "src/server" }
+kaya-bench = { path = "src/bench" }
+kaya-sdk = { path = "src/sdk" }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+opt-level = 3
+strip = true

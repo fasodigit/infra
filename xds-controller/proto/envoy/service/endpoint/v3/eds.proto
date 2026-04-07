@@ -1,0 +1,18 @@
+// Endpoint Discovery Service (EDS).
+// ARMAGEDDON subscribes to discover instances (IP:port) per cluster.
+syntax = "proto3";
+
+package envoy.service.endpoint.v3;
+
+import "envoy/service/discovery/v3/discovery.proto";
+
+service EndpointDiscoveryService {
+  rpc StreamEndpoints(stream envoy.service.discovery.v3.DiscoveryRequest)
+      returns (stream envoy.service.discovery.v3.DiscoveryResponse) {}
+
+  rpc DeltaEndpoints(stream envoy.service.discovery.v3.DeltaDiscoveryRequest)
+      returns (stream envoy.service.discovery.v3.DeltaDiscoveryResponse) {}
+
+  rpc FetchEndpoints(envoy.service.discovery.v3.DiscoveryRequest)
+      returns (envoy.service.discovery.v3.DiscoveryResponse) {}
+}

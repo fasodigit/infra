@@ -1,0 +1,19 @@
+[package]
+name = "kaya-bench"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "kaya-bench"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+clap = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+anyhow = { workspace = true }
+kaya-sdk = { workspace = true }
+kaya-protocol = { workspace = true }

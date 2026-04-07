@@ -1,0 +1,102 @@
+// Cluster configuration for xDS CDS.
+// Defines a backend service cluster that ARMAGEDDON routes traffic to.
+syntax = "proto3";
+
+package envoy.config.cluster.v3;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/wrappers.proto";
+
+message Cluster {
+  string name = 1;
+
+  enum DiscoveryType {
+    STATIC = 0;
+    STRICT_DNS = 1;
+    LOGICAL_DNS = 2;
+    EDS = 3;
+    ORIGINAL_DST = 4;
+  }
+  DiscoveryType type = 2;
+
+  google.protobuf.Duration connect_timeout = 4;
+
+  // Load balancing policy.
+  enum LbPolicy {
+    ROUND_ROBIN = 0;
+    LEAST_REQUEST = 1;
+    RING_HASH = 2;
+    RANDOM = 3;
+    MAGLEV = 5;
+  }
+  LbPolicy lb_policy = 6;
+
+  // Health checking configuration.
+  repeated HealthCheck health_checks = 8;
+
+  // Circuit breaking thresholds.
+  CircuitBreakers circuit_breakers = 10;
+
+  // EDS cluster configuration (when type = EDS).
+  EdsClusterConfig eds_cluster_config = 3;
+
+  // TLS context for upstream connections.
+  UpstreamTlsContext transport_socket_tls = 24;
+
+  // Metadata for the cluster.
+  map<string, string> metadata = 25;
+}
+
+message EdsClusterConfig {
+  // EDS service name (defaults to cluster name).
+  string service_name = 2;
+}
+
+message HealthCheck {
+  google.protobuf.Duration timeout = 1;
+  google.protobuf.Duration interval = 2;
+  google.protobuf.UInt32Value unhealthy_threshold = 4;
+  google.protobuf.UInt32Value healthy_threshold = 5;
+
+  oneof health_checker {
+    HttpHealthCheck http_health_check = 8;
+    TcpHealthCheck tcp_health_check = 9;
+    GrpcHealthCheck grpc_health_check = 11;
+  }
+}
+
+message HttpHealthCheck {
+  string host = 1;
+  string path = 2;
+  uint32 expected_statuses = 9;
+}
+
+message TcpHealthCheck {
+}
+
+message GrpcHealthCheck {
+  string service_name = 1;
+}
+
+message CircuitBreakers {
+  repeated Thresholds thresholds = 1;
+
+  message Thresholds {
+    RoutingPriority priority = 1;
+    google.protobuf.UInt32Value max_connections = 2;
+    google.protobuf.UInt32Value max_pending_requests = 3;
+    google.protobuf.UInt32Value max_requests = 4;
+    google.protobuf.UInt32Value max_retries = 5;
+  }
+}
+
+enum RoutingPriority {
+  DEFAULT = 0;
+  HIGH = 1;
+}
+
+message UpstreamTlsContext {
+  string sni = 1;
+  // SPIRE SVID certificate reference.
+  string spiffe_id = 3;
+}

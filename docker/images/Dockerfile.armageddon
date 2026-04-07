@@ -1,0 +1,80 @@
+# =============================================================================
+# Dockerfile - ARMAGEDDON API Gateway
+# =============================================================================
+# Multi-stage build: Rust compilation -> minimal Debian runtime
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build
+# ---------------------------------------------------------------------------
+FROM rust:1.82-slim AS builder
+
+RUN apt-get update && apt-get install -y \
+    pkg-config \
+    libssl-dev \
+    protobuf-compiler \
+    cmake \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy workspace manifests first for dependency caching
+COPY armageddon/Cargo.toml armageddon/Cargo.lock ./
+COPY armageddon/armageddon/Cargo.toml ./armageddon/Cargo.toml
+COPY armageddon/armageddon-common/Cargo.toml ./armageddon-common/Cargo.toml
+COPY armageddon/armageddon-config/Cargo.toml ./armageddon-config/Cargo.toml
+COPY armageddon/armageddon-forge/Cargo.toml ./armageddon-forge/Cargo.toml
+COPY armageddon/armageddon-sentinel/Cargo.toml ./armageddon-sentinel/Cargo.toml
+COPY armageddon/armageddon-arbiter/Cargo.toml ./armageddon-arbiter/Cargo.toml
+COPY armageddon/armageddon-oracle/Cargo.toml ./armageddon-oracle/Cargo.toml
+COPY armageddon/armageddon-aegis/Cargo.toml ./armageddon-aegis/Cargo.toml
+COPY armageddon/armageddon-nexus/Cargo.toml ./armageddon-nexus/Cargo.toml
+COPY armageddon/armageddon-veil/Cargo.toml ./armageddon-veil/Cargo.toml
+COPY armageddon/armageddon-wasm/Cargo.toml ./armageddon-wasm/Cargo.toml
+COPY armageddon/armageddon-ai/Cargo.toml ./armageddon-ai/Cargo.toml
+
+# Create dummy source files for dependency caching
+RUN mkdir -p armageddon/src armageddon-common/src armageddon-config/src \
+    armageddon-forge/src armageddon-sentinel/src armageddon-arbiter/src \
+    armageddon-oracle/src armageddon-aegis/src armageddon-nexus/src \
+    armageddon-veil/src armageddon-wasm/src armageddon-ai/src && \
+    for d in armageddon armageddon-common armageddon-config armageddon-forge \
+             armageddon-sentinel armageddon-arbiter armageddon-oracle \
+             armageddon-aegis armageddon-nexus armageddon-veil \
+             armageddon-wasm armageddon-ai; do \
+        echo "fn main() {}" > $d/src/lib.rs; \
+    done && \
+    echo "fn main() {}" > armageddon/src/main.rs
+
+# Build dependencies only (cached layer)
+RUN cargo build --release 2>/dev/null || true
+
+# Copy actual source code
+COPY armageddon/ .
+
+# Build the real binary
+RUN cargo build --release --bin armageddon
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+FROM debian:bookworm-slim
+
+RUN apt-get update && apt-get install -y \
+    ca-certificates \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r armageddon && useradd -r -g armageddon armageddon
+
+COPY --from=builder /build/target/release/armageddon /usr/local/bin/armageddon
+COPY armageddon/config /etc/armageddon
+
+RUN chmod +x /usr/local/bin/armageddon
+
+USER armageddon
+
+EXPOSE 8080 8443 9090
+
+ENTRYPOINT ["/usr/local/bin/armageddon"]
+CMD ["--config", "/etc/armageddon/armageddon.yml"]

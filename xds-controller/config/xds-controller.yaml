@@ -1,0 +1,87 @@
+# xDS Controller configuration for FASO DIGITALISATION
+# This control plane configures ARMAGEDDON dynamically via xDS v3 gRPC protocol.
+# State is stored in KAYA.
+
+server:
+  # gRPC listen address and port for ARMAGEDDON connections.
+  listen_addr: "0.0.0.0"
+  listen_port: 18000
+
+  # Control plane identifier sent in DiscoveryResponse.
+  control_plane_id: "faso-xds-controller"
+
+  # Maximum concurrent ARMAGEDDON connections.
+  max_connections: 1024
+
+spire:
+  # SPIRE agent Unix domain socket path.
+  socket_path: "/run/spire/sockets/agent.sock"
+
+  # Certificate rotation check interval (seconds).
+  rotation_interval_secs: 60
+
+  # Rotate at this fraction of certificate lifetime (0.0 - 1.0).
+  rotation_threshold: 0.5
+
+discovery:
+  # Service discovery poll interval (seconds).
+  poll_interval_secs: 30
+
+  # Discovery backends.
+  # Each backend provides endpoints for one or more clusters.
+  backends: []
+    # Example DNS backend:
+    # - type: dns
+    #   default_port: 8080
+    #   services:
+    #     - cluster: api-service
+    #       hostname: api.service.consul
+    #
+    # Example Consul backend:
+    # - type: consul
+    #   url: "http://consul.service.consul:8500"
+    #   services:
+    #     - cluster: auth-service
+    #       service_name: auth
+    #
+    # Example YAML file backend:
+    # - type: yaml
+    #   path: "/etc/xds-controller/discovery.yaml"
+    #   services:
+    #     - cluster: static-backend
+    #       service_name: static-backend
+
+# Bootstrap configuration.
+# These resources are loaded at startup before any discovery runs.
+bootstrap:
+  clusters: []
+    # Example:
+    # - name: api-service
+    #   type: eds
+    #   lb_policy: round_robin
+    #   connect_timeout_ms: 5000
+    #   health_check:
+    #     path: /healthz
+    #     interval_ms: 10000
+    #     timeout_ms: 2000
+    #     healthy_threshold: 2
+    #     unhealthy_threshold: 3
+
+  routes: []
+    # Example:
+    # - name: default-routes
+    #   virtual_hosts:
+    #     - name: api
+    #       domains: ["api.faso.bf", "api.faso.local"]
+    #       routes:
+    #         - prefix: /v1/
+    #           cluster: api-service
+    #         - prefix: /auth/
+    #           cluster: auth-service
+
+  listeners: []
+    # Example:
+    # - name: http-listener
+    #   address: "0.0.0.0"
+    #   port: 8443
+    #   spiffe_id: "spiffe://faso.bf/gateway"

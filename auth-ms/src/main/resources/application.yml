@@ -1,0 +1,136 @@
+server:
+  port: 8801
+  shutdown: graceful
+
+spring:
+  application:
+    name: auth-ms
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+  # PostgreSQL 17
+  datasource:
+    url: jdbc:postgresql://localhost:5432/auth_ms
+    username: auth_ms
+    password: ${AUTH_MS_DB_PASSWORD:changeme}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 300000
+      connection-timeout: 20000
+      max-lifetime: 1200000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+        jdbc:
+          time_zone: UTC
+
+  # Flyway
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: true
+
+  # KAYA (Redis-compatible) on port 6380
+  data:
+    redis:
+      host: ${KAYA_HOST:localhost}
+      port: ${KAYA_PORT:6380}
+      password: ${KAYA_PASSWORD:}
+      timeout: 2000ms
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 2
+          max-wait: 2000ms
+
+  # GraphQL (DGS)
+  graphql:
+    path: /graphql
+    graphiql:
+      enabled: false
+    schema:
+      locations: classpath:schema/
+
+# gRPC server
+grpc:
+  server:
+    port: 9801
+    security:
+      enabled: false
+
+# Ory Kratos
+kratos:
+  public-url: ${KRATOS_PUBLIC_URL:http://localhost:4433}
+  admin-url: ${KRATOS_ADMIN_URL:http://localhost:4434}
+  timeout-ms: 5000
+
+# Ory Keto
+keto:
+  read-url: ${KETO_READ_URL:http://localhost:4466}
+  write-url: ${KETO_WRITE_URL:http://localhost:4467}
+  timeout-ms: 5000
+
+# Auth configuration
+auth:
+  jwt:
+    algorithm: ES384
+    rotation-days: 90
+    issuer: https://auth.faso.gov.bf
+    audience: faso-digitalisation
+    access-token-ttl-minutes: 15
+    refresh-token-ttl-days: 7
+  session:
+    max-per-user: 3
+  bruteforce:
+    enabled: true
+    # Graduated punishment thresholds
+    thresholds:
+      - fails: 5
+        lock-minutes: 10
+      - fails: 10
+        lock-minutes: 30
+      - fails: 15
+        lock-minutes: 60
+      - fails: 20
+        lock-minutes: 360
+      - fails: 25
+        lock-minutes: 1440
+      - fails: 30
+        lock-minutes: 10080
+      - fails: 35
+        lock-minutes: -1  # permanent suspension
+  password:
+    expiration-days: 90
+    notification-days-before:
+      - 14
+      - 7
+
+# Actuator
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when-authorized
+  health:
+    redis:
+      enabled: true
+    db:
+      enabled: true
+
+logging:
+  level:
+    bf.gov.faso.auth: INFO
+    org.springframework.security: WARN
+    io.grpc: WARN

@@ -1,0 +1,13 @@
+[package]
+name = "kaya-security"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio-rustls = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+serde = { workspace = true }
+parking_lot = { workspace = true }

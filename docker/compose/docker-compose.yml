@@ -1,0 +1,452 @@
+# =============================================================================
+# Docker Compose - FASO DIGITALISATION - Full Ecosystem
+# =============================================================================
+# Infrastructure:
+#   - KAYA (in-memory DB)     : 6380
+#   - PostgreSQL 17           : 5432
+#
+# Security (ORY):
+#   - Kratos (Identity)       : 4433 (public), 4434 (admin)
+#   - Keto (Authorization)    : 4466 (read), 4467 (write)
+#   - Oathkeeper (IAP)        : 4455 (proxy), 4456 (api)
+#
+# Gateway:
+#   - ARMAGEDDON              : 8080
+#
+# Backend:
+#   - auth-ms                 : 8801 (HTTP), 9801 (gRPC)
+#   - poulets-api             : 8901 (HTTP), 9901 (gRPC)
+#
+# Frontend:
+#   - poulets-bff (Next.js)   : 4800
+#   - poulets-frontend (Angular) : 4801
+# =============================================================================
+
+name: faso-digitalisation
+
+services:
+  # ===========================================================================
+  # INFRASTRUCTURE
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # KAYA - In-Memory Database (Redis-compatible)
+  # ---------------------------------------------------------------------------
+  kaya:
+    build:
+      context: ../..
+      dockerfile: docker/images/Dockerfile.kaya
+    container_name: faso-kaya
+    ports:
+      - "6380:6379"
+    environment:
+      KAYA_BIND: "0.0.0.0"
+      KAYA_PORT: "6379"
+      KAYA_LOG_LEVEL: "info"
+      KAYA_MAX_MEMORY: "512mb"
+      KAYA_EVICTION_POLICY: "allkeys-lru"
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/kaya-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # PostgreSQL 17 - Primary relational database
+  # ---------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: faso-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: faso
+      POSTGRES_PASSWORD: faso_dev_secret
+      POSTGRES_DB: faso_main
+      POSTGRES_MULTIPLE_DATABASES: "kratos,keto,auth,poulets"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U faso -d faso_main"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # SECURITY - ORY STACK
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Kratos Database Migration (one-shot)
+  # ---------------------------------------------------------------------------
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    container_name: faso-kratos-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: migrate sql -e --yes
+    environment:
+      DSN: postgres://faso:faso_dev_secret@postgres:5432/kratos?sslmode=disable
+    volumes:
+      - ../../ory/kratos/config:/etc/config/kratos:ro
+      - ../../ory/kratos/schemas:/etc/config/kratos/schemas:ro
+    networks:
+      - faso-network
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Kratos - Identity Management
+  # ---------------------------------------------------------------------------
+  kratos:
+    image: oryd/kratos:v1.3.1
+    container_name: faso-kratos
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
+    ports:
+      - "4433:4433"
+      - "4434:4434"
+    environment:
+      DSN: postgres://faso:faso_dev_secret@postgres:5432/kratos?sslmode=disable
+      SERVE_PUBLIC_BASE_URL: http://localhost:4433/
+      SERVE_ADMIN_BASE_URL: http://localhost:4434/
+      COURIER_SMTP_CONNECTION_URI: smtp://mailslurper:1025/?disable_starttls=true
+      LOG_LEVEL: debug
+      LOG_LEAK_SENSITIVE_VALUES: "true"
+      SECRETS_COOKIE: faso-dev-cookie-secret-change-in-production-minimum-32-chars
+      SECRETS_CIPHER: faso-dev-cipher-secret-change-in-production-minimum-32-chars
+    volumes:
+      - ../../ory/kratos/config:/etc/config/kratos:ro
+      - ../../ory/kratos/schemas:/etc/config/kratos/schemas:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4433/health/alive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Keto Database Migration (one-shot)
+  # ---------------------------------------------------------------------------
+  keto-migrate:
+    image: oryd/keto:v0.13.0
+    container_name: faso-keto-migrate
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: migrate up --yes
+    environment:
+      DSN: postgres://faso:faso_dev_secret@postgres:5432/keto?sslmode=disable
+    volumes:
+      - ../../ory/keto/config:/etc/config/keto:ro
+    networks:
+      - faso-network
+    restart: "no"
+
+  # ---------------------------------------------------------------------------
+  # Keto - Authorization / Permissions
+  # ---------------------------------------------------------------------------
+  keto:
+    image: oryd/keto:v0.13.0
+    container_name: faso-keto
+    depends_on:
+      keto-migrate:
+        condition: service_completed_successfully
+    command: serve --config /etc/config/keto/keto.yml
+    ports:
+      - "4466:4466"
+      - "4467:4467"
+    environment:
+      DSN: postgres://faso:faso_dev_secret@postgres:5432/keto?sslmode=disable
+      LOG_LEVEL: debug
+      LOG_LEAK_SENSITIVE_VALUES: "true"
+    volumes:
+      - ../../ory/keto/config:/etc/config/keto:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4466/health/alive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Oathkeeper - Identity & Access Proxy
+  # ---------------------------------------------------------------------------
+  oathkeeper:
+    image: oryd/oathkeeper:v0.40.8
+    container_name: faso-oathkeeper
+    depends_on:
+      kratos:
+        condition: service_healthy
+      keto:
+        condition: service_healthy
+    command: serve --config /etc/config/oathkeeper/oathkeeper.yml
+    ports:
+      - "4455:4455"
+      - "4456:4456"
+    environment:
+      LOG_LEVEL: debug
+      LOG_LEAK_SENSITIVE_VALUES: "true"
+    volumes:
+      - ../../ory/kratos/config/oathkeeper.yml:/etc/config/oathkeeper/oathkeeper.yml:ro
+      - ../../ory/kratos/config/access-rules.yml:/etc/config/oathkeeper/access-rules.yml:ro
+      - ../../ory/kratos/config/jwks.json:/etc/config/oathkeeper/jwks.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4456/health/alive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MailSlurper - Dev email testing
+  # ---------------------------------------------------------------------------
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    container_name: faso-mailslurper
+    ports:
+      - "4436:4436"
+      - "4437:4437"
+      - "1025:1025"
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # GATEWAY
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # ARMAGEDDON - API Gateway
+  # ---------------------------------------------------------------------------
+  armageddon:
+    build:
+      context: ../..
+      dockerfile: docker/images/Dockerfile.armageddon
+    container_name: faso-armageddon
+    depends_on:
+      oathkeeper:
+        condition: service_healthy
+      kaya:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "8443:8443"
+      - "9090:9090"
+    environment:
+      ARMAGEDDON_BIND: "0.0.0.0"
+      ARMAGEDDON_PORT: "8080"
+      ARMAGEDDON_TLS_PORT: "8443"
+      ARMAGEDDON_ADMIN_PORT: "9090"
+      ARMAGEDDON_LOG_LEVEL: "info"
+      ARMAGEDDON_KAYA_URL: "redis://kaya:6379"
+      ARMAGEDDON_OATHKEEPER_URL: "http://oathkeeper:4456"
+      ARMAGEDDON_KETO_READ_URL: "http://keto:4466"
+    volumes:
+      - ../../armageddon/config:/etc/armageddon:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # BACKEND SERVICES
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # auth-ms - Authentication Microservice (Spring Boot)
+  # ---------------------------------------------------------------------------
+  auth-ms:
+    build:
+      context: ../..
+      dockerfile: docker/images/Dockerfile.auth-ms
+    container_name: faso-auth-ms
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kaya:
+        condition: service_healthy
+      kratos:
+        condition: service_healthy
+    ports:
+      - "8801:8801"
+      - "9801:9801"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: "8801"
+      GRPC_SERVER_PORT: "9801"
+      # PostgreSQL
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth
+      SPRING_DATASOURCE_USERNAME: faso
+      SPRING_DATASOURCE_PASSWORD: faso_dev_secret
+      # KAYA (Redis-compatible)
+      SPRING_DATA_REDIS_HOST: kaya
+      SPRING_DATA_REDIS_PORT: "6379"
+      # Kratos integration
+      KRATOS_PUBLIC_URL: http://kratos:4433
+      KRATOS_ADMIN_URL: http://kratos:4434
+      # Keto integration
+      KETO_READ_URL: http://keto:4466
+      KETO_WRITE_URL: http://keto:4467
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8801/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # poulets-api - Poulets Domain API (Spring Boot)
+  # ---------------------------------------------------------------------------
+  poulets-api:
+    build:
+      context: ../..
+      dockerfile: docker/images/Dockerfile.poulets-api
+    container_name: faso-poulets-api
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kaya:
+        condition: service_healthy
+      auth-ms:
+        condition: service_healthy
+    ports:
+      - "8901:8901"
+      - "9901:9901"
+    environment:
+      SPRING_PROFILES_ACTIVE: docker
+      SERVER_PORT: "8901"
+      GRPC_SERVER_PORT: "9901"
+      # PostgreSQL
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/poulets
+      SPRING_DATASOURCE_USERNAME: faso
+      SPRING_DATASOURCE_PASSWORD: faso_dev_secret
+      # KAYA (Redis-compatible)
+      SPRING_DATA_REDIS_HOST: kaya
+      SPRING_DATA_REDIS_PORT: "6379"
+      # Auth service
+      AUTH_MS_URL: http://auth-ms:8801
+      AUTH_MS_GRPC: auth-ms:9801
+      # Kratos for session validation
+      KRATOS_PUBLIC_URL: http://kratos:4433
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8901/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 45s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ===========================================================================
+  # FRONTEND
+  # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # poulets-bff - Next.js Backend-For-Frontend
+  # ---------------------------------------------------------------------------
+  poulets-bff:
+    build:
+      context: ../..
+      dockerfile: poulets-platform/bff/Dockerfile
+    container_name: faso-poulets-bff
+    depends_on:
+      poulets-api:
+        condition: service_healthy
+      kratos:
+        condition: service_healthy
+    ports:
+      - "4800:4800"
+    environment:
+      NODE_ENV: production
+      PORT: "4800"
+      # Backend services
+      POULETS_API_URL: http://poulets-api:8901
+      POULETS_API_GRAPHQL: http://poulets-api:8901/graphql
+      AUTH_MS_URL: http://auth-ms:8801
+      # Kratos for session management
+      KRATOS_PUBLIC_URL: http://kratos:4433
+      KRATOS_ADMIN_URL: http://kratos:4434
+      # KAYA for BFF-level caching
+      KAYA_URL: redis://kaya:6379
+      # Frontend URL (CORS)
+      FRONTEND_URL: http://localhost:4801
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4800/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # poulets-frontend - Angular 21 SPA
+  # ---------------------------------------------------------------------------
+  poulets-frontend:
+    build:
+      context: ../..
+      dockerfile: docker/images/Dockerfile.poulets-frontend
+    container_name: faso-poulets-frontend
+    depends_on:
+      poulets-bff:
+        condition: service_healthy
+    ports:
+      - "4801:80"
+    environment:
+      BFF_URL: http://poulets-bff:4800
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+# =============================================================================
+# Volumes
+# =============================================================================
+volumes:
+  postgres-data:
+    driver: local
+    name: faso-postgres-data
+
+# =============================================================================
+# Networks
+# =============================================================================
+networks:
+  faso-network:
+    name: faso-network
+    driver: bridge

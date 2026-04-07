@@ -1,0 +1,116 @@
+[workspace]
+resolver = "2"
+members = [
+    "armageddon",
+    "armageddon-common",
+    "armageddon-config",
+    "armageddon-forge",
+    "armageddon-sentinel",
+    "armageddon-arbiter",
+    "armageddon-oracle",
+    "armageddon-aegis",
+    "armageddon-nexus",
+    "armageddon-veil",
+    "armageddon-wasm",
+    "armageddon-ai",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Proprietary"
+repository = "https://github.com/faso-digitalisation/armageddon"
+
+[workspace.dependencies]
+# Internal crates
+armageddon-common = { path = "armageddon-common" }
+armageddon-config = { path = "armageddon-config" }
+armageddon-forge = { path = "armageddon-forge" }
+armageddon-sentinel = { path = "armageddon-sentinel" }
+armageddon-arbiter = { path = "armageddon-arbiter" }
+armageddon-oracle = { path = "armageddon-oracle" }
+armageddon-aegis = { path = "armageddon-aegis" }
+armageddon-nexus = { path = "armageddon-nexus" }
+armageddon-veil = { path = "armageddon-veil" }
+armageddon-wasm = { path = "armageddon-wasm" }
+armageddon-ai = { path = "armageddon-ai" }
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# Logging / tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+thiserror = "2"
+anyhow = "1"
+
+# gRPC
+tonic = "0.12"
+prost = "0.13"
+
+# HTTP
+http = "1"
+http-body-util = "0.1"
+bytes = "1"
+hyper = { version = "1", features = ["full"] }
+hyper-util = { version = "0.1", features = ["full"] }
+
+# Pattern matching (WAF)
+aho-corasick = "1"
+regex = "1"
+
+# GeoIP
+maxminddb = "0.24"
+
+# Policy engine (OPA / Rego)
+regorus = "0.2"
+
+# WASM plugin runtime
+wasmtime = "28"
+
+# JWT
+jsonwebtoken = "9"
+
+# Crypto
+ring = "0.17"
+
+# Redis-compatible client (for KAYA)
+redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+
+# Config
+config = { version = "0.14", default-features = false, features = ["yaml"] }
+
+# Metrics
+prometheus = "0.13"
+
+# UUID
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Time
+chrono = { version = "0.4", features = ["serde"] }
+
+# IP networks
+ipnet = "2"
+
+# Async trait
+async-trait = "0.1"
+
+# Arc swap for hot-reload
+arc-swap = "1"
+
+# Dashmap for concurrent maps
+dashmap = "6"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = "symbols"
+panic = "abort"
+opt-level = 3

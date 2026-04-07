@@ -1,0 +1,91 @@
+{
+  "$id": "https://faso-digitalisation.dev/schemas/identity.schema.json",
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Faso Digitalisation - User Identity Schema",
+  "type": "object",
+  "properties": {
+    "traits": {
+      "type": "object",
+      "required": [
+        "email",
+        "first_name",
+        "last_name",
+        "role"
+      ],
+      "properties": {
+        "email": {
+          "type": "string",
+          "format": "email",
+          "title": "Email",
+          "minLength": 3,
+          "maxLength": 320,
+          "ory.sh/kratos": {
+            "credentials": {
+              "password": {
+                "identifier": true
+              },
+              "totp": {
+                "account_name": true
+              }
+            },
+            "verification": {
+              "via": "email"
+            },
+            "recovery": {
+              "via": "email"
+            }
+          }
+        },
+        "first_name": {
+          "type": "string",
+          "title": "First Name",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "last_name": {
+          "type": "string",
+          "title": "Last Name",
+          "minLength": 1,
+          "maxLength": 128
+        },
+        "phone": {
+          "type": "string",
+          "title": "Phone Number",
+          "pattern": "^\\+?[0-9]{8,15}$",
+          "maxLength": 16
+        },
+        "role": {
+          "type": "string",
+          "title": "Role",
+          "enum": [
+            "admin",
+            "operator",
+            "eleveur",
+            "client"
+          ],
+          "default": "client"
+        },
+        "department": {
+          "type": "string",
+          "title": "Department",
+          "maxLength": 128
+        },
+        "platform": {
+          "type": "string",
+          "title": "Platform",
+          "enum": [
+            "etat-civil",
+            "hospital",
+            "vouchers",
+            "sogesy",
+            "faso-kalan",
+            "e-school",
+            "e-ticket",
+            "poulets"
+          ]
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

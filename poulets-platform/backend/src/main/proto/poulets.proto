@@ -1,0 +1,101 @@
+syntax = "proto3";
+
+package bf.gov.faso.poulets;
+
+option java_multiple_files = true;
+option java_package = "bf.gov.faso.poulets.grpc.proto";
+option java_outer_classname = "PouletsProto";
+
+import "google/protobuf/timestamp.proto";
+
+// PouletsService: Est-Ouest gRPC interface for internal microservice communication.
+service PouletsService {
+
+  // Get poulet details by ID (used by other services for order validation, etc.)
+  rpc GetPoulet(GetPouletRequest) returns (GetPouletResponse);
+
+  // Check stock availability for a list of poulets
+  rpc CheckStock(CheckStockRequest) returns (CheckStockResponse);
+
+  // Get eleveur details by ID
+  rpc GetEleveur(GetEleveurRequest) returns (GetEleveurResponse);
+
+  // Get commande details by ID
+  rpc GetCommande(GetCommandeRequest) returns (GetCommandeResponse);
+}
+
+// ---------------------------------------------------------------------------
+// GetPoulet
+// ---------------------------------------------------------------------------
+message GetPouletRequest {
+  string poulet_id = 1;
+}
+
+message GetPouletResponse {
+  string id = 1;
+  string eleveur_id = 2;
+  string race = 3;
+  double weight = 4;
+  double price = 5;
+  int32 quantity = 6;
+  bool available = 7;
+  string description = 8;
+}
+
+// ---------------------------------------------------------------------------
+// CheckStock
+// ---------------------------------------------------------------------------
+message CheckStockRequest {
+  repeated StockItem items = 1;
+}
+
+message StockItem {
+  string poulet_id = 1;
+  int32 requested_quantity = 2;
+}
+
+message CheckStockResponse {
+  bool all_available = 1;
+  repeated StockItemStatus statuses = 2;
+}
+
+message StockItemStatus {
+  string poulet_id = 1;
+  bool available = 2;
+  int32 current_quantity = 3;
+  int32 requested_quantity = 4;
+}
+
+// ---------------------------------------------------------------------------
+// GetEleveur
+// ---------------------------------------------------------------------------
+message GetEleveurRequest {
+  string eleveur_id = 1;
+}
+
+message GetEleveurResponse {
+  string id = 1;
+  string user_id = 2;
+  string name = 3;
+  string phone = 4;
+  string location = 5;
+  double rating = 6;
+  bool active = 7;
+}
+
+// ---------------------------------------------------------------------------
+// GetCommande
+// ---------------------------------------------------------------------------
+message GetCommandeRequest {
+  string commande_id = 1;
+}
+
+message GetCommandeResponse {
+  string id = 1;
+  string client_id = 2;
+  string eleveur_id = 3;
+  string status = 4;
+  double total_amount = 5;
+  google.protobuf.Timestamp created_at = 6;
+  google.protobuf.Timestamp delivered_at = 7;
+}

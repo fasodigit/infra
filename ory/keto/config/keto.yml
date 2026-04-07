@@ -1,0 +1,55 @@
+# =============================================================================
+# ORY Keto Configuration - FASO DIGITALISATION (DEV)
+# =============================================================================
+# Zanzibar-style authorization (Google Zanzibar paper)
+# Architecture: Oathkeeper -> Keto (permission checks) -> Backend
+# =============================================================================
+
+version: v0.13.0
+
+dsn: postgres://keto:keto@localhost:5434/keto?sslmode=disable&max_conns=20&max_idle_conns=4
+
+# ---------------------------------------------------------------------------
+# API servers
+# ---------------------------------------------------------------------------
+serve:
+  read:
+    host: 0.0.0.0
+    port: 4466
+    cors:
+      enabled: true
+      allowed_origins:
+        - http://localhost:8080   # ARMAGEDDON gateway
+        - http://localhost:4455   # Oathkeeper proxy
+        - http://localhost:8801   # auth-ms HTTP
+      allow_credentials: true
+
+  write:
+    host: 0.0.0.0
+    port: 4467
+    cors:
+      enabled: false             # Write API internal only
+
+  metrics:
+    host: 0.0.0.0
+    port: 4468
+
+# ---------------------------------------------------------------------------
+# Namespaces
+# ---------------------------------------------------------------------------
+namespaces:
+  location: file:///etc/config/keto/namespaces.yml
+
+# ---------------------------------------------------------------------------
+# Limits
+# ---------------------------------------------------------------------------
+limit:
+  max_read_depth: 8              # Max depth for relation tuple expansion
+
+# ---------------------------------------------------------------------------
+# Logging (DEV)
+# ---------------------------------------------------------------------------
+log:
+  level: debug
+  format: json
+  leak_sensitive_values: true    # DEV only - NEVER in production

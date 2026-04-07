@@ -1,0 +1,29 @@
+[package]
+name = "armageddon-forge"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+tokio = { workspace = true }
+hyper = { workspace = true }
+hyper-util = { workspace = true }
+http-body-util = { workspace = true }
+http = { workspace = true }
+bytes = { workspace = true }
+tonic = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+async-trait = { workspace = true }
+dashmap = { workspace = true }
+arc-swap = { workspace = true }
+jsonwebtoken = { workspace = true }
+ring = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+prometheus = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }

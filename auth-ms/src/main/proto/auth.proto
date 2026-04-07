@@ -1,0 +1,77 @@
+syntax = "proto3";
+
+package bf.gov.faso.auth;
+
+option java_multiple_files = true;
+option java_package = "bf.gov.faso.auth.grpc.proto";
+option java_outer_classname = "AuthProto";
+
+import "google/protobuf/timestamp.proto";
+
+// AuthService: Est-Ouest gRPC interface for internal microservice communication.
+// Consumed by other services in the FASO DIGITALISATION platform.
+service AuthService {
+
+  // Validate a JWT token and return its claims.
+  // Used by internal services that need to verify tokens outside of ARMAGEDDON.
+  rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
+
+  // Retrieve user permissions as Zanzibar relation tuples.
+  rpc GetUserPermissions(GetUserPermissionsRequest) returns (GetUserPermissionsResponse);
+
+  // Trigger a full or partial sync of roles/departments to Ory Keto.
+  rpc SyncKetoRelations(SyncKetoRelationsRequest) returns (SyncKetoRelationsResponse);
+}
+
+// ---------------------------------------------------------------------------
+// ValidateToken
+// ---------------------------------------------------------------------------
+message ValidateTokenRequest {
+  string token = 1;
+}
+
+message ValidateTokenResponse {
+  bool valid = 1;
+  string user_id = 2;
+  string email = 3;
+  repeated string roles = 4;
+  google.protobuf.Timestamp expires_at = 5;
+  string error_message = 6;
+}
+
+// ---------------------------------------------------------------------------
+// GetUserPermissions
+// ---------------------------------------------------------------------------
+message GetUserPermissionsRequest {
+  string user_id = 1;
+  // Optional: filter by namespace
+  string namespace = 2;
+}
+
+message GetUserPermissionsResponse {
+  string user_id = 1;
+  repeated RelationTuple permissions = 2;
+}
+
+message RelationTuple {
+  string namespace = 1;
+  string object = 2;
+  string relation = 3;
+  string subject_id = 4;
+}
+
+// ---------------------------------------------------------------------------
+// SyncKetoRelations
+// ---------------------------------------------------------------------------
+message SyncKetoRelationsRequest {
+  // If empty, sync everything. Otherwise sync only specified user IDs.
+  repeated string user_ids = 1;
+  bool full_sync = 2;
+}
+
+message SyncKetoRelationsResponse {
+  bool success = 1;
+  int32 tuples_synced = 2;
+  string error_message = 3;
+  google.protobuf.Timestamp synced_at = 4;
+}

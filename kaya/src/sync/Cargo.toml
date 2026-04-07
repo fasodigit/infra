@@ -1,0 +1,15 @@
+[package]
+name = "kaya-sync"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+parking_lot = { workspace = true }
+kaya-store = { workspace = true }

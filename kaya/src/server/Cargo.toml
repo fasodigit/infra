@@ -1,0 +1,27 @@
+[package]
+name = "kaya-server"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "kaya-server"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+clap = { workspace = true }
+serde = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+anyhow = { workspace = true }
+kaya-store = { workspace = true }
+kaya-protocol = { workspace = true }
+kaya-network = { workspace = true }
+kaya-commands = { workspace = true }
+kaya-streams = { workspace = true }
+kaya-scripting = { workspace = true }
+kaya-compress = { workspace = true }
+kaya-security = { workspace = true }
+kaya-observe = { workspace = true }

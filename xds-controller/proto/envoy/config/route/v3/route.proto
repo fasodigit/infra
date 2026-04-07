@@ -1,0 +1,210 @@
+// Route configuration for xDS RDS.
+// Defines routing rules that ARMAGEDDON applies to incoming requests.
+syntax = "proto3";
+
+package envoy.config.route.v3;
+
+import "google/protobuf/duration.proto";
+import "google/protobuf/wrappers.proto";
+
+// RouteConfiguration: top-level RDS resource.
+message RouteConfiguration {
+  // Name of this route configuration.
+  string name = 1;
+
+  // Virtual hosts for domain-based routing.
+  repeated VirtualHost virtual_hosts = 2;
+}
+
+message VirtualHost {
+  // Virtual host name (used for stats, not routing).
+  string name = 1;
+
+  // List of domains to match (e.g. "api.faso.bf", "*.faso.bf").
+  repeated string domains = 2;
+
+  // Routes within this virtual host.
+  repeated Route routes = 3;
+
+  // Request headers to add.
+  repeated HeaderValueOption request_headers_to_add = 6;
+
+  // Response headers to add.
+  repeated HeaderValueOption response_headers_to_add = 10;
+
+  // Rate limit configuration.
+  repeated RateLimitAction rate_limits = 8;
+}
+
+message Route {
+  // Match criteria for this route.
+  RouteMatch match = 1;
+
+  // Action to take on match.
+  oneof action {
+    RouteAction route = 2;
+    RedirectAction redirect = 3;
+    DirectResponseAction direct_response = 7;
+  }
+
+  // Metadata for the route.
+  map<string, string> metadata = 4;
+
+  // Route name for logging/debugging.
+  string name = 14;
+}
+
+message RouteMatch {
+  // Path matching.
+  oneof path_specifier {
+    string prefix = 1;
+    string path = 2;
+    string safe_regex = 3;
+  }
+
+  // Header matchers for fine-grained routing.
+  repeated HeaderMatcher headers = 6;
+
+  // Query parameter matchers.
+  repeated QueryParameterMatcher query_parameters = 7;
+}
+
+message HeaderMatcher {
+  string name = 1;
+
+  oneof header_match_specifier {
+    string exact_match = 4;
+    string safe_regex_match = 11;
+    string prefix_match = 9;
+    string suffix_match = 10;
+    string contains_match = 12;
+  }
+
+  bool invert_match = 8;
+}
+
+message QueryParameterMatcher {
+  string name = 1;
+  string value = 3;
+  bool present_match = 4;
+}
+
+message RouteAction {
+  // Cluster to route to.
+  oneof cluster_specifier {
+    string cluster = 1;
+    WeightedClusters weighted_clusters = 3;
+  }
+
+  // Timeout for the route.
+  google.protobuf.Duration timeout = 8;
+
+  // Retry policy.
+  RetryPolicy retry_policy = 9;
+
+  // Request header manipulation.
+  repeated HeaderValueOption request_headers_to_add = 12;
+
+  // Prefix rewrite.
+  string prefix_rewrite = 5;
+
+  // Host rewrite.
+  string host_rewrite_literal = 6;
+
+  // Hash policy for ring-hash/maglev LB.
+  repeated HashPolicy hash_policy = 15;
+}
+
+message WeightedClusters {
+  repeated ClusterWeight clusters = 1;
+
+  message ClusterWeight {
+    string name = 1;
+    google.protobuf.UInt32Value weight = 2;
+    map<string, string> metadata = 3;
+  }
+}
+
+message RetryPolicy {
+  string retry_on = 1;
+  google.protobuf.UInt32Value num_retries = 2;
+  google.protobuf.Duration per_try_timeout = 3;
+}
+
+message HashPolicy {
+  oneof policy_specifier {
+    Header header = 1;
+    Cookie cookie = 2;
+    ConnectionProperties connection_properties = 3;
+  }
+
+  message Header {
+    string header_name = 1;
+  }
+
+  message Cookie {
+    string name = 1;
+    google.protobuf.Duration ttl = 2;
+    string path = 3;
+  }
+
+  message ConnectionProperties {
+    bool source_ip = 1;
+  }
+}
+
+message RedirectAction {
+  string host_redirect = 1;
+  string path_redirect = 2;
+  uint32 response_code = 3;
+  bool https_redirect = 4;
+  string prefix_rewrite = 5;
+}
+
+message DirectResponseAction {
+  uint32 status = 1;
+  DataSource body = 2;
+}
+
+message DataSource {
+  oneof specifier {
+    string filename = 1;
+    bytes inline_bytes = 2;
+    string inline_string = 3;
+  }
+}
+
+message HeaderValueOption {
+  HeaderValue header = 1;
+  google.protobuf.BoolValue append = 2;
+}
+
+message HeaderValue {
+  string key = 1;
+  string value = 2;
+}
+
+message RateLimitAction {
+  repeated ActionSpecifier actions = 1;
+
+  message ActionSpecifier {
+    oneof action_specifier {
+      SourceCluster source_cluster = 1;
+      DestinationCluster destination_cluster = 2;
+      RequestHeaders request_headers = 3;
+      RemoteAddress remote_address = 4;
+      GenericKey generic_key = 5;
+    }
+  }
+
+  message SourceCluster {}
+  message DestinationCluster {}
+  message RequestHeaders {
+    string header_name = 1;
+    string descriptor_key = 2;
+  }
+  message RemoteAddress {}
+  message GenericKey {
+    string descriptor_value = 1;
+  }
+}

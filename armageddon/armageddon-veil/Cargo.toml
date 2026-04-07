@@ -1,0 +1,13 @@
+[package]
+name = "armageddon-veil"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+async-trait = { workspace = true }
+http = { workspace = true }
+serde = { workspace = true }

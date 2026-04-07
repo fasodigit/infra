@@ -1,0 +1,21 @@
+// Minimal UDPA status annotation stub.
+syntax = "proto3";
+
+package udpa.annotations;
+
+import "google/protobuf/descriptor.proto";
+
+enum PackageVersionStatus {
+  UNKNOWN = 0;
+  FROZEN = 1;
+  ACTIVE = 2;
+  NEXT_MAJOR_VERSION_CANDIDATE = 3;
+}
+
+extend google.protobuf.FileOptions {
+  FileStatusAnnotation file_status = 222707719;
+}
+
+message FileStatusAnnotation {
+  PackageVersionStatus package_version_status = 1;
+}

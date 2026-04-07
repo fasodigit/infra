@@ -1,0 +1,15 @@
+[package]
+name = "kaya-network"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+tokio-util = { workspace = true }
+tokio-rustls = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+kaya-protocol = { workspace = true }
+kaya-security = { workspace = true }

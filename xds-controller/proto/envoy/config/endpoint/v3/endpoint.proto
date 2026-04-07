@@ -1,0 +1,105 @@
+// Endpoint configuration for xDS EDS.
+// Defines individual backend instances (IP:port) within a cluster.
+syntax = "proto3";
+
+package envoy.config.endpoint.v3;
+
+import "google/protobuf/wrappers.proto";
+
+// ClusterLoadAssignment: the top-level EDS resource.
+message ClusterLoadAssignment {
+  // Cluster name this assignment belongs to.
+  string cluster_name = 1;
+
+  // List of endpoint localities with their endpoints.
+  repeated LocalityLbEndpoints endpoints = 2;
+
+  // Load balancing policy configuration.
+  Policy policy = 4;
+
+  message Policy {
+    // Drop percentage for overload protection.
+    repeated DropOverload drop_overloads = 2;
+
+    message DropOverload {
+      string category = 1;
+      FractionalPercent drop_percentage = 2;
+    }
+  }
+}
+
+message LocalityLbEndpoints {
+  // Locality (region/zone/subzone).
+  Locality locality = 1;
+
+  // Endpoints in this locality.
+  repeated LbEndpoint lb_endpoints = 2;
+
+  // Weight of this locality for load balancing.
+  google.protobuf.UInt32Value load_balancing_weight = 3;
+
+  // Priority level (0 = highest).
+  uint32 priority = 5;
+}
+
+message Locality {
+  string region = 1;
+  string zone = 2;
+  string sub_zone = 3;
+}
+
+message LbEndpoint {
+  // Health status of this endpoint.
+  HealthStatus health_status = 2;
+
+  // Endpoint address.
+  Endpoint endpoint = 1;
+
+  // Load balancing weight for this endpoint.
+  google.protobuf.UInt32Value load_balancing_weight = 4;
+
+  // Metadata for the endpoint.
+  map<string, string> metadata = 3;
+}
+
+message Endpoint {
+  // Socket address (IP + port).
+  Address address = 1;
+
+  // Health check configuration override.
+  HealthCheckConfig health_check_config = 2;
+
+  message HealthCheckConfig {
+    uint32 port_value = 1;
+  }
+}
+
+message Address {
+  SocketAddress socket_address = 1;
+}
+
+message SocketAddress {
+  string address = 1;
+  uint32 port_value = 2;
+  string protocol = 3;
+}
+
+enum HealthStatus {
+  UNKNOWN = 0;
+  HEALTHY = 1;
+  UNHEALTHY = 2;
+  DRAINING = 3;
+  TIMEOUT = 4;
+  DEGRADED = 5;
+}
+
+message FractionalPercent {
+  uint32 numerator = 1;
+  DenominatorType denominator = 2;
+
+  enum DenominatorType {
+    HUNDRED = 0;
+    TEN_THOUSAND = 1;
+    MILLION = 2;
+  }
+}

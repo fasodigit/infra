@@ -1,0 +1,95 @@
+// Envoy xDS v3 Discovery Service protocol.
+// Used by ARMAGEDDON to receive configuration from xDS Controller.
+syntax = "proto3";
+
+package envoy.service.discovery.v3;
+
+import "google/protobuf/any.proto";
+import "google/protobuf/duration.proto";
+import "google/rpc/status.proto";
+
+// DiscoveryRequest: sent by ARMAGEDDON to request or ACK resources.
+message DiscoveryRequest {
+  // The version_info from the most recent successfully processed DiscoveryResponse.
+  string version_info = 1;
+
+  // The node making the request (ARMAGEDDON instance identifier).
+  Node node = 2;
+
+  // List of resource names to subscribe to.
+  repeated string resource_names = 3;
+
+  // xDS resource type URL (e.g. type.googleapis.com/envoy.config.cluster.v3.Cluster).
+  string type_url = 4;
+
+  // ACK/NACK. Empty on ACK, error on NACK.
+  string response_nonce = 5;
+
+  // Error detail when NACKing a previous response.
+  google.rpc.Status error_detail = 6;
+}
+
+// DiscoveryResponse: sent by xDS Controller to push configuration.
+message DiscoveryResponse {
+  // Monotonically increasing version string.
+  string version_info = 1;
+
+  // The set of resources in this response.
+  repeated google.protobuf.Any resources = 2;
+
+  // Whether resources are removed.
+  bool canary = 3;
+
+  // xDS resource type URL.
+  string type_url = 4;
+
+  // Server-generated nonce for ACK/NACK correlation.
+  string nonce = 5;
+
+  // Control plane identifier.
+  ControlPlane control_plane = 6;
+}
+
+// Node identifies an ARMAGEDDON instance.
+message Node {
+  string id = 1;
+  string cluster = 2;
+  map<string, string> metadata = 3;
+  string build_version = 5;
+  string user_agent_name = 6;
+  string user_agent_version = 7;
+}
+
+// ControlPlane identifies this xDS Controller.
+message ControlPlane {
+  string identifier = 1;
+}
+
+// DeltaDiscoveryRequest for incremental xDS (future use).
+message DeltaDiscoveryRequest {
+  Node node = 1;
+  string type_url = 2;
+  repeated string resource_names_subscribe = 3;
+  repeated string resource_names_unsubscribe = 4;
+  map<string, string> initial_resource_versions = 5;
+  string response_nonce = 6;
+  google.rpc.Status error_detail = 7;
+}
+
+// DeltaDiscoveryResponse for incremental xDS (future use).
+message DeltaDiscoveryResponse {
+  string system_version_info = 1;
+  repeated Resource resources = 2;
+  string type_url = 4;
+  repeated string removed_resources = 6;
+  string nonce = 5;
+  ControlPlane control_plane = 7;
+}
+
+// Resource wrapper for delta responses.
+message Resource {
+  string name = 3;
+  string version = 4;
+  google.protobuf.Any resource = 2;
+  repeated string aliases = 6;
+}

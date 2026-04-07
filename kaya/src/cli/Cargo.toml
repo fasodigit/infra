@@ -1,0 +1,17 @@
+[package]
+name = "kaya-cli"
+version.workspace = true
+edition.workspace = true
+
+[[bin]]
+name = "kaya-cli"
+path = "src/main.rs"
+
+[dependencies]
+tokio = { workspace = true }
+clap = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+kaya-protocol = { workspace = true }
+kaya-sdk = { workspace = true }

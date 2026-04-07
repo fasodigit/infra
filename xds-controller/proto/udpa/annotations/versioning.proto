@@ -1,0 +1,14 @@
+// Minimal UDPA versioning annotation stub.
+syntax = "proto3";
+
+package udpa.annotations;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MessageOptions {
+  VersioningAnnotation versioning = 7881811;
+}
+
+message VersioningAnnotation {
+  string previous_message_type = 1;
+}

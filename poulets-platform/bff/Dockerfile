@@ -1,0 +1,56 @@
+# =============================================================================
+# Dockerfile - poulets-bff (Next.js Backend-For-Frontend)
+# =============================================================================
+# Multi-stage build: Node.js build -> Node.js standalone runtime
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Dependencies
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS deps
+
+WORKDIR /build
+
+COPY poulets-platform/bff/package.json poulets-platform/bff/package-lock.json* ./
+
+RUN npm ci --prefer-offline
+
+# ---------------------------------------------------------------------------
+# Stage 2: Build
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS builder
+
+WORKDIR /build
+
+COPY --from=deps /build/node_modules ./node_modules
+COPY poulets-platform/bff/ .
+
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV NODE_ENV=production
+
+RUN npm run build
+
+# ---------------------------------------------------------------------------
+# Stage 3: Runtime
+# ---------------------------------------------------------------------------
+FROM node:22-alpine AS runner
+
+RUN addgroup --system --gid 1001 bff && \
+    adduser --system --uid 1001 bff
+
+WORKDIR /app
+
+ENV NODE_ENV=production
+ENV NEXT_TELEMETRY_DISABLED=1
+ENV PORT=4800
+
+# Copy standalone output
+COPY --from=builder --chown=bff:bff /build/.next/standalone ./
+COPY --from=builder --chown=bff:bff /build/.next/static ./.next/static
+COPY --from=builder --chown=bff:bff /build/public ./public
+
+USER bff
+
+EXPOSE 4800
+
+CMD ["node", "server.js"]

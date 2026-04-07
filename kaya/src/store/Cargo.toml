@@ -1,0 +1,16 @@
+[package]
+name = "kaya-store"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+bytes = { workspace = true }
+serde = { workspace = true }
+ahash = { workspace = true }
+smallvec = { workspace = true }
+crossbeam = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+kaya-compress = { workspace = true }

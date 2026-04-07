@@ -1,0 +1,234 @@
+# =============================================================================
+# Docker Compose - ORY Stack - FASO DIGITALISATION (DEV)
+# =============================================================================
+# Services:
+#   - Kratos (Identity)        : public 4433, admin 4434
+#   - Keto (Authorization)     : read 4466, write 4467
+#   - Oathkeeper (IAP)         : proxy 4455, api 4456
+#   - PostgreSQL (Kratos)      : 5433
+#   - PostgreSQL (Keto)        : 5434
+#   - MailSlurper (Dev email)  : 4436 (UI), 1025 (SMTP)
+#
+# External dependencies:
+#   - ARMAGEDDON (gateway)     : 8080
+#   - KAYA (cache)             : 6380
+#   - auth-ms                  : 8801 (HTTP) / 9801 (gRPC)
+# =============================================================================
+
+name: faso-ory-stack
+
+services:
+  # -------------------------------------------------------------------------
+  # PostgreSQL for Kratos
+  # -------------------------------------------------------------------------
+  postgres-kratos:
+    image: postgres:17-alpine
+    container_name: faso-postgres-kratos
+    ports:
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: kratos
+      POSTGRES_PASSWORD: kratos
+      POSTGRES_DB: kratos
+    volumes:
+      - kratos-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kratos -d kratos"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - faso-ory
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # PostgreSQL for Keto
+  # -------------------------------------------------------------------------
+  postgres-keto:
+    image: postgres:17-alpine
+    container_name: faso-postgres-keto
+    ports:
+      - "5434:5432"
+    environment:
+      POSTGRES_USER: keto
+      POSTGRES_PASSWORD: keto
+      POSTGRES_DB: keto
+    volumes:
+      - keto-pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U keto -d keto"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+    networks:
+      - faso-ory
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Kratos Database Migration (one-shot)
+  # -------------------------------------------------------------------------
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    container_name: faso-kratos-migrate
+    depends_on:
+      postgres-kratos:
+        condition: service_healthy
+    command: migrate sql -e --yes
+    environment:
+      DSN: postgres://kratos:kratos@postgres-kratos:5432/kratos?sslmode=disable
+    volumes:
+      - ./kratos/config:/etc/config/kratos:ro
+      - ./kratos/schemas:/etc/config/kratos/schemas:ro
+    networks:
+      - faso-ory
+    restart: "no"
+
+  # -------------------------------------------------------------------------
+  # Kratos (Identity Management)
+  # -------------------------------------------------------------------------
+  kratos:
+    image: oryd/kratos:v1.3.1
+    container_name: faso-kratos
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+      mailslurper:
+        condition: service_started
+    command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
+    ports:
+      - "4433:4433"   # Public API
+      - "4434:4434"   # Admin API
+    environment:
+      DSN: postgres://kratos:kratos@postgres-kratos:5432/kratos?sslmode=disable
+      SERVE_PUBLIC_BASE_URL: http://localhost:4433/
+      SERVE_ADMIN_BASE_URL: http://localhost:4434/
+      COURIER_SMTP_CONNECTION_URI: smtp://mailslurper:1025/?disable_starttls=true
+      LOG_LEVEL: debug
+      LOG_LEAK_SENSITIVE_VALUES: "true"
+      SECRETS_COOKIE: faso-dev-cookie-secret-change-in-production-minimum-32-chars
+      SECRETS_CIPHER: faso-dev-cipher-secret-change-in-production-minimum-32-chars
+    volumes:
+      - ./kratos/config:/etc/config/kratos:ro
+      - ./kratos/schemas:/etc/config/kratos/schemas:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4433/health/alive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - faso-ory
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Keto Database Migration (one-shot)
+  # -------------------------------------------------------------------------
+  keto-migrate:
+    image: oryd/keto:v0.13.0
+    container_name: faso-keto-migrate
+    depends_on:
+      postgres-keto:
+        condition: service_healthy
+    command: migrate up --yes
+    environment:
+      DSN: postgres://keto:keto@postgres-keto:5432/keto?sslmode=disable
+    volumes:
+      - ./keto/config:/etc/config/keto:ro
+    networks:
+      - faso-ory
+    restart: "no"
+
+  # -------------------------------------------------------------------------
+  # Keto (Authorization / Permissions)
+  # -------------------------------------------------------------------------
+  keto:
+    image: oryd/keto:v0.13.0
+    container_name: faso-keto
+    depends_on:
+      keto-migrate:
+        condition: service_completed_successfully
+    command: serve --config /etc/config/keto/keto.yml
+    ports:
+      - "4466:4466"   # Read API
+      - "4467:4467"   # Write API
+      - "4468:4468"   # Metrics
+    environment:
+      DSN: postgres://keto:keto@postgres-keto:5432/keto?sslmode=disable
+      LOG_LEVEL: debug
+      LOG_LEAK_SENSITIVE_VALUES: "true"
+    volumes:
+      - ./keto/config:/etc/config/keto:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4466/health/alive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - faso-ory
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # Oathkeeper (Identity & Access Proxy)
+  # -------------------------------------------------------------------------
+  oathkeeper:
+    image: oryd/oathkeeper:v0.40.8
+    container_name: faso-oathkeeper
+    depends_on:
+      kratos:
+        condition: service_healthy
+      keto:
+        condition: service_healthy
+    command: serve --config /etc/config/oathkeeper/oathkeeper.yml
+    ports:
+      - "4455:4455"   # Proxy
+      - "4456:4456"   # API
+    environment:
+      LOG_LEVEL: debug
+      LOG_LEAK_SENSITIVE_VALUES: "true"
+    volumes:
+      - ./kratos/config/oathkeeper.yml:/etc/config/oathkeeper/oathkeeper.yml:ro
+      - ./kratos/config/access-rules.yml:/etc/config/oathkeeper/access-rules.yml:ro
+      - ./kratos/config/jwks.json:/etc/config/oathkeeper/jwks.json:ro
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4456/health/alive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - faso-ory
+    restart: unless-stopped
+
+  # -------------------------------------------------------------------------
+  # MailSlurper (Dev email testing)
+  # -------------------------------------------------------------------------
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    container_name: faso-mailslurper
+    ports:
+      - "4436:4436"   # Web UI
+      - "4437:4437"   # API
+      - "1025:1025"   # SMTP
+    networks:
+      - faso-ory
+    restart: unless-stopped
+
+# ---------------------------------------------------------------------------
+# Volumes
+# ---------------------------------------------------------------------------
+volumes:
+  kratos-pg-data:
+    driver: local
+  keto-pg-data:
+    driver: local
+
+# ---------------------------------------------------------------------------
+# Networks
+# ---------------------------------------------------------------------------
+networks:
+  faso-ory:
+    name: faso-ory
+    driver: bridge

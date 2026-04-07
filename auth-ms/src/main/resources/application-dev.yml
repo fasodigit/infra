@@ -1,0 +1,28 @@
+spring:
+  graphql:
+    graphiql:
+      enabled: true
+
+  jpa:
+    properties:
+      hibernate:
+        format_sql: true
+    show-sql: true
+
+  # Dev-mode Flyway: allow clean for fresh starts
+  flyway:
+    clean-disabled: false
+
+logging:
+  level:
+    bf.gov.faso.auth: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.data.redis: DEBUG
+    io.grpc: DEBUG
+    org.hibernate.SQL: DEBUG
+    org.hibernate.type.descriptor.sql.BasicBinder: TRACE
+
+management:
+  endpoint:
+    health:
+      show-details: always

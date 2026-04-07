@@ -1,0 +1,19 @@
+// Minimal google.api.http stub.
+syntax = "proto3";
+
+package google.api;
+
+message Http {
+  repeated HttpRule rules = 1;
+}
+
+message HttpRule {
+  string selector = 1;
+  string get = 2;
+  string put = 3;
+  string post = 4;
+  string delete = 5;
+  string patch = 6;
+  string body = 7;
+  repeated HttpRule additional_bindings = 11;
+}

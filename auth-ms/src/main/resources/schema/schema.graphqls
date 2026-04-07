@@ -1,0 +1,106 @@
+type Query {
+    """List all users with optional pagination"""
+    users(page: Int = 0, size: Int = 20): UserPage!
+
+    """Get a single user by ID"""
+    user(id: ID!): User
+
+    """List all roles"""
+    roles: [Role!]!
+
+    """Get current authenticated user info"""
+    me: User
+}
+
+type Mutation {
+    """Create a new user (admin only)"""
+    createUser(input: CreateUserInput!): User!
+
+    """Update an existing user"""
+    updateUser(id: ID!, input: UpdateUserInput!): User!
+
+    """Soft-delete a user"""
+    deleteUser(id: ID!): Boolean!
+
+    """Assign a role to a user"""
+    assignRole(userId: ID!, roleId: ID!): User!
+
+    """Revoke a role from a user"""
+    revokeRole(userId: ID!, roleId: ID!): User!
+
+    """Trigger JWT key rotation (generates new ES384 keypair)"""
+    rotateJwtKeys: JwtRotationResult!
+
+    """Blacklist a JWT by its JTI claim"""
+    blacklistToken(jti: String!, reason: String): Boolean!
+
+    """Unlock a brute-force-locked account"""
+    unlockAccount(userId: ID!): Boolean!
+
+    """Force password reset for a user"""
+    forcePasswordReset(userId: ID!): Boolean!
+}
+
+input CreateUserInput {
+    email: String!
+    firstName: String!
+    lastName: String!
+    department: String
+    phoneNumber: String
+}
+
+input UpdateUserInput {
+    firstName: String
+    lastName: String
+    department: String
+    phoneNumber: String
+    active: Boolean
+}
+
+type User {
+    id: ID!
+    email: String!
+    firstName: String!
+    lastName: String!
+    department: String
+    phoneNumber: String
+    active: Boolean!
+    kratosIdentityId: String
+    roles: [Role!]!
+    passwordExpiresAt: String
+    lockedUntil: String
+    failedLoginAttempts: Int!
+    createdAt: String!
+    updatedAt: String!
+}
+
+type Role {
+    id: ID!
+    name: String!
+    description: String
+    permissions: [Permission!]!
+    createdAt: String!
+}
+
+type Permission {
+    id: ID!
+    namespace: String!
+    object: String!
+    relation: String!
+    description: String
+}
+
+type UserPage {
+    content: [User!]!
+    totalElements: Int!
+    totalPages: Int!
+    page: Int!
+    size: Int!
+}
+
+type JwtRotationResult {
+    kid: String!
+    algorithm: String!
+    rotatedAt: String!
+    nextRotationAt: String!
+}

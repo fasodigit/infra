@@ -1,0 +1,246 @@
+# =============================================================================
+# Oathkeeper Access Rules - FASO DIGITALISATION (DEV)
+# =============================================================================
+# Rule evaluation order: first match wins
+# Upstream chain: Oathkeeper -> auth-ms:8801 / Kratos:4433 / Backend
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# HEALTH & MONITORING
+# ---------------------------------------------------------------------------
+- id: health-check
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/health/<**>"
+    methods:
+      - GET
+  authenticators:
+    - handler: noop
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop
+  upstream:
+    url: http://kratos:4433
+    strip_path: /health
+
+- id: oathkeeper-health
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/oathkeeper/health"
+    methods:
+      - GET
+  authenticators:
+    - handler: noop
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop
+
+# ---------------------------------------------------------------------------
+# KRATOS PUBLIC SELF-SERVICE FLOWS (anonymous access)
+# ---------------------------------------------------------------------------
+- id: kratos-public-flows
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/self-service/<{login,registration,recovery,verification,logout}><**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+  authenticators:
+    - handler: anonymous
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop
+  upstream:
+    url: http://kratos:4433
+
+- id: kratos-public-schemas
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/schemas/<**>"
+    methods:
+      - GET
+  authenticators:
+    - handler: anonymous
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop
+  upstream:
+    url: http://kratos:4433
+
+# ---------------------------------------------------------------------------
+# KRATOS SESSION ENDPOINTS
+# ---------------------------------------------------------------------------
+- id: kratos-sessions-whoami
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/sessions/whoami"
+    methods:
+      - GET
+  authenticators:
+    - handler: cookie_session
+    - handler: bearer_token
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: noop
+  upstream:
+    url: http://kratos:4433
+
+- id: kratos-sessions
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/sessions<**>"
+    methods:
+      - GET
+      - DELETE
+  authenticators:
+    - handler: cookie_session
+    - handler: bearer_token
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: header
+  upstream:
+    url: http://kratos:4433
+
+# ---------------------------------------------------------------------------
+# KRATOS SELF-SERVICE SETTINGS (authenticated)
+# ---------------------------------------------------------------------------
+- id: kratos-settings
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/self-service/settings<**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+  authenticators:
+    - handler: cookie_session
+    - handler: bearer_token
+  authorizer:
+    handler: allow
+  mutators:
+    - handler: header
+  upstream:
+    url: http://kratos:4433
+
+# ---------------------------------------------------------------------------
+# AUTH-MS PROTECTED API ENDPOINTS
+# ---------------------------------------------------------------------------
+- id: auth-ms-api
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/api/v1/<{users,roles,permissions,platforms}><**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+  authenticators:
+    - handler: cookie_session
+    - handler: bearer_token
+  authorizer:
+    handler: remote_json
+  mutators:
+    - handler: id_token
+    - handler: header
+  upstream:
+    url: http://auth-ms:8801
+    strip_path: ""
+
+# ---------------------------------------------------------------------------
+# AUTH-MS ADMIN ENDPOINTS (admin role required)
+# ---------------------------------------------------------------------------
+- id: auth-ms-admin
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/api/v1/admin/<**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+  authenticators:
+    - handler: cookie_session
+    - handler: bearer_token
+  authorizer:
+    handler: remote_json
+  mutators:
+    - handler: id_token
+    - handler: header
+  upstream:
+    url: http://auth-ms:8801
+    strip_path: ""
+
+# ---------------------------------------------------------------------------
+# PLATFORM-SPECIFIC PROTECTED ROUTES
+# ---------------------------------------------------------------------------
+- id: platform-api
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/api/v1/platform/<{etat-civil,hospital,vouchers,sogesy,faso-kalan,e-school,e-ticket,poulets}><**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+  authenticators:
+    - handler: cookie_session
+    - handler: bearer_token
+  authorizer:
+    handler: remote_json
+  mutators:
+    - handler: id_token
+    - handler: header
+  upstream:
+    url: http://auth-ms:8801
+    strip_path: ""
+
+# ---------------------------------------------------------------------------
+# KETO RELATION CHECK (internal / admin only)
+# ---------------------------------------------------------------------------
+- id: keto-check
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/relation-tuples/check<**>"
+    methods:
+      - GET
+      - POST
+  authenticators:
+    - handler: cookie_session
+    - handler: bearer_token
+  authorizer:
+    handler: remote_json
+  mutators:
+    - handler: header
+  upstream:
+    url: http://keto:4466
+
+# ---------------------------------------------------------------------------
+# CATCH-ALL: DENY UNMATCHED ROUTES
+# ---------------------------------------------------------------------------
+- id: catch-all-deny
+  version: v0.40.8
+  match:
+    url: "<http|https>://<[a-zA-Z0-9-.:]+>/<**>"
+    methods:
+      - GET
+      - POST
+      - PUT
+      - PATCH
+      - DELETE
+      - OPTIONS
+  authenticators:
+    - handler: anonymous
+  authorizer:
+    handler: deny
+  mutators:
+    - handler: noop

@@ -1,0 +1,57 @@
+# =============================================================================
+# Dockerfile - poulets-api (Poulets Domain API)
+# =============================================================================
+# Multi-stage build: Maven + JDK 21 build -> JRE 21 runtime
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:21-jdk AS builder
+
+RUN apt-get update && apt-get install -y \
+    maven \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy Maven config first for dependency caching
+COPY poulets-platform/backend/pom.xml .
+
+# Download dependencies (cached layer)
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY poulets-platform/backend/src ./src
+
+# Build the application (skip tests in Docker build)
+RUN mvn package -DskipTests -B && \
+    mv target/poulets-api-*.jar target/poulets-api.jar
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:21-jre
+
+RUN apt-get update && apt-get install -y \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r poulets && useradd -r -g poulets poulets
+
+WORKDIR /app
+
+COPY --from=builder /build/target/poulets-api.jar /app/poulets-api.jar
+
+RUN chown -R poulets:poulets /app
+
+USER poulets
+
+EXPOSE 8901 9901
+
+ENTRYPOINT ["java", \
+    "--enable-preview", \
+    "-XX:+UseZGC", \
+    "-XX:MaxRAMPercentage=75.0", \
+    "-Djava.security.egd=file:/dev/./urandom", \
+    "-jar", "/app/poulets-api.jar"]

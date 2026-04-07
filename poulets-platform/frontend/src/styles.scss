@@ -1,0 +1,76 @@
+// =============================================================================
+// Global styles - Poulets Platform
+// =============================================================================
+
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: Roboto, "Helvetica Neue", sans-serif;
+}
+
+// FASO DIGITALISATION color palette
+:root {
+  --faso-primary: #2e7d32;       // Green (agriculture)
+  --faso-primary-light: #60ad5e;
+  --faso-primary-dark: #005005;
+  --faso-accent: #ff8f00;        // Amber (warmth)
+  --faso-accent-light: #ffc046;
+  --faso-accent-dark: #c56000;
+  --faso-warn: #d32f2f;
+  --faso-bg: #fafafa;
+  --faso-surface: #ffffff;
+  --faso-text: #212121;
+  --faso-text-secondary: #757575;
+}
+
+body {
+  background-color: var(--faso-bg);
+  color: var(--faso-text);
+}
+
+// Utility classes
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.page-header {
+  padding: 24px 0;
+
+  h1 {
+    font-size: 2rem;
+    font-weight: 500;
+    margin: 0;
+    color: var(--faso-primary-dark);
+  }
+
+  p {
+    color: var(--faso-text-secondary);
+    margin: 8px 0 0;
+  }
+}
+
+.card-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  padding: 16px 0;
+}
+
+// Spinner overlay
+.loading-overlay {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 200px;
+}
+
+// Snackbar customization
+.snackbar-success {
+  --mdc-snackbar-container-color: var(--faso-primary);
+}
+
+.snackbar-error {
+  --mdc-snackbar-container-color: var(--faso-warn);
+}

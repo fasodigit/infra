@@ -1,0 +1,55 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/xds-server",
+    "crates/xds-store",
+    "crates/xds-discovery",
+    "crates/xds-spire",
+    "crates/xds-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["FASO DIGITALISATION"]
+license = "proprietary"
+rust-version = "1.75"
+
+[workspace.dependencies]
+# gRPC / Protobuf
+tonic = "0.12"
+tonic-build = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+serde_yaml = "0.9"
+
+# CLI
+clap = { version = "4", features = ["derive"] }
+
+# Logging / Tracing
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Utilities
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+dashmap = "6"
+async-trait = "0.1"
+
+# Internal crates
+xds-store = { path = "crates/xds-store" }
+xds-discovery = { path = "crates/xds-discovery" }
+xds-spire = { path = "crates/xds-spire" }
+xds-server = { path = "crates/xds-server" }
