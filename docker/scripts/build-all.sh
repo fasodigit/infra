@@ -3,10 +3,19 @@
 # Build all container images for FASO DIGITALISATION
 # =============================================================================
 # Usage: ./build-all.sh [--no-cache]
-# Uses: podman build with Containerfiles
+# Uses: podman (preferred) or docker (fallback) with Containerfiles
 # =============================================================================
 
 set -euo pipefail
+
+# Auto-detect container runtime: prefer podman, fallback to docker
+if command -v podman &>/dev/null; then
+    CTR=podman
+elif command -v docker &>/dev/null; then
+    CTR=docker
+else
+    echo "ERROR: Neither podman nor docker found" >&2; exit 1
+fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -37,7 +46,7 @@ function build_image() {
 
     log_info "Building ${REGISTRY}/${name}:${VERSION} ..."
 
-    if podman build \
+    if $CTR build \
         ${NO_CACHE} \
         -t "${REGISTRY}/${name}:latest" \
         -t "${REGISTRY}/${name}:${VERSION}" \
@@ -51,7 +60,7 @@ function build_image() {
 }
 
 echo "============================================================="
-echo "  FASO DIGITALISATION - Podman Image Builder"
+echo "  FASO DIGITALISATION - Container Image Builder (${CTR})"
 echo "  Registry: ${REGISTRY}"
 echo "  Version:  ${VERSION}"
 echo "  Context:  ${PROJECT_ROOT}"
@@ -114,10 +123,10 @@ else
     log_error "Failed to build: ${FAILED[*]}"
     echo ""
     echo "Built images:"
-    podman images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.Created}}"
+    $CTR images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.Created}}"
     exit 1
 fi
 echo "============================================================="
 echo ""
 
-podman images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.Created}}"
+$CTR images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.Created}}"

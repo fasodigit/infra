@@ -3,10 +3,19 @@
 # Push all container images to Docker Hub for FASO DIGITALISATION
 # =============================================================================
 # Usage: ./push-all.sh [--dry-run]
-# Prerequisite: podman login docker.io (must already be authenticated)
+# Prerequisite: podman login docker.io or docker login (must already be authenticated)
 # =============================================================================
 
 set -euo pipefail
+
+# Auto-detect container runtime: prefer podman, fallback to docker
+if command -v podman &>/dev/null; then
+    CTR=podman
+elif command -v docker &>/dev/null; then
+    CTR=docker
+else
+    echo "ERROR: Neither podman nor docker found" >&2; exit 1
+fi
 
 REGISTRY="fasodifit"
 VERSION="v0.1.0"
@@ -40,17 +49,18 @@ IMAGES=(
 )
 
 echo "============================================================="
-echo "  FASO DIGITALISATION - Podman Image Pusher"
+echo "  FASO DIGITALISATION - Container Image Pusher (${CTR})"
 echo "  Registry: ${REGISTRY}"
 echo "  Version:  ${VERSION}"
 echo "  Images:   ${#IMAGES[@]}"
 echo "============================================================="
 echo ""
 
-# Verify podman login
-if ! podman login --get-login docker.io &>/dev/null; then
-    log_warn "Podman login status could not be verified."
-    log_warn "Make sure you are logged in: podman login docker.io"
+# Verify login
+if [ "$CTR" = "podman" ]; then
+    podman login --get-login docker.io &>/dev/null || log_warn "Run: podman login docker.io"
+else
+    docker info 2>/dev/null | grep -q "Username" || log_warn "Run: docker login"
 fi
 
 FAILED=()
@@ -58,7 +68,7 @@ PUSHED=()
 
 for image in "${IMAGES[@]}"; do
     # Check that the image exists locally
-    if ! podman image inspect "${REGISTRY}/${image}:latest" &>/dev/null; then
+    if ! $CTR image inspect "${REGISTRY}/${image}:latest" &>/dev/null; then
         log_warn "Image ${REGISTRY}/${image}:latest not found locally, skipping."
         FAILED+=("${image}")
         continue
@@ -71,8 +81,8 @@ for image in "${IMAGES[@]}"; do
         log_info "[DRY RUN] Would push docker.io/${REGISTRY}/${image}:${VERSION}"
         PUSHED+=("${image}")
     else
-        if podman push "${REGISTRY}/${image}:latest" "docker.io/${REGISTRY}/${image}:latest" && \
-           podman push "${REGISTRY}/${image}:${VERSION}" "docker.io/${REGISTRY}/${image}:${VERSION}"; then
+        if $CTR push "${REGISTRY}/${image}:latest" "docker.io/${REGISTRY}/${image}:latest" && \
+           $CTR push "${REGISTRY}/${image}:${VERSION}" "docker.io/${REGISTRY}/${image}:${VERSION}"; then
             log_info "Successfully pushed ${REGISTRY}/${image}"
             PUSHED+=("${image}")
         else
