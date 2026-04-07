@@ -93,11 +93,11 @@ log_info "=== Building Backend Service Images ==="
 
 build_image "auth-ms" \
     "${PROJECT_ROOT}/docker/images/Containerfile.auth-ms" \
-    "${PROJECT_ROOT}" || FAILED+=("auth-ms")
+    "${PROJECT_ROOT}/auth-ms" || FAILED+=("auth-ms")
 
 build_image "poulets-api" \
     "${PROJECT_ROOT}/docker/images/Containerfile.poulets-api" \
-    "${PROJECT_ROOT}" || FAILED+=("poulets-api")
+    "${PROJECT_ROOT}/poulets-platform/backend" || FAILED+=("poulets-api")
 
 # ---------------------------------------------------------------------------
 # Frontend
@@ -106,7 +106,7 @@ log_info "=== Building Frontend Images ==="
 
 build_image "poulets-frontend" \
     "${PROJECT_ROOT}/docker/images/Containerfile.poulets-frontend" \
-    "${PROJECT_ROOT}" || FAILED+=("poulets-frontend")
+    "${PROJECT_ROOT}/poulets-platform/frontend" || FAILED+=("poulets-frontend")
 
 build_image "poulets-bff" \
     "${PROJECT_ROOT}/poulets-platform/bff/Containerfile" \

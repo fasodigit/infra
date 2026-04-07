@@ -12,13 +12,13 @@ FROM node:22-alpine AS builder
 WORKDIR /build
 
 # Copy package files first for dependency caching
-COPY poulets-platform/frontend/package.json poulets-platform/frontend/package-lock.json* ./
+COPY package.json package-lock.json* ./
 
 # Install dependencies
 RUN npm ci --prefer-offline
 
 # Copy source code
-COPY poulets-platform/frontend/ .
+COPY . .
 
 # Build Angular production bundle
 RUN npx ng build --configuration production
