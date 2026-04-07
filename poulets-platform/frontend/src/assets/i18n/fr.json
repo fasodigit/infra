@@ -1,4 +1,91 @@
 {
+  "landing": {
+    "nav": {
+      "accueil": "Accueil",
+      "presentation": "Pr\u00e9sentation",
+      "fonctionnalites": "Fonctionnalit\u00e9s",
+      "securites": "S\u00e9curit\u00e9s",
+      "apropos": "\u00c0 propos",
+      "connexion": "Connexion"
+    },
+    "hero": {
+      "title": "La plateforme qui connecte \u00e9leveurs et acheteurs de volailles au Burkina Faso",
+      "subtitle": "Trouvez le bon poulet, au bon poids, au bon moment. Simplifiez vos achats et vos ventes.",
+      "cta_eleveur": "Je suis \u00e9leveur",
+      "cta_acheteur": "Je suis acheteur",
+      "stat_eleveurs": "\u00c9leveurs",
+      "stat_clients": "Clients",
+      "stat_transactions": "Transactions",
+      "stat_regions": "R\u00e9gions"
+    },
+    "presentation": {
+      "title": "Comment \u00e7a marche ?",
+      "subtitle": "Trois \u00e9tapes simples pour connecter l'offre et la demande de volailles au Burkina Faso.",
+      "step1_title": "Inscrivez-vous",
+      "step1_desc": "Cr\u00e9ez votre profil en tant qu'\u00e9leveur, acheteur ou producteur d'aliments.",
+      "step2_title": "Publiez ou recherchez",
+      "step2_desc": "Les \u00e9leveurs publient leurs annonces, les clients publient leurs besoins.",
+      "step3_title": "Connectez-vous et \u00e9changez",
+      "step3_desc": "Le matching intelligent vous met en relation avec le bon partenaire."
+    },
+    "features": {
+      "title": "Tout ce dont vous avez besoin",
+      "subtitle": "Une suite compl\u00e8te d'outils pour g\u00e9rer votre activit\u00e9 avicole.",
+      "f1_title": "Marketplace",
+      "f1_desc": "Annonces d'\u00e9leveurs et besoins de clients avec matching intelligent.",
+      "f2_title": "Calendrier",
+      "f2_desc": "Planifiez vos livraisons et suivez l'offre et la demande en temps r\u00e9el.",
+      "f3_title": "Contrats r\u00e9currents",
+      "f3_desc": "Abonnements hebdomadaires ou mensuels avec engagement mutuel.",
+      "f4_title": "Suivi de croissance",
+      "f4_desc": "Courbes de poids, plans alimentaires, objectifs de production.",
+      "f5_title": "Certification v\u00e9t\u00e9rinaire",
+      "f5_desc": "Fiches sanitaires obligatoires, vaccinations, traitements.",
+      "f6_title": "Certification halal",
+      "f6_desc": "Tra\u00e7abilit\u00e9 compl\u00e8te de l'abattage avec QR code v\u00e9rifiable.",
+      "f7_title": "Messagerie",
+      "f7_desc": "Chat int\u00e9gr\u00e9 avec n\u00e9gociation de prix entre \u00e9leveurs et clients.",
+      "f8_title": "Livraison",
+      "f8_desc": "Livraison par l'\u00e9leveur ou par un livreur tiers \u00e0 votre choix.",
+      "f9_title": "Groupements",
+      "f9_desc": "Les coop\u00e9ratives d'\u00e9leveurs peuvent publier collectivement."
+    },
+    "security": {
+      "title": "Votre s\u00e9curit\u00e9, notre priorit\u00e9",
+      "subtitle": "Infrastructure souveraine et confiance num\u00e9rique au c\u0153ur de la plateforme.",
+      "s1_title": "Donn\u00e9es prot\u00e9g\u00e9es",
+      "s1_desc": "Chiffrement AES-256, h\u00e9bergement souverain Burkina Faso.",
+      "s2_title": "Identit\u00e9 v\u00e9rifi\u00e9e",
+      "s2_desc": "Authentification forte via Ory Kratos, MFA disponible.",
+      "s3_title": "Transactions s\u00e9curis\u00e9es",
+      "s3_desc": "Paiement mobile money (Orange Money, Moov Money).",
+      "s4_title": "Certification obligatoire",
+      "s4_desc": "Tout \u00e9leveur doit fournir une fiche v\u00e9t\u00e9rinaire.",
+      "s5_title": "R\u00e9putation transparente",
+      "s5_desc": "Notes et avis v\u00e9rifi\u00e9s apr\u00e8s chaque transaction.",
+      "s6_title": "Infrastructure souveraine",
+      "s6_desc": "ARMAGEDDON gateway + KAYA database, 100% Burkina."
+    },
+    "about": {
+      "title": "FASO DIGITALISATION",
+      "description": "Programme de transformation num\u00e9rique souverain du Burkina Faso. Poulets BF est l'une des 7 plateformes num\u00e9riques d\u00e9velopp\u00e9es pour moderniser les services publics et priv\u00e9s du pays.",
+      "p_etat_civil": "\u00c9tat-Civil",
+      "p_sante": "Sant\u00e9",
+      "p_agriculture": "Agriculture",
+      "p_commerce": "Commerce",
+      "p_education": "\u00c9ducation",
+      "p_transport": "Transport",
+      "p_volailles": "Volailles",
+      "contact": "contact@fasodigitalisation.bf"
+    },
+    "footer": {
+      "terms": "Conditions d'utilisation",
+      "privacy": "Politique de confidentialit\u00e9",
+      "help": "Aide",
+      "copyright": "\u00a9 2026 FASO DIGITALISATION \u2014 Burkina Faso",
+      "powered": "Propuls\u00e9 par ARMAGEDDON + KAYA"
+    }
+  },
   "app": {
     "title": "Poulets Platform",
     "subtitle": "FASO DIGITALISATION",
