@@ -30,7 +30,6 @@ serve:
         - PUT
         - PATCH
         - DELETE
-        - OPTIONS
       allowed_headers:
         - Authorization
         - Cookie

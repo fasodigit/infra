@@ -99,7 +99,7 @@ services:
       DSN: postgres://faso:faso_dev_secret@postgres:5432/kratos?sslmode=disable
     volumes:
       - ../../ory/kratos/config:/etc/config/kratos:ro
-      - ../../ory/kratos/schemas:/etc/config/kratos/schemas:ro
+      - ../../ory/kratos/schemas:/etc/config/kratos-schemas:ro
     networks:
       - faso-network
     restart: "no"
@@ -125,10 +125,10 @@ services:
       LOG_LEVEL: debug
       LOG_LEAK_SENSITIVE_VALUES: "true"
       SECRETS_COOKIE: faso-dev-cookie-secret-change-in-production-minimum-32-chars
-      SECRETS_CIPHER: faso-dev-cipher-secret-change-in-production-minimum-32-chars
+      SECRETS_CIPHER: faso-dev-cipher-secret-32-chars!
     volumes:
       - ../../ory/kratos/config:/etc/config/kratos:ro
-      - ../../ory/kratos/schemas:/etc/config/kratos/schemas:ro
+      - ../../ory/kratos/schemas:/etc/config/kratos-schemas:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4433/health/alive"]
       interval: 10s
@@ -143,12 +143,12 @@ services:
   # Keto Database Migration (one-shot)
   # ---------------------------------------------------------------------------
   keto-migrate:
-    image: oryd/keto:v0.13.0
+    image: oryd/keto:v0.12.0
     container_name: faso-keto-migrate
     depends_on:
       postgres:
         condition: service_healthy
-    command: migrate up --yes
+    command: migrate up --yes --config /etc/config/keto/keto.yml
     environment:
       DSN: postgres://faso:faso_dev_secret@postgres:5432/keto?sslmode=disable
     volumes:
@@ -161,7 +161,7 @@ services:
   # Keto - Authorization / Permissions
   # ---------------------------------------------------------------------------
   keto:
-    image: oryd/keto:v0.13.0
+    image: oryd/keto:v0.12.0
     container_name: faso-keto
     depends_on:
       keto-migrate:

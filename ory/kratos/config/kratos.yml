@@ -67,7 +67,7 @@ identity:
   default_schema_id: user_v1
   schemas:
     - id: user_v1
-      url: file:///etc/config/kratos/schemas/identity.schema.json
+      url: file:///etc/config/kratos-schemas/identity.schema.json
 
 # ---------------------------------------------------------------------------
 # Self-service flows
@@ -154,7 +154,7 @@ courier:
     connection_uri: smtps://test:test@localhost:1025/?skip_ssl_verify=true&legacy_ssl=true
     from_address: noreply@faso-digitalisation.dev
     from_name: Faso Digitalisation (DEV)
-  template_override_path: /etc/config/kratos/templates
+  # template_override_path: /etc/config/kratos/templates  # Disabled: no custom templates yet
 
 # ---------------------------------------------------------------------------
 # Hashing (Argon2id - DEV settings, lighter than production)
@@ -162,7 +162,7 @@ courier:
 hashers:
   algorithm: argon2
   argon2:
-    memory: 131072        # 128 MB (prod: 1048576 / 1 GB)
+    memory: 128MB         # 128 MB (prod: 1GB)
     iterations: 4
     parallelism: 2
     salt_length: 16
@@ -175,7 +175,7 @@ secrets:
   cookie:
     - faso-dev-cookie-secret-change-in-production-minimum-32-chars
   cipher:
-    - faso-dev-cipher-secret-change-in-production-minimum-32-chars
+    - faso-dev-cipher-secret-32-chars!
 
 # ---------------------------------------------------------------------------
 # Ciphers
