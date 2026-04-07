@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Push all Docker images to Docker Hub for FASO DIGITALISATION
+# Push all container images to Docker Hub for FASO DIGITALISATION
 # =============================================================================
 # Usage: ./push-all.sh [--dry-run]
-# Prerequisite: docker login (must already be authenticated)
+# Prerequisite: podman login docker.io (must already be authenticated)
 # =============================================================================
 
 set -euo pipefail
@@ -40,17 +40,17 @@ IMAGES=(
 )
 
 echo "============================================================="
-echo "  FASO DIGITALISATION - Docker Image Pusher"
+echo "  FASO DIGITALISATION - Podman Image Pusher"
 echo "  Registry: ${REGISTRY}"
 echo "  Version:  ${VERSION}"
 echo "  Images:   ${#IMAGES[@]}"
 echo "============================================================="
 echo ""
 
-# Verify docker login
-if ! docker info 2>/dev/null | grep -q "Username"; then
-    log_warn "Docker login status could not be verified."
-    log_warn "Make sure you are logged in: docker login"
+# Verify podman login
+if ! podman login --get-login docker.io &>/dev/null; then
+    log_warn "Podman login status could not be verified."
+    log_warn "Make sure you are logged in: podman login docker.io"
 fi
 
 FAILED=()
@@ -58,7 +58,7 @@ PUSHED=()
 
 for image in "${IMAGES[@]}"; do
     # Check that the image exists locally
-    if ! docker image inspect "${REGISTRY}/${image}:latest" &>/dev/null; then
+    if ! podman image inspect "${REGISTRY}/${image}:latest" &>/dev/null; then
         log_warn "Image ${REGISTRY}/${image}:latest not found locally, skipping."
         FAILED+=("${image}")
         continue
@@ -67,12 +67,12 @@ for image in "${IMAGES[@]}"; do
     log_info "Pushing ${REGISTRY}/${image}:latest and ${REGISTRY}/${image}:${VERSION} ..."
 
     if [ "$DRY_RUN" = true ]; then
-        log_info "[DRY RUN] Would push ${REGISTRY}/${image}:latest"
-        log_info "[DRY RUN] Would push ${REGISTRY}/${image}:${VERSION}"
+        log_info "[DRY RUN] Would push docker.io/${REGISTRY}/${image}:latest"
+        log_info "[DRY RUN] Would push docker.io/${REGISTRY}/${image}:${VERSION}"
         PUSHED+=("${image}")
     else
-        if docker push "${REGISTRY}/${image}:latest" && \
-           docker push "${REGISTRY}/${image}:${VERSION}"; then
+        if podman push "${REGISTRY}/${image}:latest" "docker.io/${REGISTRY}/${image}:latest" && \
+           podman push "${REGISTRY}/${image}:${VERSION}" "docker.io/${REGISTRY}/${image}:${VERSION}"; then
             log_info "Successfully pushed ${REGISTRY}/${image}"
             PUSHED+=("${image}")
         else

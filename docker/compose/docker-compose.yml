@@ -1,5 +1,5 @@
 # =============================================================================
-# Docker Compose - FASO DIGITALISATION - Full Ecosystem
+# Podman Compose - FASO DIGITALISATION - Full Ecosystem
 # =============================================================================
 # Infrastructure:
 #   - KAYA (in-memory DB)     : 6380
@@ -35,7 +35,7 @@ services:
   kaya:
     build:
       context: ../..
-      dockerfile: docker/images/Dockerfile.kaya
+      dockerfile: docker/images/Containerfile.kaya
     container_name: faso-kaya
     ports:
       - "6380:6379"
@@ -242,7 +242,7 @@ services:
   armageddon:
     build:
       context: ../..
-      dockerfile: docker/images/Dockerfile.armageddon
+      dockerfile: docker/images/Containerfile.armageddon
     container_name: faso-armageddon
     depends_on:
       oathkeeper:
@@ -284,7 +284,7 @@ services:
   auth-ms:
     build:
       context: ../..
-      dockerfile: docker/images/Dockerfile.auth-ms
+      dockerfile: docker/images/Containerfile.auth-ms
     container_name: faso-auth-ms
     depends_on:
       postgres:
@@ -329,7 +329,7 @@ services:
   poulets-api:
     build:
       context: ../..
-      dockerfile: docker/images/Dockerfile.poulets-api
+      dockerfile: docker/images/Containerfile.poulets-api
     container_name: faso-poulets-api
     depends_on:
       postgres:
@@ -377,7 +377,7 @@ services:
   poulets-bff:
     build:
       context: ../..
-      dockerfile: poulets-platform/bff/Dockerfile
+      dockerfile: poulets-platform/bff/Containerfile
     container_name: faso-poulets-bff
     depends_on:
       poulets-api:
@@ -416,7 +416,7 @@ services:
   poulets-frontend:
     build:
       context: ../..
-      dockerfile: docker/images/Dockerfile.poulets-frontend
+      dockerfile: docker/images/Containerfile.poulets-frontend
     container_name: faso-poulets-frontend
     depends_on:
       poulets-bff:

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # =============================================================================
-# Build all Docker images for FASO DIGITALISATION
+# Build all container images for FASO DIGITALISATION
 # =============================================================================
 # Usage: ./build-all.sh [--no-cache]
+# Uses: podman build with Containerfiles
 # =============================================================================
 
 set -euo pipefail
@@ -31,16 +32,16 @@ function log_error() { echo -e "${RED}[ERROR]${NC} $*"; }
 
 function build_image() {
     local name=$1
-    local dockerfile=$2
+    local containerfile=$2
     local context=${3:-$PROJECT_ROOT}
 
     log_info "Building ${REGISTRY}/${name}:${VERSION} ..."
 
-    if docker build \
+    if podman build \
         ${NO_CACHE} \
         -t "${REGISTRY}/${name}:latest" \
         -t "${REGISTRY}/${name}:${VERSION}" \
-        -f "${dockerfile}" \
+        -f "${containerfile}" \
         "${context}"; then
         log_info "Successfully built ${REGISTRY}/${name}"
     else
@@ -50,7 +51,7 @@ function build_image() {
 }
 
 echo "============================================================="
-echo "  FASO DIGITALISATION - Docker Image Builder"
+echo "  FASO DIGITALISATION - Podman Image Builder"
 echo "  Registry: ${REGISTRY}"
 echo "  Version:  ${VERSION}"
 echo "  Context:  ${PROJECT_ROOT}"
@@ -65,15 +66,15 @@ FAILED=()
 log_info "=== Building Infrastructure Images ==="
 
 build_image "kaya" \
-    "${PROJECT_ROOT}/docker/images/Dockerfile.kaya" \
+    "${PROJECT_ROOT}/docker/images/Containerfile.kaya" \
     "${PROJECT_ROOT}" || FAILED+=("kaya")
 
 build_image "armageddon" \
-    "${PROJECT_ROOT}/docker/images/Dockerfile.armageddon" \
+    "${PROJECT_ROOT}/docker/images/Containerfile.armageddon" \
     "${PROJECT_ROOT}" || FAILED+=("armageddon")
 
 build_image "xds-controller" \
-    "${PROJECT_ROOT}/docker/images/Dockerfile.xds-controller" \
+    "${PROJECT_ROOT}/docker/images/Containerfile.xds-controller" \
     "${PROJECT_ROOT}" || FAILED+=("xds-controller")
 
 # ---------------------------------------------------------------------------
@@ -82,11 +83,11 @@ build_image "xds-controller" \
 log_info "=== Building Backend Service Images ==="
 
 build_image "auth-ms" \
-    "${PROJECT_ROOT}/docker/images/Dockerfile.auth-ms" \
+    "${PROJECT_ROOT}/docker/images/Containerfile.auth-ms" \
     "${PROJECT_ROOT}" || FAILED+=("auth-ms")
 
 build_image "poulets-api" \
-    "${PROJECT_ROOT}/docker/images/Dockerfile.poulets-api" \
+    "${PROJECT_ROOT}/docker/images/Containerfile.poulets-api" \
     "${PROJECT_ROOT}" || FAILED+=("poulets-api")
 
 # ---------------------------------------------------------------------------
@@ -95,11 +96,11 @@ build_image "poulets-api" \
 log_info "=== Building Frontend Images ==="
 
 build_image "poulets-frontend" \
-    "${PROJECT_ROOT}/docker/images/Dockerfile.poulets-frontend" \
+    "${PROJECT_ROOT}/docker/images/Containerfile.poulets-frontend" \
     "${PROJECT_ROOT}" || FAILED+=("poulets-frontend")
 
 build_image "poulets-bff" \
-    "${PROJECT_ROOT}/poulets-platform/bff/Dockerfile" \
+    "${PROJECT_ROOT}/poulets-platform/bff/Containerfile" \
     "${PROJECT_ROOT}" || FAILED+=("poulets-bff")
 
 # ---------------------------------------------------------------------------
@@ -113,10 +114,10 @@ else
     log_error "Failed to build: ${FAILED[*]}"
     echo ""
     echo "Built images:"
-    docker images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+    podman images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.Created}}"
     exit 1
 fi
 echo "============================================================="
 echo ""
 
-docker images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.CreatedAt}}"
+podman images --filter "reference=${REGISTRY}/*" --format "table {{.Repository}}\t{{.Tag}}\t{{.Size}}\t{{.Created}}"
