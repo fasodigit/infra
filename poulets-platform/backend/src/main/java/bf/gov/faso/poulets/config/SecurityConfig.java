@@ -26,6 +26,8 @@ public class SecurityConfig {
             .sessionManagement(session -> session
                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
+                // Public dashboard API (no auth required)
+                .requestMatchers("/api/public/**").permitAll()
                 // GraphQL endpoint
                 .requestMatchers("/graphql/**").permitAll()
                 // GraphiQL UI

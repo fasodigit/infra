@@ -16,6 +16,7 @@ import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
+import { PublicDashboardComponent } from './public-dashboard.component';
 
 @Component({
   selector: 'app-landing',
@@ -28,6 +29,7 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
     MatIconModule,
     MatToolbarModule,
     TranslateModule,
+    PublicDashboardComponent,
   ],
   template: `
     <!-- ===== NAVBAR ===== -->
@@ -184,6 +186,9 @@ import { TranslateModule, TranslateService } from '@ngx-translate/core';
         </div>
       </div>
     </section>
+
+    <!-- ===== PUBLIC DASHBOARD ===== -->
+    <app-public-dashboard></app-public-dashboard>
 
     <!-- ===== PRESENTATION SECTION ===== -->
     <section id="presentation" class="section section-light">

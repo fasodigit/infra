@@ -66,6 +66,23 @@ export interface MesureCroissance {
   observations?: string;
 }
 
+export interface Poussin {
+  id: string;
+  producteur: string;
+  producteur_id: string;
+  race: string;
+  age_jours: number;       // 1, 7, 14, 21 days
+  quantity: number;
+  price_unit: number;       // FCFA per chick
+  vaccinated: boolean;      // Marek, Newcastle
+  vaccination_details?: string;
+  location: string;
+  region: string;
+  available_from: string;
+  status: 'active' | 'reserve' | 'epuise';
+  created_at: string;
+}
+
 export interface PouletFilter {
   race?: Race;
   prixMin?: number;
