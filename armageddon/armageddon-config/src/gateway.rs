@@ -1,6 +1,6 @@
 //! Gateway (proxy) configuration: listeners, routes, clusters, TLS.
 
-use armageddon_common::types::{Cluster, CorsConfig, JwtConfig, Route};
+use armageddon_common::types::{AuthMode, Cluster, CorsConfig, JwtConfig, KratosConfig, Route};
 use serde::{Deserialize, Serialize};
 
 /// Full gateway configuration replacing Envoy.
@@ -15,8 +15,16 @@ pub struct GatewayConfig {
     /// Upstream clusters.
     pub clusters: Vec<Cluster>,
 
+    /// Authentication mode (jwt, session, dual).
+    #[serde(default = "default_auth_mode")]
+    pub auth_mode: AuthMode,
+
     /// JWT authentication config.
     pub jwt: JwtConfig,
+
+    /// Kratos session validation config.
+    #[serde(default)]
+    pub kratos: KratosConfig,
 
     /// CORS per-platform config.
     pub cors: Vec<CorsEntry>,
@@ -26,6 +34,10 @@ pub struct GatewayConfig {
 
     /// xDS controller endpoint for dynamic config.
     pub xds: XdsEndpoint,
+}
+
+fn default_auth_mode() -> AuthMode {
+    AuthMode::Jwt
 }
 
 /// A listener binding.

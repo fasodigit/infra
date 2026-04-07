@@ -2,7 +2,7 @@
 # ORY Keto Configuration - FASO DIGITALISATION (DEV)
 # =============================================================================
 # Zanzibar-style authorization (Google Zanzibar paper)
-# Architecture: Oathkeeper -> Keto (permission checks) -> Backend
+# Architecture: ARMAGEDDON -> Keto (permission checks) -> Backend
 # =============================================================================
 
 version: v0.12.0
@@ -20,7 +20,6 @@ serve:
       enabled: true
       allowed_origins:
         - http://localhost:8080   # ARMAGEDDON gateway
-        - http://localhost:4455   # Oathkeeper proxy
         - http://localhost:8801   # auth-ms HTTP
       allow_credentials: true
 

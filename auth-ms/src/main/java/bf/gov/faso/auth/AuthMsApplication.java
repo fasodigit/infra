@@ -1,7 +1,9 @@
 package bf.gov.faso.auth;
 
+import bf.gov.faso.auth.config.NativeHints;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.context.annotation.ImportRuntimeHints;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
@@ -23,6 +25,7 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  */
 @SpringBootApplication
 @EnableScheduling
+@ImportRuntimeHints(NativeHints.class)
 public class AuthMsApplication {
 
     public static void main(String[] args) {

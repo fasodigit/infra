@@ -122,6 +122,29 @@ mod tests {
             cluster: cluster.to_string(),
             timeout_ms: 30000,
             retry_policy: None,
+            auth_skip: false,
+        }
+    }
+
+    fn make_route_with_auth_skip(
+        name: &str,
+        prefix: Option<&str>,
+        cluster: &str,
+        auth_skip: bool,
+    ) -> Route {
+        Route {
+            name: name.to_string(),
+            match_rule: RouteMatch {
+                prefix: prefix.map(|s| s.to_string()),
+                path: None,
+                regex: None,
+                headers: HashMap::new(),
+                methods: vec![],
+            },
+            cluster: cluster.to_string(),
+            timeout_ms: 30000,
+            retry_policy: None,
+            auth_skip,
         }
     }
 
@@ -184,5 +207,25 @@ mod tests {
         assert!(Router::is_graphql("/api/graphql"));
         assert!(Router::is_graphql("/api/graphql?query=..."));
         assert!(!Router::is_graphql("/api/rest"));
+    }
+
+    #[test]
+    fn test_auth_skip_on_matched_route() {
+        let routes = vec![
+            make_route_with_auth_skip("health", Some("/health/"), "default", true),
+            make_route_with_auth_skip("api", Some("/api/"), "api-cluster", false),
+        ];
+        let router = Router::new(routes);
+        let headers = HashMap::new();
+
+        // Health route should have auth_skip = true
+        let health_route = router.match_route("GET", "/health/alive", &headers).unwrap();
+        assert_eq!(health_route.name, "health");
+        assert!(health_route.auth_skip, "health route should skip auth");
+
+        // API route should have auth_skip = false
+        let api_route = router.match_route("GET", "/api/users", &headers).unwrap();
+        assert_eq!(api_route.name, "api");
+        assert!(!api_route.auth_skip, "api route should require auth");
     }
 }

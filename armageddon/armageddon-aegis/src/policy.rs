@@ -21,8 +21,31 @@ impl PolicyEngine {
     /// Load all .rego policy files from the policy directory.
     pub fn load_policies(&mut self) -> Result<usize, String> {
         tracing::info!("loading Rego policies from {}", self.policy_dir);
-        // TODO: iterate over .rego files and call engine.add_policy_from_file()
-        Ok(0)
+
+        let dir = match std::fs::read_dir(&self.policy_dir) {
+            Ok(d) => d,
+            Err(e) => {
+                // If directory doesn't exist, log and return 0 (no policies loaded)
+                tracing::warn!("policy directory '{}' not readable: {}", self.policy_dir, e);
+                return Ok(0);
+            }
+        };
+
+        let mut count = 0usize;
+        for entry in dir {
+            let entry = entry.map_err(|e| format!("failed to read dir entry: {}", e))?;
+            let path = entry.path();
+            if path.extension().and_then(|e| e.to_str()) == Some("rego") {
+                let path_str = path.display().to_string();
+                self.engine
+                    .add_policy_from_file(path)
+                    .map_err(|e| format!("failed to load policy '{}': {}", path_str, e))?;
+                tracing::info!("AEGIS loaded policy: {}", path_str);
+                count += 1;
+            }
+        }
+
+        Ok(count)
     }
 
     /// Build the input document for Rego evaluation from a request context.
@@ -44,15 +67,34 @@ impl PolicyEngine {
     /// Evaluate the policy and return whether the request is allowed.
     /// Default: deny-by-default.
     pub fn evaluate(&self, input: &Value) -> Result<bool, String> {
-        // TODO: implement actual Regorus evaluation
-        // engine.set_input(input);
-        // let result = engine.eval_rule("data.armageddon.authz.allow")?;
-        // return result.as_bool()
-        let _ = input;
+        let input_str = serde_json::to_string(input)
+            .map_err(|e| format!("failed to serialize input: {}", e))?;
 
-        // Deny-by-default: when no policies are loaded, deny everything
-        tracing::debug!("AEGIS: no policies loaded, deny-by-default returns true (scaffold)");
-        Ok(true) // Allow in scaffold mode to not break everything
+        // Clone the engine for this evaluation (Regorus engine is not Send-safe
+        // for concurrent eval, so we clone per-evaluation)
+        let mut eval_engine = self.engine.clone();
+
+        eval_engine
+            .set_input(
+                regorus::Value::from_json_str(&input_str)
+                    .map_err(|e| format!("failed to parse input as Regorus value: {}", e))?,
+            );
+
+        let result = eval_engine
+            .eval_rule("data.armageddon.authz.allow".to_string())
+            .map_err(|e| format!("Rego evaluation error: {}", e))?;
+
+        // The result should be a boolean. If not, deny by default.
+        match result.as_bool() {
+            Ok(allowed) => Ok(*allowed),
+            Err(_) => {
+                tracing::warn!(
+                    "AEGIS: policy result is not boolean ({:?}), denying by default",
+                    result
+                );
+                Ok(false)
+            }
+        }
     }
 
     /// Hot-reload policies.

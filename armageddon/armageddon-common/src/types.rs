@@ -137,6 +137,9 @@ pub struct Route {
     pub cluster: String,
     pub timeout_ms: u64,
     pub retry_policy: Option<RetryPolicy>,
+    /// Skip authentication for this route (e.g. health checks, public endpoints).
+    #[serde(default)]
+    pub auth_skip: bool,
 }
 
 /// Route matching rule.
@@ -210,4 +213,42 @@ impl Default for JwtConfig {
             require_claims: vec!["sub".to_string(), "iat".to_string(), "exp".to_string()],
         }
     }
+}
+
+/// Kratos session validation configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KratosConfig {
+    /// URL of the Kratos /sessions/whoami endpoint.
+    pub whoami_url: String,
+    /// Name of the session cookie (e.g. "ory_kratos_session").
+    pub session_cookie: String,
+    /// HTTP request timeout in milliseconds.
+    pub timeout_ms: u64,
+    /// Cache TTL for validated sessions in seconds.
+    pub cache_ttl_secs: u64,
+}
+
+impl Default for KratosConfig {
+    fn default() -> Self {
+        Self {
+            whoami_url: "http://kratos:4433/sessions/whoami".to_string(),
+            session_cookie: "ory_kratos_session".to_string(),
+            timeout_ms: 3000,
+            cache_ttl_secs: 60,
+        }
+    }
+}
+
+/// Authentication mode for the gateway.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AuthMode {
+    /// JWT ES384 validation (production).
+    #[serde(rename = "jwt")]
+    Jwt,
+    /// Kratos session cookie validation (development).
+    #[serde(rename = "session")]
+    Session,
+    /// Try JWT first, fallback to session cookie.
+    #[serde(rename = "dual")]
+    Dual,
 }

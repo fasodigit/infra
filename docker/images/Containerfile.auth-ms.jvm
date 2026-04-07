@@ -1,0 +1,57 @@
+# =============================================================================
+# Dockerfile - auth-ms (Authentication Microservice)
+# =============================================================================
+# Multi-stage build: Maven + JDK 21 build -> JRE 21 runtime
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Stage 1: Build
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:21-jdk AS builder
+
+RUN apt-get update && apt-get install -y \
+    maven \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy Maven config first for dependency caching
+COPY pom.xml .
+
+# Download dependencies (cached layer)
+RUN mvn dependency:go-offline -B
+
+# Copy source code
+COPY src ./src
+
+# Build the application (skip tests in Docker build)
+RUN mvn package -DskipTests -B && \
+    mv target/auth-ms-*.jar target/auth-ms.jar
+
+# ---------------------------------------------------------------------------
+# Stage 2: Runtime
+# ---------------------------------------------------------------------------
+FROM eclipse-temurin:21-jre
+
+RUN apt-get update && apt-get install -y \
+    wget \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -r authms && useradd -r -g authms authms
+
+WORKDIR /app
+
+COPY --from=builder /build/target/auth-ms.jar /app/auth-ms.jar
+
+RUN chown -R authms:authms /app
+
+USER authms
+
+EXPOSE 8801 9801
+
+ENTRYPOINT ["java", \
+    "--enable-preview", \
+    "-XX:+UseZGC", \
+    "-XX:MaxRAMPercentage=75.0", \
+    "-Djava.security.egd=file:/dev/./urandom", \
+    "-jar", "/app/auth-ms.jar"]

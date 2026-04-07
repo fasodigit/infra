@@ -17,7 +17,7 @@ pub mod jwt;
 pub mod proxy;
 pub mod router;
 
-use armageddon_common::types::{Cluster, CorsConfig, JwtConfig, Route};
+use armageddon_common::types::{Cluster, CorsConfig, JwtConfig, KratosConfig, Route};
 use armageddon_config::gateway::{ExtAuthzConfig, ListenerConfig};
 use proxy::RoundRobinCounter;
 use std::sync::Arc;
@@ -27,6 +27,7 @@ pub struct ForgeServer {
     listeners: Vec<ListenerConfig>,
     router: Arc<router::Router>,
     jwt_validator: Arc<jwt::JwtValidator>,
+    kratos_validator: Arc<jwt::KratosSessionValidator>,
     cors_handler: Arc<cors::CorsHandler>,
     health_manager: Arc<health::HealthManager>,
     circuit_breakers: Arc<circuit_breaker::CircuitBreakerManager>,
@@ -44,6 +45,7 @@ impl ForgeServer {
         routes: Vec<Route>,
         clusters: Vec<Cluster>,
         jwt_config: JwtConfig,
+        kratos_config: KratosConfig,
         cors_configs: Vec<(String, CorsConfig)>,
         _ext_authz_config: ExtAuthzConfig,
     ) -> Self {
@@ -56,6 +58,7 @@ impl ForgeServer {
             listeners,
             router: Arc::new(router::Router::new(routes)),
             jwt_validator: Arc::new(jwt::JwtValidator::new(jwt_config)),
+            kratos_validator: Arc::new(jwt::KratosSessionValidator::new(kratos_config)),
             cors_handler: Arc::new(cors::CorsHandler::new(cors_configs)),
             health_manager: Arc::new(health::HealthManager::new(clusters.clone())),
             circuit_breakers: Arc::new(circuit_breaker::CircuitBreakerManager::new(
@@ -74,6 +77,11 @@ impl ForgeServer {
     /// Get a reference to the JWT validator.
     pub fn jwt_validator(&self) -> &Arc<jwt::JwtValidator> {
         &self.jwt_validator
+    }
+
+    /// Get a reference to the Kratos session validator.
+    pub fn kratos_validator(&self) -> &Arc<jwt::KratosSessionValidator> {
+        &self.kratos_validator
     }
 
     /// Get a reference to the CORS handler.

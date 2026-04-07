@@ -1,0 +1,10 @@
+{
+  "resources": {
+    "includes": [
+      { "pattern": "\\Qapplication.yml\\E" },
+      { "pattern": "\\Qapplication-dev.yml\\E" },
+      { "pattern": "\\Qschema/schema.graphqls\\E" },
+      { "pattern": "\\Qdb/migration/V1__init.sql\\E" }
+    ]
+  }
+}

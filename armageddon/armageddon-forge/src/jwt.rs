@@ -298,6 +298,181 @@ impl JwtValidator {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Kratos Session Validator
+// ---------------------------------------------------------------------------
+
+use armageddon_common::types::KratosConfig;
+
+/// Kratos session identity (parsed from /sessions/whoami response).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct KratosSession {
+    pub user_id: String,
+    pub email: Option<String>,
+    pub roles: Vec<String>,
+    pub tenant_id: Option<String>,
+}
+
+/// Validates Kratos session cookies against the /sessions/whoami endpoint.
+pub struct KratosSessionValidator {
+    config: KratosConfig,
+}
+
+impl KratosSessionValidator {
+    pub fn new(config: KratosConfig) -> Self {
+        Self { config }
+    }
+
+    /// Extract a specific session cookie value from a Cookie header.
+    pub fn extract_session_cookie<'a>(&self, cookie_header: &'a str) -> Option<&'a str> {
+        for part in cookie_header.split(';') {
+            let trimmed = part.trim();
+            if let Some(value) = trimmed.strip_prefix(&format!("{}=", self.config.session_cookie))
+            {
+                if !value.is_empty() {
+                    return Some(value);
+                }
+            }
+        }
+        None
+    }
+
+    /// Validate a session by calling the Kratos whoami endpoint.
+    ///
+    /// Reuses the same hyper HTTP client pattern from `fetch_jwks()`.
+    pub async fn validate_session(&self, cookie_header: &str) -> Result<KratosSession> {
+        let uri: hyper::Uri = self.config.whoami_url.parse().map_err(|e| {
+            ArmageddonError::KratosUnavailable(format!("invalid Kratos whoami URI: {}", e))
+        })?;
+
+        let client =
+            hyper_util::client::legacy::Client::builder(hyper_util::rt::TokioExecutor::new())
+                .build_http();
+
+        let req = hyper::Request::builder()
+            .uri(&uri)
+            .header("cookie", cookie_header)
+            .header("accept", "application/json")
+            .body(http_body_util::Full::new(bytes::Bytes::new()))
+            .map_err(|e| {
+                ArmageddonError::KratosUnavailable(format!(
+                    "failed to build Kratos request: {}",
+                    e
+                ))
+            })?;
+
+        let timeout_duration = std::time::Duration::from_millis(self.config.timeout_ms);
+        let response = tokio::time::timeout(timeout_duration, client.request(req))
+            .await
+            .map_err(|_| {
+                ArmageddonError::KratosUnavailable("Kratos session check timed out".to_string())
+            })?
+            .map_err(|e| {
+                ArmageddonError::KratosUnavailable(format!("Kratos request failed: {}", e))
+            })?;
+
+        match response.status().as_u16() {
+            200 => {}
+            401 => {
+                return Err(ArmageddonError::KratosSessionInvalid(
+                    "session not authenticated".to_string(),
+                ));
+            }
+            403 => {
+                return Err(ArmageddonError::KratosSessionExpired);
+            }
+            status => {
+                return Err(ArmageddonError::KratosUnavailable(format!(
+                    "Kratos returned unexpected status {}",
+                    status
+                )));
+            }
+        }
+
+        let body_collected: http_body_util::Collected<bytes::Bytes> =
+            response.into_body().collect().await.map_err(|e| {
+                ArmageddonError::KratosUnavailable(format!(
+                    "failed to read Kratos response body: {}",
+                    e
+                ))
+            })?;
+        let body = body_collected.to_bytes();
+
+        let session_json: serde_json::Value =
+            serde_json::from_slice(&body).map_err(|e| {
+                ArmageddonError::KratosSessionInvalid(format!(
+                    "failed to parse Kratos session JSON: {}",
+                    e
+                ))
+            })?;
+
+        // Check that session is active
+        let active = session_json
+            .get("active")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        if !active {
+            return Err(ArmageddonError::KratosSessionExpired);
+        }
+
+        // Extract identity fields
+        let identity = session_json.get("identity").ok_or_else(|| {
+            ArmageddonError::KratosSessionInvalid(
+                "Kratos response missing 'identity' field".to_string(),
+            )
+        })?;
+
+        let user_id = identity
+            .get("id")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+
+        if user_id.is_empty() {
+            return Err(ArmageddonError::KratosSessionInvalid(
+                "Kratos identity missing 'id'".to_string(),
+            ));
+        }
+
+        let traits = identity.get("traits");
+        let email = traits
+            .and_then(|t| t.get("email"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let roles = traits
+            .and_then(|t| t.get("role"))
+            .map(|v| match v {
+                serde_json::Value::String(s) => vec![s.clone()],
+                serde_json::Value::Array(arr) => arr
+                    .iter()
+                    .filter_map(|item| item.as_str().map(|s| s.to_string()))
+                    .collect(),
+                _ => vec![],
+            })
+            .unwrap_or_default();
+
+        let tenant_id = traits
+            .and_then(|t| t.get("tenant_id"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        tracing::debug!(
+            user_id = %user_id,
+            email = ?email,
+            roles = ?roles,
+            "Kratos session validated"
+        );
+
+        Ok(KratosSession {
+            user_id,
+            email,
+            roles,
+            tenant_id,
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -315,5 +490,64 @@ mod tests {
         assert_eq!(JwtValidator::extract_bearer("Basic dXNlcjpwYXNz"), None);
         assert_eq!(JwtValidator::extract_bearer(""), None);
         assert_eq!(JwtValidator::extract_bearer("Bearer"), None);
+    }
+
+    #[tokio::test]
+    async fn test_jwt_validate_invalid_token_returns_error() {
+        let config = JwtConfig::default();
+        let validator = JwtValidator::new(config);
+
+        // A completely garbage token should fail at header decode
+        let result = validator.validate("not-a-jwt-token").await;
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        match err {
+            ArmageddonError::JwtInvalid(msg) => {
+                assert!(
+                    msg.contains("invalid JWT header"),
+                    "expected 'invalid JWT header' in error, got: {}",
+                    msg
+                );
+            }
+            other => panic!("expected JwtInvalid, got: {:?}", other),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_jwt_validate_malformed_three_parts_returns_error() {
+        let config = JwtConfig::default();
+        let validator = JwtValidator::new(config);
+
+        // A token with 3 parts but invalid base64 in the header
+        let result = validator.validate("aaa.bbb.ccc").await;
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_extract_session_cookie() {
+        let config = KratosConfig {
+            whoami_url: "http://kratos:4433/sessions/whoami".to_string(),
+            session_cookie: "ory_kratos_session".to_string(),
+            timeout_ms: 3000,
+            cache_ttl_secs: 60,
+        };
+        let validator = KratosSessionValidator::new(config);
+
+        assert_eq!(
+            validator.extract_session_cookie("ory_kratos_session=abc123; other=xyz"),
+            Some("abc123")
+        );
+        assert_eq!(
+            validator.extract_session_cookie("other=xyz; ory_kratos_session=def456"),
+            Some("def456")
+        );
+        assert_eq!(
+            validator.extract_session_cookie("other=xyz"),
+            None
+        );
+        assert_eq!(
+            validator.extract_session_cookie("ory_kratos_session="),
+            None
+        );
     }
 }

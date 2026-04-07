@@ -41,7 +41,17 @@ impl SecurityEngine for Aegis {
             self.config.policy_dir,
             self.config.default_decision,
         );
-        // TODO: load all .rego files from policy_dir
+        // Load all .rego files from policy_dir
+        match self.engine.load_policies() {
+            Ok(count) => {
+                tracing::info!("AEGIS loaded {} Rego policy files", count);
+            }
+            Err(e) => {
+                // Fail-closed: if we can't load policies, log error but still mark ready
+                // (deny-by-default behaviour handles missing policies)
+                tracing::warn!("AEGIS failed to load policies (fail-closed): {}", e);
+            }
+        }
         self.ready = true;
         Ok(())
     }

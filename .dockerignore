@@ -3,10 +3,7 @@
 **/dist/
 **/.git/
 **/.idea/
-**/*.md
 **/tests/
 docs/
 scripts/
 ory/
-docker/
-!docker/images/

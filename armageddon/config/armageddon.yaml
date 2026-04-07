@@ -28,6 +28,8 @@ gateway:
         alpn:
           - h2
 
+  auth_mode: session
+
   routes:
     - name: graphql
       match_rule:
@@ -39,6 +41,7 @@ gateway:
           - POST
       cluster: dgs-gateway
       timeout_ms: 30000
+      auth_skip: false
       retry_policy:
         num_retries: 2
         retry_on:
@@ -55,6 +58,7 @@ gateway:
         methods: []
       cluster: connect-backends
       timeout_ms: 15000
+      auth_skip: false
       retry_policy:
         num_retries: 1
         retry_on:
@@ -70,6 +74,31 @@ gateway:
         methods: []
       cluster: auth-ms
       timeout_ms: 10000
+      auth_skip: true
+      retry_policy: null
+
+    - name: self-service
+      match_rule:
+        prefix: /self-service/
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: kratos
+      timeout_ms: 10000
+      auth_skip: true
+      retry_policy: null
+
+    - name: health
+      match_rule:
+        prefix: /health/
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: default-backend
+      timeout_ms: 5000
+      auth_skip: true
       retry_policy: null
 
     - name: default
@@ -81,6 +110,7 @@ gateway:
         methods: []
       cluster: default-backend
       timeout_ms: 30000
+      auth_skip: false
       retry_policy: null
 
   clusters:
@@ -180,6 +210,30 @@ gateway:
         base_ejection_time_ms: 30000
         max_ejection_percent: 50
 
+    - name: kratos
+      endpoints:
+        - address: kratos
+          port: 4433
+          weight: 100
+          healthy: true
+      health_check:
+        interval_ms: 5000
+        timeout_ms: 2000
+        unhealthy_threshold: 3
+        healthy_threshold: 2
+        protocol: Http
+        path: /health/alive
+      circuit_breaker:
+        max_connections: 256
+        max_pending_requests: 256
+        max_requests: 256
+        max_retries: 2
+      outlier_detection:
+        consecutive_5xx: 3
+        interval_ms: 10000
+        base_ejection_time_ms: 30000
+        max_ejection_percent: 30
+
   jwt:
     jwks_uri: http://auth-ms:8080/.well-known/jwks.json
     issuer: auth-ms
@@ -191,6 +245,12 @@ gateway:
       - sub
       - iat
       - exp
+
+  kratos:
+    whoami_url: http://kratos:4433/sessions/whoami
+    session_cookie: ory_kratos_session
+    timeout_ms: 3000
+    cache_ttl_secs: 60
 
   cors:
     - platform: web-app
@@ -321,7 +381,7 @@ security:
 
 kaya:
   host: kaya
-  port: 6379
+  port: 6380
   password: null
   db: 0
   pool_size: 16

@@ -38,6 +38,15 @@ pub struct RequestContext {
     /// GeoIP information (populated by SENTINEL).
     pub geo: Option<GeoInfo>,
 
+    /// Authenticated user ID (populated by FORGE auth).
+    pub user_id: Option<String>,
+
+    /// Authenticated user's tenant ID (populated by FORGE auth).
+    pub tenant_id: Option<String>,
+
+    /// Authenticated user's roles (populated by FORGE auth).
+    pub user_roles: Vec<String>,
+
     /// Arbitrary metadata attached by engines.
     pub metadata: HashMap<String, serde_json::Value>,
 }
@@ -55,6 +64,9 @@ impl RequestContext {
             matched_route: None,
             target_cluster: None,
             geo: None,
+            user_id: None,
+            tenant_id: None,
+            user_roles: Vec::new(),
             metadata: HashMap::new(),
         }
     }

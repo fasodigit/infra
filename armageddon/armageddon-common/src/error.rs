@@ -46,6 +46,15 @@ pub enum ArmageddonError {
     #[error("JWKS fetch failed: {0}")]
     JwksFetchFailed(String),
 
+    #[error("Kratos session invalid: {0}")]
+    KratosSessionInvalid(String),
+
+    #[error("Kratos session expired")]
+    KratosSessionExpired,
+
+    #[error("Kratos unavailable: {0}")]
+    KratosUnavailable(String),
+
     #[error("OPA ext_authz denied: {0}")]
     ExtAuthzDenied(String),
 

@@ -19,8 +19,9 @@ mod pipeline;
 use anyhow::Context;
 use armageddon_common::context::RequestContext;
 use armageddon_common::decision::Action;
-use armageddon_common::types::{ConnectionInfo, HttpRequest, HttpVersion, Protocol};
+use armageddon_common::types::{AuthMode, ConnectionInfo, HttpRequest, HttpVersion, Protocol};
 use armageddon_forge::cors::CorsHandler;
+use armageddon_forge::jwt::JwtValidator;
 use armageddon_forge::router::Router;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
@@ -56,6 +57,7 @@ struct GatewayState {
     pipeline: pipeline::Pentagon,
     forge: armageddon_forge::ForgeServer,
     veil: armageddon_veil::Veil,
+    auth_mode: AuthMode,
 }
 
 #[tokio::main]
@@ -97,6 +99,7 @@ async fn main() -> anyhow::Result<()> {
         config.gateway.routes.clone(),
         config.gateway.clusters.clone(),
         config.gateway.jwt.clone(),
+        config.gateway.kratos.clone(),
         cors_configs,
         config.gateway.ext_authz.clone(),
     );
@@ -114,10 +117,12 @@ async fn main() -> anyhow::Result<()> {
     let _health_handles = forge.start_health_checks();
 
     // Build shared state
+    let auth_mode = config.gateway.auth_mode.clone();
     let state = Arc::new(GatewayState {
         pipeline,
         forge,
         veil,
+        auth_mode,
     });
 
     // Determine listen address from first listener config
@@ -270,11 +275,11 @@ async fn handle_request(
     // --- Route matching ---
     let matched_route = state.forge.router().match_route(&method, &path, &headers);
 
-    let (cluster_name, timeout_ms) = match matched_route {
+    let (cluster_name, timeout_ms, auth_skip) = match matched_route {
         Some(route) => {
             ctx.matched_route = Some(route.name.clone());
             ctx.target_cluster = Some(route.cluster.clone());
-            (route.cluster.clone(), route.timeout_ms)
+            (route.cluster.clone(), route.timeout_ms, route.auth_skip)
         }
         None => {
             // No route matched: return 404
@@ -293,6 +298,147 @@ async fn handle_request(
                 .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Not Found")))));
         }
     };
+
+    // --- Authentication ---
+    if !auth_skip {
+        let auth_result = match state.auth_mode {
+            AuthMode::Jwt => {
+                // Extract Bearer token from Authorization header
+                if let Some(auth_header) = headers.get("authorization") {
+                    if let Some(token) = JwtValidator::extract_bearer(auth_header) {
+                        match state.forge.jwt_validator().validate(token).await {
+                            Ok(claims) => {
+                                ctx.user_id = claims
+                                    .get("sub")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                ctx.tenant_id = claims
+                                    .get("tenant_id")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                ctx.user_roles = claims
+                                    .get("roles")
+                                    .and_then(|v| v.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default();
+                                ctx.jwt_claims = Some(claims);
+                                Ok(())
+                            }
+                            Err(e) => Err(format!("{}", e)),
+                        }
+                    } else {
+                        Err("invalid Authorization header (expected Bearer token)".to_string())
+                    }
+                } else {
+                    Err("missing Authorization header".to_string())
+                }
+            }
+            AuthMode::Session => {
+                // Extract session cookie
+                if let Some(cookie_header) = headers.get("cookie") {
+                    match state
+                        .forge
+                        .kratos_validator()
+                        .validate_session(cookie_header)
+                        .await
+                    {
+                        Ok(session) => {
+                            ctx.user_id = Some(session.user_id);
+                            ctx.tenant_id = session.tenant_id;
+                            ctx.user_roles = session.roles;
+                            Ok(())
+                        }
+                        Err(e) => Err(format!("{}", e)),
+                    }
+                } else {
+                    Err("missing session cookie".to_string())
+                }
+            }
+            AuthMode::Dual => {
+                // Try JWT first, fallback to session
+                let jwt_result = if let Some(auth_header) = headers.get("authorization") {
+                    if let Some(token) = JwtValidator::extract_bearer(auth_header) {
+                        match state.forge.jwt_validator().validate(token).await {
+                            Ok(claims) => {
+                                ctx.user_id = claims
+                                    .get("sub")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                ctx.tenant_id = claims
+                                    .get("tenant_id")
+                                    .and_then(|v| v.as_str())
+                                    .map(|s| s.to_string());
+                                ctx.user_roles = claims
+                                    .get("roles")
+                                    .and_then(|v| v.as_array())
+                                    .map(|arr| {
+                                        arr.iter()
+                                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                                            .collect()
+                                    })
+                                    .unwrap_or_default();
+                                ctx.jwt_claims = Some(claims);
+                                Some(Ok(()))
+                            }
+                            Err(_) => None, // JWT failed, try session
+                        }
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                if let Some(result) = jwt_result {
+                    result
+                } else if let Some(cookie_header) = headers.get("cookie") {
+                    match state
+                        .forge
+                        .kratos_validator()
+                        .validate_session(cookie_header)
+                        .await
+                    {
+                        Ok(session) => {
+                            ctx.user_id = Some(session.user_id);
+                            ctx.tenant_id = session.tenant_id;
+                            ctx.user_roles = session.roles;
+                            Ok(())
+                        }
+                        Err(e) => Err(format!("{}", e)),
+                    }
+                } else {
+                    Err("no valid authentication credentials found".to_string())
+                }
+            }
+        };
+
+        if let Err(reason) = auth_result {
+            tracing::warn!(
+                request_id = %ctx.request_id,
+                path = %path,
+                "auth failed: {}",
+                reason,
+            );
+            return Ok(Response::builder()
+                .status(401)
+                .header("content-type", "application/json")
+                .header("x-armageddon-request-id", ctx.request_id.to_string())
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "error": "unauthorized",
+                        "message": "Authentication required",
+                        "request_id": ctx.request_id.to_string(),
+                        "gateway": "ARMAGEDDON"
+                    })
+                    .to_string(),
+                )))
+                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Unauthorized")))));
+        }
+    }
 
     // --- Pentagon security pipeline ---
     let verdict = match state.pipeline.inspect(&ctx).await {
@@ -413,8 +559,10 @@ async fn handle_request(
         breaker.on_request_start();
     }
 
-    // Forward the request
-    let header_pairs: Vec<(String, String)> = headers.into_iter().collect();
+    // Forward the request -- inject identity headers before proxying
+    let mut header_pairs: Vec<(String, String)> = headers.into_iter().collect();
+    armageddon_veil::Veil::inject_identity_headers(&mut header_pairs, &ctx);
+
     let body_option = if body_bytes.is_empty() {
         None
     } else {

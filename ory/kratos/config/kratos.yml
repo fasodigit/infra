@@ -1,7 +1,7 @@
 # =============================================================================
 # ORY Kratos Configuration - FASO DIGITALISATION (DEV)
 # =============================================================================
-# Architecture: Angular -> BFF (Next.js) -> ARMAGEDDON:8080 -> Oathkeeper -> Kratos -> Backend
+# Architecture: Angular -> BFF (Next.js) -> ARMAGEDDON:8080 -> Kratos -> Backend
 # Cache: KAYA on port 6380
 # Auth-MS: HTTP 8801 / gRPC 9801
 # =============================================================================
