@@ -1,0 +1,55 @@
+name: cargo-audit
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+  schedule:
+    - cron: "0 2 * * *"
+
+jobs:
+  audit:
+    name: RustSec Audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-audit-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-audit-
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo audit
+        id: audit
+        run: cargo audit --deny warnings
+        # Fails the job if any RUSTSEC advisory is found.
+        # To accept a known advisory on a PR, add the label "security-accepted"
+        # and create an entry in .cargo/audit.toml with `ignore = ["RUSTSEC-XXXX-XXXX"]`.
+
+      - name: Check security-accepted label (PR only)
+        if: failure() && github.event_name == 'pull_request'
+        env:
+          LABELS: ${{ toJson(github.event.pull_request.labels.*.name) }}
+        run: |
+          if echo "$LABELS" | grep -q "security-accepted"; then
+            echo "Label 'security-accepted' present — audit failure acknowledged by maintainer."
+            exit 0
+          fi
+          echo "Audit failed and label 'security-accepted' is not set. Block PR."
+          exit 1

@@ -1,0 +1,23 @@
+version: v2
+plugins:
+  # Java — auth-ms and poulets microservices
+  - plugin: buf.build/protocolbuffers/java:v27.4
+    out: gen/java
+    opt:
+      - java_multiple_files=true
+
+  # TypeScript — BFF / Angular frontend
+  - plugin: buf.build/bufbuild/es:v2.2.3
+    out: gen/ts
+    opt:
+      - target=ts
+      - import_extension=none
+
+  # Rust — KAYA / armageddon via prost
+  - plugin: buf.build/community/neoeinstein-prost:v0.4.0
+    out: gen/rust
+    opt:
+      - compile_well_known_types=true
+      - extern_path=.google.protobuf=::pbjson_types
+  - plugin: buf.build/community/neoeinstein-prost-serde:v0.3.0
+    out: gen/rust

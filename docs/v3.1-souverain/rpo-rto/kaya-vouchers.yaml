@@ -1,0 +1,139 @@
+# =============================================================================
+# KAYA — Tenant VOUCHERS (code tenant : vouch)
+# -----------------------------------------------------------------------------
+# RPO/RTO cibles (voir MATRICE-RPO-RTO-v3.1.md) :
+#   - Paiements / débits wallet (émission)    : RPO = 0 s      | RTO = 15 min
+#   - Annulations / remboursements            : RPO = 0 s      | RTO = 15 min
+#   - Consultations solde / historique        : RPO ≤ 1 s      | RTO = 15 min
+#   - Sessions                                : RPO ≤ 5 s      | RTO = 15 min
+#
+# Obligation légale BF : OHADA/AUDCIF art. 24 — rétention comptable 10 ans.
+# Réglementation UEMOA paiement électronique + CENTIF (anti-blanchiment).
+# Signataire métier : DG Trésor + APME.
+# =============================================================================
+
+include: kaya-common.yaml
+
+tenant:
+  code: "vouch"
+  project: "vouchers"
+  display_name: "FASO Vouchers"
+  criticality: "A"
+  legal_retention_years: 10           # comptable OHADA
+
+persistence:
+  default_mode: "async-1s"
+  policies:
+    - name: "paiements"
+      match: "tenant-vouch:pay:*"
+      mode: "sync"                    # fsync always — transaction financière
+      wal_group_commit_max_us: 200
+    - name: "emissions"
+      match: "tenant-vouch:voucher:emis:*"
+      mode: "sync"
+      wal_group_commit_max_us: 200
+    - name: "annulations"
+      match: "tenant-vouch:annul:*"
+      mode: "sync"
+      wal_group_commit_max_us: 200
+    - name: "wallet-balances"
+      match: "tenant-vouch:wallet:*"
+      mode: "sync"                    # solde wallet = transaction financière
+      wal_group_commit_max_us: 200
+    - name: "consultations"
+      match: "tenant-vouch:query:*"
+      mode: "async-1s"
+    - name: "sessions"
+      match: "tenant-vouch:sess:*"
+      mode: "async-1s"
+  snapshot:
+    frequency: "5m"
+    retention_count: 288
+    retention_days: 90                # rétention locale plus longue (comptable)
+  encryption:
+    backend: "luks2"
+    kek_vault_path: "transit/kaya/vouch/kek"
+    kek_rotation_period: "365d"
+    backup_kek_vault_path: "transit/kaya-backup/vouch/kek"
+
+acl:
+  users:
+    - username: "vouchers_svc"
+      password_file: "/run/vault/secrets/kaya/vouch/password"
+      key_patterns:
+        - "~tenant-vouch:*"
+      allow_commands:
+        - "+@read"
+        - "+@write"
+        - "+eval"
+        - "+evalsha"
+        - "+bf.*"
+        - "+xadd"
+        - "+xreadgroup"
+        - "+xack"
+        - "+xpending"
+      deny_commands:
+        - "-keys"
+        - "-flushall"
+        - "-flushdb"
+        - "-config"
+        - "-debug"
+        - "-shutdown"
+      channels: "resetchannels"
+
+replication:
+  mode: "async"
+  replicas_count: 3
+  off_site_required: true             # RPO=0 → hors-site obligatoire
+  topology:
+    - id: "replica-ouaga-1"
+      zone: "ouaga-a"
+      off_site: false
+    - id: "replica-ouaga-2"
+      zone: "ouaga-b"
+      off_site: false
+    - id: "replica-bobo"
+      zone: "bobo-dioulasso"
+      off_site: true
+  lag_alert_threshold_ms: 200
+
+# -----------------------------------------------------------------------------
+# Bloom filters — volumétrie annuelle : 200 000 vouchers, FP 0.1 %
+# -----------------------------------------------------------------------------
+bloom_filters:
+  preallocate_on_boot: true
+  reserves:
+    - name: "bf:tenant-vouch:vouchers:emis"
+      capacity: 200000
+      error_rate: 0.001
+      expansion: 2
+    - name: "bf:tenant-vouch:vouchers:consommes"
+      capacity: 200000
+      error_rate: 0.001
+      expansion: 2
+    - name: "bf:tenant-vouch:tx:idempotent"
+      capacity: 500000
+      error_rate: 0.0001              # dédup transactions fine
+      expansion: 2
+
+network:
+  resp3:
+    listen: "0.0.0.0:6380"
+  grpc:
+    listen: "0.0.0.0:6381"
+  tls:
+    enabled: true
+    cert_file: "/run/vault/secrets/kaya/vouch/tls/cert.pem"
+    key_file: "/run/vault/secrets/kaya/vouch/tls/key.pem"
+    ca_file: "/run/vault/secrets/kaya/vouch/tls/ca.pem"
+
+maxmemory: "4GB"
+maxmemory_policy: "noeviction"        # pas d'éviction (transactions financières)
+
+observability:
+  metrics:
+    listen: "127.0.0.1:9121"
+    labels:
+      tenant: "vouch"
+      project: "vouchers"
+      criticality: "A"

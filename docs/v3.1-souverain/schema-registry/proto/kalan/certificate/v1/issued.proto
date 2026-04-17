@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+// FASO-KALAN — a learning certificate is issued after a course is
+// validated. The certificate itself (PDF / image) is stored separately;
+// only the proof of issuance transits here.
+// Topic: kalan.certificate.issued.v1
+
+package faso.kalan.certificate.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/kalan/certificate/v1;certificatev1";
+option java_package = "bf.faso.schemas.kalan.certificate.v1";
+option java_multiple_files = true;
+
+message CertificateIssued {
+  // UUID of the certificate.
+  string certificate_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // UUID of the learner (opaque).
+  string learner_id = 3;
+
+  // UUID of the course for which the certificate is delivered.
+  string course_id = 4;
+
+  // When the certificate was issued.
+  google.protobuf.Timestamp issued_at = 5;
+
+  // SHA-256 of the certificate canonical payload.
+  bytes payload_hash = 6;
+
+  // Detached digital signature of the issuing authority.
+  bytes signature = 7;
+
+  // Fingerprint of the signer certificate.
+  bytes signer_cert_fingerprint = 8;
+
+  // Aggregate score obtained over the whole course (basis points).
+  int32 final_score_bp = 9;
+
+  // Idempotency key.
+  string idempotency_key = 10;
+
+  reserved 11 to 20;
+  reserved "nom_apprenant", "date_naissance";
+}

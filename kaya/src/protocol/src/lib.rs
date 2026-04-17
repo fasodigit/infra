@@ -1,10 +1,30 @@
 //! KAYA RESP3+ Protocol Parser and Serializer
 //!
 //! Implements the RESP3 wire protocol (port 6380) for compatibility with
-//! Redis clients, plus KAYA-specific extensions.
+//! RESP3-compatible clients, plus KAYA-specific extensions.
+
+pub mod fast_decoder;
+pub use fast_decoder::FastDecoder;
 
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use thiserror::Error;
+
+// ---------------------------------------------------------------------------
+// Frame size limits (SecFinding-DOS-FRAME-SIZE)
+// ---------------------------------------------------------------------------
+
+/// Maximum number of elements in a single Array/Map/Set/Push frame.
+///
+/// WHY: An attacker can send `*65537\r\n` to force a 65 537-element
+/// `Vec::with_capacity`, exhausting heap memory before a single byte of
+/// payload arrives. 65 536 elements cover all legitimate command sizes.
+pub const MAX_AGGREGATE_SIZE: usize = 65_536;
+
+/// Maximum byte length of a single BulkString payload.
+///
+/// WHY: Same OOM amplification risk as aggregate frames. 512 MiB matches the
+/// RESP3 specification maximum for a single bulk payload.
+pub const MAX_BULK_SIZE: usize = 512 * 1024 * 1024;
 
 // ---------------------------------------------------------------------------
 // Errors
@@ -324,6 +344,10 @@ impl Decoder {
             .parse()
             .map_err(|_| ProtocolError::Parse(format!("invalid bulk len: {len_str}")))?;
 
+        if len > MAX_BULK_SIZE {
+            return Err(ProtocolError::FrameTooLarge { size: len, max: MAX_BULK_SIZE });
+        }
+
         let total = header_end + 2 + len + 2;
         if buf.len() < total {
             return Err(ProtocolError::Incomplete);
@@ -348,6 +372,10 @@ impl Decoder {
         let count: usize = count_str
             .parse()
             .map_err(|_| ProtocolError::Parse(format!("invalid array len: {count_str}")))?;
+
+        if count > MAX_AGGREGATE_SIZE {
+            return Err(ProtocolError::FrameTooLarge { size: count, max: MAX_AGGREGATE_SIZE });
+        }
 
         buf.advance(header_end + 2);
 
@@ -400,6 +428,10 @@ impl Decoder {
             .parse()
             .map_err(|_| ProtocolError::Parse(format!("invalid map len: {count_str}")))?;
 
+        if count > MAX_AGGREGATE_SIZE {
+            return Err(ProtocolError::FrameTooLarge { size: count, max: MAX_AGGREGATE_SIZE });
+        }
+
         buf.advance(header_end + 2);
 
         let mut pairs = Vec::with_capacity(count);
@@ -420,6 +452,10 @@ impl Decoder {
             .parse()
             .map_err(|_| ProtocolError::Parse(format!("invalid set len: {count_str}")))?;
 
+        if count > MAX_AGGREGATE_SIZE {
+            return Err(ProtocolError::FrameTooLarge { size: count, max: MAX_AGGREGATE_SIZE });
+        }
+
         buf.advance(header_end + 2);
 
         let mut items = Vec::with_capacity(count);
@@ -437,6 +473,10 @@ impl Decoder {
         let count: usize = count_str
             .parse()
             .map_err(|_| ProtocolError::Parse(format!("invalid push len: {count_str}")))?;
+
+        if count > MAX_AGGREGATE_SIZE {
+            return Err(ProtocolError::FrameTooLarge { size: count, max: MAX_AGGREGATE_SIZE });
+        }
 
         buf.advance(header_end + 2);
 
@@ -739,5 +779,43 @@ mod tests {
         let mut buf = BytesMut::from(&b"*-1\r\n"[..]);
         let frame = Decoder::decode(&mut buf).unwrap();
         assert_eq!(frame, Frame::Null);
+    }
+
+    // -- DoS frame-size limit tests (SecFinding-DOS-FRAME-SIZE) ---------------
+
+    #[test]
+    fn oversized_array_count_is_rejected() {
+        // Declare count = MAX_AGGREGATE_SIZE + 1 without any payload data.
+        let oversized = format!("*{}\r\n", MAX_AGGREGATE_SIZE + 1);
+        let mut buf = BytesMut::from(oversized.as_bytes());
+        let result = Decoder::decode(&mut buf);
+        assert!(
+            matches!(result, Err(ProtocolError::FrameTooLarge { .. })),
+            "array count above limit must be rejected, got: {result:?}"
+        );
+    }
+
+    #[test]
+    fn oversized_map_count_is_rejected() {
+        let oversized = format!("%{}\r\n", MAX_AGGREGATE_SIZE + 1);
+        let mut buf = BytesMut::from(oversized.as_bytes());
+        let result = Decoder::decode(&mut buf);
+        assert!(
+            matches!(result, Err(ProtocolError::FrameTooLarge { .. })),
+            "map count above limit must be rejected"
+        );
+    }
+
+    #[test]
+    fn max_aggregate_size_is_accepted() {
+        // Exactly at the limit must still yield Incomplete (needs elements),
+        // NOT FrameTooLarge.
+        let at_limit = format!("*{}\r\n", MAX_AGGREGATE_SIZE);
+        let mut buf = BytesMut::from(at_limit.as_bytes());
+        let result = Decoder::decode(&mut buf);
+        assert!(
+            matches!(result, Err(ProtocolError::Incomplete)),
+            "count exactly at limit should be Incomplete, not error: {result:?}"
+        );
     }
 }

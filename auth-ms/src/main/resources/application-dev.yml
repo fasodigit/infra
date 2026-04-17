@@ -9,9 +9,9 @@ spring:
         format_sql: true
     show-sql: true
 
-  # Dev-mode Flyway: allow clean for fresh starts
+  # Dev-mode Flyway: clean is ALWAYS disabled (use dev-reset profile to wipe schema)
   flyway:
-    clean-disabled: false
+    clean-disabled: true
 
 logging:
   level:

@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+version: "prometheus/v1"
+service: "armageddon"
+labels:
+  project: faso-digitalisation
+  tier: critical
+slos:
+  - name: "availability"
+    objective: 99.99
+    description: "ARMAGEDDON gateway forwards requests successfully"
+    sli:
+      events:
+        error_query: |
+          sum(rate(armageddon_http_requests_total{code=~"5.."}[{{.window}}]))
+        total_query: |
+          sum(rate(armageddon_http_requests_total[{{.window}}]))
+    alerting:
+      name: ArmageddonAvailabilityBurn
+      page_alert: { labels: { severity: critical, team: platform } }
+      ticket_alert: { labels: { severity: warning } }
+
+  - name: "latency-p99-10ms"
+    objective: 99
+    description: "99% of gateway requests served under 10ms (excluding upstream latency)"
+    sli:
+      events:
+        error_query: |
+          sum(rate(armageddon_request_duration_seconds_count[{{.window}}]))
+          -
+          sum(rate(armageddon_request_duration_seconds_bucket{le="0.010"}[{{.window}}]))
+        total_query: |
+          sum(rate(armageddon_request_duration_seconds_count[{{.window}}]))
+    alerting:
+      name: ArmageddonLatencyBurn
+      page_alert: { labels: { severity: critical } }
+
+  - name: "error-budget-4xx-non-429"
+    objective: 99.5
+    description: "Exclude 429 (rate-limit) from error budget — those are expected"
+    sli:
+      events:
+        error_query: |
+          sum(rate(armageddon_http_requests_total{code=~"4..",code!="429"}[{{.window}}]))
+        total_query: |
+          sum(rate(armageddon_http_requests_total[{{.window}}]))
+    alerting:
+      name: ArmageddonClientErrorBurn
+      ticket_alert: { labels: { severity: info } }

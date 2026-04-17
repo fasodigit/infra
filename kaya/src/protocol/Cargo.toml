@@ -9,3 +9,4 @@ thiserror = { workspace = true }
 smallvec = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
+memchr = { workspace = true }

@@ -1,0 +1,86 @@
+[
+  {
+    "id": "infra-push",
+    "if": { "repository_full_name": "fasodigit/infra", "event_type": "push" },
+    "recipients": ["devops@faso.gov.bf"],
+    "template": "infra-commit"
+  },
+  {
+    "id": "infra-pr-opened",
+    "if": { "repository_full_name": "fasodigit/infra", "event_type": "pull_request", "pr_state": "open" },
+    "recipients": ["devops@faso.gov.bf"],
+    "template": "pull-request-opened"
+  },
+  {
+    "id": "infra-pr-merged",
+    "if": { "repository_full_name": "fasodigit/infra", "event_type": "pull_request", "pr_merged": "true" },
+    "recipients": ["devops@faso.gov.bf"],
+    "template": "pull-request-merged"
+  },
+  {
+    "id": "vouchers-push",
+    "if": { "repository_full_name": "fasodigit/vouchers", "event_type": "push" },
+    "recipients": ["agriculture@faso.gov.bf"],
+    "template": "vouchers-commit"
+  },
+  {
+    "id": "etatcivil-push",
+    "if": { "repository_full_name": "fasodigit/etatcivil", "event_type": "push" },
+    "recipients": ["etatcivil@faso.gov.bf"],
+    "template": "etatcivil-commit"
+  },
+  {
+    "id": "poulets-push",
+    "if": { "repository_full_name": "fasodigit/poulets", "event_type": "push" },
+    "recipients": ["poulets@faso.gov.bf"],
+    "template": "poulets-commit"
+  },
+  {
+    "id": "sogesy-push",
+    "if": { "repository_full_name": "fasodigit/sogesy", "event_type": "push" },
+    "recipients": ["sogesy@faso.gov.bf"],
+    "template": "sogesy-commit"
+  },
+  {
+    "id": "hospital-push",
+    "if": { "repository_full_name": "fasodigit/hospital", "event_type": "push" },
+    "recipients": ["hospital@faso.gov.bf"],
+    "template": "hospital-commit"
+  },
+  {
+    "id": "escool-push",
+    "if": { "repository_full_name": "fasodigit/escool", "event_type": "push" },
+    "recipients": ["escool@faso.gov.bf"],
+    "template": "escool-commit"
+  },
+  {
+    "id": "eticket-push",
+    "if": { "repository_full_name": "fasodigit/eticket", "event_type": "push" },
+    "recipients": ["eticket@faso.gov.bf"],
+    "template": "eticket-commit"
+  },
+  {
+    "id": "altmission-push",
+    "if": { "repository_full_name": "fasodigit/altmission", "event_type": "push" },
+    "recipients": ["altmission@faso.gov.bf"],
+    "template": "altmission-commit"
+  },
+  {
+    "id": "fasokalan-push",
+    "if": { "repository_full_name": "fasodigit/fasokalan", "event_type": "push" },
+    "recipients": ["fasokalan@faso.gov.bf"],
+    "template": "fasokalan-commit"
+  },
+  {
+    "id": "faso-all-pr-opened",
+    "if": { "repository_full_name": "fasodigit/*", "event_type": "pull_request", "pr_state": "open" },
+    "recipients": ["devops@faso.gov.bf"],
+    "template": "pull-request-opened"
+  },
+  {
+    "id": "faso-all-pr-merged",
+    "if": { "repository_full_name": "fasodigit/*", "event_type": "pull_request", "pr_merged": "true" },
+    "recipients": ["devops@faso.gov.bf"],
+    "template": "pull-request-merged"
+  }
+]

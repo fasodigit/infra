@@ -1,0 +1,124 @@
+// =============================================================================
+// FASO DIGITALISATION — Material 21 (M3) custom palette overrides
+// Maps Angular Material tokens to FASO design tokens.
+// =============================================================================
+
+@use "@angular/material" as mat;
+
+// Core (Material 3 entry)
+@include mat.core();
+
+// Custom palette built from FASO green + amber — M3 tonal palette required keys.
+// We only need `primary/secondary/tertiary`; MDC will compute surface variants.
+
+$faso-primary-palette: (
+  0:   #000000,
+  10:  #002106,
+  20:  #003910,
+  25:  #00461A,
+  30:  #005322,
+  35:  #00612A,
+  40:  #006E33,
+  50:  #2E7D32, // brand core
+  60:  #4B9951,
+  70:  #66B56A,
+  80:  #81D285,
+  90:  #9DEF9F,
+  95:  #D7FFD3,
+  98:  #F2FFED,
+  99:  #F9FFF5,
+  100: #FFFFFF,
+);
+
+$faso-accent-palette: (
+  0:   #000000,
+  10:  #2B1700,
+  20:  #482900,
+  25:  #583300,
+  30:  #693D00,
+  35:  #7A4800,
+  40:  #8C5300,
+  50:  #B06A00,
+  60:  #D68200,
+  70:  #FF8F00, // brand accent
+  80:  #FFB86B,
+  90:  #FFDCBC,
+  95:  #FFEDDA,
+  98:  #FFF7EE,
+  99:  #FFFBF8,
+  100: #FFFFFF,
+);
+
+// Apply theme for light + dark, leveraging CSS vars so runtime data-theme switching works.
+:root {
+  @include mat.theme((
+    color: (
+      primary: $faso-primary-palette,
+      tertiary: $faso-accent-palette,
+    ),
+    typography: Inter,
+    density: 0,
+  ));
+}
+
+// Smoother default component chrome
+.mat-mdc-card {
+  border-radius: var(--faso-radius-lg) !important;
+  border: 1px solid var(--faso-border);
+  box-shadow: var(--faso-shadow-sm) !important;
+  transition: box-shadow var(--faso-duration-fast) var(--faso-ease-standard);
+
+  &.mat-mdc-card-outlined,
+  &[appearance="outlined"] {
+    box-shadow: none !important;
+  }
+}
+
+.mat-mdc-raised-button, .mat-mdc-unelevated-button, .mat-mdc-button {
+  border-radius: var(--faso-radius-pill) !important;
+  letter-spacing: 0.01em;
+  font-weight: var(--faso-weight-semibold);
+}
+
+.mat-mdc-form-field {
+  width: 100%;
+}
+
+.mat-mdc-chip {
+  border-radius: var(--faso-radius-md) !important;
+  font-weight: var(--faso-weight-medium);
+}
+
+.mat-mdc-snack-bar-container {
+  &.snackbar-success { --mdc-snackbar-container-color: var(--faso-success); }
+  &.snackbar-error   { --mdc-snackbar-container-color: var(--faso-danger); }
+  &.snackbar-warning { --mdc-snackbar-container-color: var(--faso-warning); }
+  &.snackbar-info    { --mdc-snackbar-container-color: var(--faso-info); }
+}
+
+// Sidenav / toolbar tint sovereign
+.layout-toolbar {
+  background: var(--faso-surface) !important;
+  color: var(--faso-text) !important;
+  border-bottom: 1px solid var(--faso-border);
+  box-shadow: var(--faso-shadow-xs) !important;
+  height: var(--faso-toolbar-height);
+}
+
+.layout-sidenav {
+  background: var(--faso-surface) !important;
+  border-right: 1px solid var(--faso-border) !important;
+  width: 260px;
+}
+
+.mat-mdc-list-item {
+  border-radius: var(--faso-radius-md) !important;
+  margin: 2px 8px;
+
+  &.active-link {
+    background: var(--faso-primary-50) !important;
+    color: var(--faso-primary-700) !important;
+
+    .mat-icon { color: var(--faso-primary-700); }
+  }
+}

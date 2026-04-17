@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+// VOUCHERS — a voucher is emitted (subsidy, allowance, gift).
+// Topic: vouchers.voucher.emitted.v1
+
+package faso.vouchers.voucher.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/vouchers/voucher/v1;voucherv1";
+option java_package = "bf.faso.schemas.vouchers.voucher.v1";
+option java_multiple_files = true;
+
+message VoucherEmitted {
+  // UUID of the voucher.
+  string voucher_id = 1;
+
+  // UUID of the tenant (program / ministry / operator).
+  string tenant_id = 2;
+
+  // UUID of the beneficiary (opaque).
+  string beneficiary_id = 3;
+
+  // UUID of the program: "SUBSIDE_CARBURANT_2026", "AIDE_SCOLAIRE"...
+  string program_id = 4;
+
+  // Face value in CFA cents.
+  int64 value_cents = 5;
+
+  // Currency: always "XOF".
+  string currency = 6;
+
+  // When the voucher was emitted.
+  google.protobuf.Timestamp emitted_at = 7;
+
+  // When the voucher expires.
+  google.protobuf.Timestamp expires_at = 8;
+
+  // UUID of the emitting authority.
+  string emitter_id = 9;
+
+  // Idempotency key.
+  string idempotency_key = 10;
+
+  reserved 11 to 20;
+  reserved "nom_beneficiaire", "nip_beneficiaire";
+}

@@ -9,27 +9,103 @@
 #   - Jaeger (Tracing)        : 16686 (UI), 4317 (OTLP gRPC), 4318 (OTLP HTTP)
 #
 # Security (ORY):
-#   - Kratos (Identity)       : 4433 (public), 4434 (admin)
-#   - Keto (Authorization)    : 4466 (read), 4467 (write)
+#   - Kratos (Identity)       : 4433 (public), 127.0.0.1:4434 (admin - loopback only)
+#   - Keto (Authorization)    : 4466 (read), 127.0.0.1:4467 (write - loopback only)
 #
 # Gateway:
 #   - ARMAGEDDON              : 8080
 #
+# Message Bus:
+#   - Redpanda                : 19092 (Kafka external), 18082 (Pandaproxy), 8090 (Console UI)
+#
 # Backend:
 #   - auth-ms                 : 8801 (HTTP), 9801 (gRPC)
 #   - poulets-api             : 8901 (HTTP), 9901 (gRPC)
+#   - notifier-ms             : 8803 (HTTP), 9090 (Actuator/Prometheus)
+#
+# Mail (dev):
+#   - MailHog                 : 1025 (SMTP), 8025 (Web UI)
 #
 # Frontend:
 #   - poulets-bff (Next.js)   : 4800
 #   - poulets-frontend (Angular) : 4801
+#
+# Secrets: run scripts/init-secrets.sh before first start
 # =============================================================================
 
 name: faso-digitalisation
+
+# =============================================================================
+# Secrets (external files, never committed - see secrets/.gitignore)
+# Run: scripts/init-secrets.sh to generate
+# =============================================================================
+secrets:
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  kratos_cookie_secret:
+    file: ./secrets/kratos_cookie_secret.txt
+  kratos_cipher_secret:
+    file: ./secrets/kratos_cipher_secret.txt
+  keto_secret:
+    file: ./secrets/keto_secret.txt
 
 services:
   # ===========================================================================
   # INFRASTRUCTURE
   # ===========================================================================
+
+  # ---------------------------------------------------------------------------
+  # Redpanda - Kafka-compatible message bus (sovereign, no ZooKeeper)
+  # ---------------------------------------------------------------------------
+  redpanda:
+    image: docker.io/redpandadata/redpanda:v24.3.4
+    container_name: faso-redpanda
+    command:
+      - redpanda
+      - start
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+      - --pandaproxy-addr internal://0.0.0.0:8082,external://0.0.0.0:18082
+      - --advertise-pandaproxy-addr internal://redpanda:8082,external://localhost:18082
+      - --schema-registry-addr internal://0.0.0.0:8081,external://0.0.0.0:18081
+      - --rpc-addr redpanda:33145
+      - --advertise-rpc-addr redpanda:33145
+      - --mode dev-container
+      - --smp 1
+      - --default-log-level=warn
+    ports:
+      - "19092:19092"  # External Kafka API
+      - "18082:18082"  # Pandaproxy
+      - "18081:18081"  # Schema Registry
+      - "9644:9644"    # Admin API
+    healthcheck:
+      test: ["CMD", "rpk", "cluster", "info", "--brokers=redpanda:9092"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # Redpanda Console - Kafka topic management UI
+  # ---------------------------------------------------------------------------
+  redpanda-console:
+    image: docker.io/redpandadata/console:v2.7.2
+    container_name: faso-redpanda-console
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    ports:
+      - "8090:8080"
+    environment:
+      KAFKA_BROKERS: redpanda:9092
+      KAFKA_SCHEMAREGISTRY_ENABLED: "true"
+      KAFKA_SCHEMAREGISTRY_URLS: "http://redpanda:8081"
+    networks:
+      - faso-network
+    restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # KAYA - In-Memory Database (Redis-compatible)
@@ -55,10 +131,12 @@ services:
       start_period: 10s
     networks:
       - faso-network
+      - admin-network
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # Jaeger - Distributed Tracing
+  # TODO: pin digest via docker manifest inspect jaegertracing/all-in-one:1.58
   # ---------------------------------------------------------------------------
   jaeger:
     image: jaegertracing/all-in-one:1.58
@@ -82,6 +160,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # PostgreSQL 17 - Primary relational database
+  # TODO: pin digest via docker manifest inspect postgres:17-alpine
   # ---------------------------------------------------------------------------
   postgres:
     image: postgres:17-alpine
@@ -90,9 +169,11 @@ services:
       - "5432:5432"
     environment:
       POSTGRES_USER: faso
-      POSTGRES_PASSWORD: faso_dev_secret
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_DB: faso_main
       POSTGRES_MULTIPLE_DATABASES: "kratos,keto,auth,poulets"
+    secrets:
+      - postgres_password
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./init-multiple-dbs.sh:/docker-entrypoint-initdb.d/init-multiple-dbs.sh:ro
@@ -104,6 +185,7 @@ services:
       start_period: 10s
     networks:
       - faso-network
+      - admin-network
     restart: unless-stopped
 
   # ===========================================================================
@@ -112,6 +194,7 @@ services:
 
   # ---------------------------------------------------------------------------
   # Kratos Database Migration (one-shot)
+  # TODO: pin digest via docker manifest inspect oryd/kratos:v1.3.1
   # ---------------------------------------------------------------------------
   kratos-migrate:
     image: oryd/kratos:v1.3.1
@@ -121,16 +204,19 @@ services:
         condition: service_healthy
     command: migrate sql -e --yes
     environment:
-      DSN: postgres://faso:faso_dev_secret@postgres:5432/kratos?sslmode=disable
+      DSN: postgres://faso@postgres:5432/kratos?sslmode=disable
+    secrets:
+      - postgres_password
     volumes:
       - ../../ory/kratos/config:/etc/config/kratos:ro
       - ../../ory/kratos/schemas:/etc/config/kratos-schemas:ro
     networks:
-      - faso-network
+      - admin-network
     restart: "no"
 
   # ---------------------------------------------------------------------------
   # Kratos - Identity Management
+  # TODO: pin digest via docker manifest inspect oryd/kratos:v1.3.1
   # ---------------------------------------------------------------------------
   kratos:
     image: oryd/kratos:v1.3.1
@@ -141,16 +227,19 @@ services:
     command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
     ports:
       - "4433:4433"
-      - "4434:4434"
+      - "127.0.0.1:4434:4434"   # Admin: loopback only
     environment:
-      DSN: postgres://faso:faso_dev_secret@postgres:5432/kratos?sslmode=disable
+      DSN: postgres://faso@postgres:5432/kratos?sslmode=disable
       SERVE_PUBLIC_BASE_URL: http://localhost:4433/
       SERVE_ADMIN_BASE_URL: http://localhost:4434/
       COURIER_SMTP_CONNECTION_URI: smtp://mailslurper:1025/?disable_starttls=true
       LOG_LEVEL: debug
-      LOG_LEAK_SENSITIVE_VALUES: "true"
-      SECRETS_COOKIE: faso-dev-cookie-secret-change-in-production-minimum-32-chars
-      SECRETS_CIPHER: faso-dev-cipher-secret-32-chars!
+      SECRETS_COOKIE_FILE: /run/secrets/kratos_cookie_secret
+      SECRETS_CIPHER_FILE: /run/secrets/kratos_cipher_secret
+    secrets:
+      - postgres_password
+      - kratos_cookie_secret
+      - kratos_cipher_secret
     volumes:
       - ../../ory/kratos/config:/etc/config/kratos:ro
       - ../../ory/kratos/schemas:/etc/config/kratos-schemas:ro
@@ -162,10 +251,12 @@ services:
       start_period: 15s
     networks:
       - faso-network
+      - admin-network
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # Keto Database Migration (one-shot)
+  # TODO: pin digest via docker manifest inspect oryd/keto:v0.12.0
   # ---------------------------------------------------------------------------
   keto-migrate:
     image: oryd/keto:v0.12.0
@@ -175,15 +266,18 @@ services:
         condition: service_healthy
     command: migrate up --yes --config /etc/config/keto/keto.yml
     environment:
-      DSN: postgres://faso:faso_dev_secret@postgres:5432/keto?sslmode=disable
+      DSN: postgres://faso@postgres:5432/keto?sslmode=disable
+    secrets:
+      - postgres_password
     volumes:
       - ../../ory/keto/config:/etc/config/keto:ro
     networks:
-      - faso-network
+      - admin-network
     restart: "no"
 
   # ---------------------------------------------------------------------------
   # Keto - Authorization / Permissions
+  # TODO: pin digest via docker manifest inspect oryd/keto:v0.12.0
   # ---------------------------------------------------------------------------
   keto:
     image: oryd/keto:v0.12.0
@@ -194,11 +288,12 @@ services:
     command: serve --config /etc/config/keto/keto.yml
     ports:
       - "4466:4466"
-      - "4467:4467"
+      - "127.0.0.1:4467:4467"   # Write API: loopback only
     environment:
-      DSN: postgres://faso:faso_dev_secret@postgres:5432/keto?sslmode=disable
+      DSN: postgres://faso@postgres:5432/keto?sslmode=disable
       LOG_LEVEL: debug
-      LOG_LEAK_SENSITIVE_VALUES: "true"
+    secrets:
+      - postgres_password
     volumes:
       - ../../ory/keto/config:/etc/config/keto:ro
     healthcheck:
@@ -209,10 +304,13 @@ services:
       start_period: 15s
     networks:
       - faso-network
+      - admin-network
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # MailSlurper - Dev email testing
+  # Pin to immutable tag - latest-smtps is mutable
+  # TODO: pin digest via docker manifest inspect oryd/mailslurper:latest-smtps
   # ---------------------------------------------------------------------------
   mailslurper:
     image: oryd/mailslurper:latest-smtps
@@ -297,7 +395,7 @@ services:
       # PostgreSQL
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/auth
       SPRING_DATASOURCE_USERNAME: faso
-      SPRING_DATASOURCE_PASSWORD: faso_dev_secret
+      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/postgres_password
       # KAYA (Redis-compatible)
       SPRING_DATA_REDIS_HOST: kaya
       SPRING_DATA_REDIS_PORT: "6379"
@@ -309,6 +407,8 @@ services:
       KETO_WRITE_URL: http://keto:4467
       # Jaeger tracing (OTLP)
       MANAGEMENT_OTLP_TRACING_ENDPOINT: http://jaeger:4318/v1/traces
+    secrets:
+      - postgres_password
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8801/actuator/health"]
       interval: 15s
@@ -317,6 +417,7 @@ services:
       start_period: 45s
     networks:
       - faso-network
+      - admin-network
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
@@ -344,7 +445,7 @@ services:
       # PostgreSQL
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/poulets
       SPRING_DATASOURCE_USERNAME: faso
-      SPRING_DATASOURCE_PASSWORD: faso_dev_secret
+      SPRING_DATASOURCE_PASSWORD_FILE: /run/secrets/postgres_password
       # KAYA (Redis-compatible)
       SPRING_DATA_REDIS_HOST: kaya
       SPRING_DATA_REDIS_PORT: "6379"
@@ -355,6 +456,8 @@ services:
       KRATOS_PUBLIC_URL: http://kratos:4433
       # Jaeger tracing (OTLP)
       MANAGEMENT_OTLP_TRACING_ENDPOINT: http://jaeger:4318/v1/traces
+    secrets:
+      - postgres_password
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8901/actuator/health"]
       interval: 15s
@@ -409,6 +512,63 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
+  # notifier-ms - Notification Microservice (Redpanda events → SMTP)
+  # ---------------------------------------------------------------------------
+  notifier-ms:
+    build:
+      context: ../..
+      dockerfile: notifier-ms/Containerfile
+    container_name: faso-notifier-ms
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kaya:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    ports:
+      - "8803:8803"   # HTTP API
+      - "9090:9090"   # Actuator / Prometheus
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_DB: notifier
+      POSTGRES_USER: notifier
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      KAFKA_BROKERS: redpanda:9092
+      KAYA_URL: redis://kaya:6379
+      SMTP_HOST: mailhog
+      SMTP_PORT: 1025
+      MAIL_FROM: noreply@faso.gov.bf
+      MAIL_FROM_NAME: "FASO DIGITALISATION"
+      AUTH_MS_JWKS_URI: http://auth-ms:8801/.well-known/jwks.json
+      FASO_ENV: dev
+    secrets:
+      - postgres_password
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8803/actuator/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # MailHog - SMTP dev server (dev only)
+  # ---------------------------------------------------------------------------
+  mailhog:
+    image: docker.io/mailhog/mailhog:v1.0.1
+    container_name: faso-mailhog
+    ports:
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # Web UI
+    networks:
+      - faso-network
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
   # poulets-frontend - Angular 21 SPA
   # ---------------------------------------------------------------------------
   poulets-frontend:
@@ -448,3 +608,9 @@ networks:
   faso-network:
     name: faso-network
     driver: bridge
+  # Isolated network for admin APIs (Kratos admin, Keto write, DB)
+  # Only internal services join this network - no public exposure
+  admin-network:
+    name: faso-admin-network
+    driver: bridge
+    internal: true

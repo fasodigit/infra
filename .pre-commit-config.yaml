@@ -1,0 +1,121 @@
+---
+# FASO DIGITALISATION — Pre-commit configuration
+# Install: pre-commit install --install-hooks
+# Run all: pre-commit run --all-files
+
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+fail_fast: false
+
+repos:
+  # ─── General file hygiene ────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+        args: [--allow-multiple-documents]
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: [--maxkb=500]
+      - id: check-merge-conflict
+      - id: detect-private-key
+
+  # ─── Secret scanning ─────────────────────────────────────────────────────
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.21.0
+    hooks:
+      - id: gitleaks
+        name: gitleaks (staged files)
+        stages: [pre-commit]
+      - id: gitleaks
+        name: gitleaks (commit scan)
+        args: [--no-git]
+        stages: [pre-push]
+
+  # ─── Conventional commits ─────────────────────────────────────────────────
+  - repo: https://github.com/alessandrojcm/commitlint-pre-commit-hook
+    rev: v9.18.0
+    hooks:
+      - id: commitlint
+        stages: [commit-msg]
+        additional_dependencies: ["@commitlint/config-conventional"]
+
+  # ─── Rust — fmt ──────────────────────────────────────────────────────────
+  - repo: local
+    hooks:
+      - id: cargo-fmt
+        name: cargo fmt
+        language: system
+        entry: cargo fmt --all --check
+        types: [rust]
+        pass_filenames: false
+
+  # ─── Rust — clippy ───────────────────────────────────────────────────────
+      - id: cargo-clippy
+        name: cargo clippy
+        language: system
+        entry: cargo clippy --workspace --all-targets -- -D warnings
+        types: [rust]
+        pass_filenames: false
+
+  # ─── Rust — cargo deny ───────────────────────────────────────────────────
+      - id: cargo-deny
+        name: cargo deny
+        language: system
+        entry: cargo deny --manifest-path INFRA/kaya/Cargo.toml check advisories bans licenses sources
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+  # ─── Rust — rustsec audit ────────────────────────────────────────────────
+      - id: cargo-audit
+        name: rustsec audit
+        language: system
+        entry: cargo audit -q
+        types: [rust]
+        pass_filenames: false
+        stages: [pre-push]
+
+  # ─── SPDX license headers ────────────────────────────────────────────────
+      - id: spdx-check
+        name: SPDX license header check
+        language: script
+        entry: INFRA/scripts/spdx-check.sh
+        pass_filenames: true
+        types_or: [rust, java, typescript, javascript]
+
+  # ─── Prettier ────────────────────────────────────────────────────────────
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v4.0.0-alpha.8
+    hooks:
+      - id: prettier
+        name: prettier
+        types_or: [markdown, yaml, json, ts, tsx]
+        additional_dependencies:
+          - prettier@3.3.3
+
+  # ─── ShellCheck ──────────────────────────────────────────────────────────
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.10.0.1
+    hooks:
+      - id: shellcheck
+        types: [shell]
+
+  # ─── Hadolint (Dockerfile / Containerfile) ───────────────────────────────
+  - repo: https://github.com/hadolint/hadolint
+    rev: v2.12.0
+    hooks:
+      - id: hadolint
+        name: hadolint
+        entry: hadolint
+        language: system
+        files: (Dockerfile|Containerfile)(\..+)?$
+
+  # ─── yamllint ────────────────────────────────────────────────────────────
+  - repo: https://github.com/adrienverge/yamllint
+    rev: v1.35.1
+    hooks:
+      - id: yamllint
+        args: [--config-file=.yamllint.yml]

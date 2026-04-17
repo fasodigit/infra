@@ -1,0 +1,134 @@
+# =============================================================================
+# KAYA — Tenant E-SCHOOL (code tenant : eschool)
+# -----------------------------------------------------------------------------
+# RPO/RTO cibles (voir MATRICE-RPO-RTO-v3.1.md) :
+#   - Inscriptions / réinscriptions           : RPO ≤ 1 s      | RTO = 1 h
+#   - Dépôt notes / bulletins                 : RPO ≤ 1 s      | RTO = 1 h
+#   - Affectations / orientations             : RPO ≤ 1 s      | RTO = 1 h
+#   - Sessions                                : RPO ≤ 5 s      | RTO = 1 h
+#
+# Obligation légale BF : rétention dossiers scolaires 10 ans ; bulletins et
+# diplômes archivés permanent via Redpanda compact topic + archive froid.
+# Signataire métier : SG MENAPLN.
+# Entièrement classe B — pas de RPO=0 (vérité légale = bulletin signé PDF en
+# niveau 2/3, KAYA ne sert que de cache de saisie).
+# =============================================================================
+
+include: kaya-common.yaml
+
+tenant:
+  code: "eschool"
+  project: "e-school"
+  display_name: "FASO E-School"
+  criticality: "B"
+  legal_retention_years: 10
+
+persistence:
+  default_mode: "async-1s"
+  policies:
+    - name: "inscriptions"
+      match: "tenant-eschool:insc:*"
+      mode: "async-1s"
+    - name: "notes"
+      match: "tenant-eschool:notes:*"
+      mode: "async-1s"
+    - name: "bulletins"
+      match: "tenant-eschool:bull:*"
+      mode: "async-1s"
+    - name: "affectations"
+      match: "tenant-eschool:aff:*"
+      mode: "async-1s"
+    - name: "sessions"
+      match: "tenant-eschool:sess:*"
+      mode: "async-1s"
+  snapshot:
+    frequency: "10m"                  # RTO 1h → snapshot moins fréquent acceptable
+    retention_count: 144              # 24h glissantes
+    retention_days: 14
+  encryption:
+    backend: "luks2"
+    kek_vault_path: "transit/kaya/eschool/kek"
+    kek_rotation_period: "365d"
+    backup_kek_vault_path: "transit/kaya-backup/eschool/kek"
+
+acl:
+  users:
+    - username: "eschool_svc"
+      password_file: "/run/vault/secrets/kaya/eschool/password"
+      key_patterns:
+        - "~tenant-eschool:*"
+      allow_commands:
+        - "+@read"
+        - "+@write"
+        - "+eval"
+        - "+evalsha"
+        - "+bf.*"
+        - "+xadd"
+        - "+xreadgroup"
+        - "+xack"
+        - "+xpending"
+      deny_commands:
+        - "-keys"
+        - "-flushall"
+        - "-flushdb"
+        - "-config"
+        - "-debug"
+        - "-shutdown"
+      channels: "resetchannels"
+
+replication:
+  mode: "async"
+  replicas_count: 3
+  off_site_required: false
+  topology:
+    - id: "replica-ouaga-1"
+      zone: "ouaga-a"
+      off_site: false
+    - id: "replica-ouaga-2"
+      zone: "ouaga-b"
+      off_site: false
+    - id: "replica-ouaga-3"
+      zone: "ouaga-c"
+      off_site: false
+  lag_alert_threshold_ms: 1000
+
+# -----------------------------------------------------------------------------
+# Bloom filters — volumétrie annuelle : 500 000 élèves, FP 0.1 %
+# -----------------------------------------------------------------------------
+bloom_filters:
+  preallocate_on_boot: true
+  reserves:
+    - name: "bf:tenant-eschool:eleves:inscrits"
+      capacity: 500000
+      error_rate: 0.001
+      expansion: 2
+    - name: "bf:tenant-eschool:bulletins:publies"
+      capacity: 500000
+      error_rate: 0.001
+      expansion: 2
+    - name: "bf:tenant-eschool:ine:utilises"
+      capacity: 500000
+      error_rate: 0.0001              # unicité identifiant national élève
+      expansion: 2
+
+network:
+  resp3:
+    listen: "0.0.0.0:6380"
+  grpc:
+    listen: "0.0.0.0:6381"
+  tls:
+    enabled: true
+    cert_file: "/run/vault/secrets/kaya/eschool/tls/cert.pem"
+    key_file: "/run/vault/secrets/kaya/eschool/tls/key.pem"
+    ca_file: "/run/vault/secrets/kaya/eschool/tls/ca.pem"
+
+maxmemory: "4GB"
+maxmemory_policy: "allkeys-lru"
+
+observability:
+  metrics:
+    listen: "127.0.0.1:9121"
+    labels:
+      tenant: "eschool"
+      project: "e-school"
+      criticality: "B"

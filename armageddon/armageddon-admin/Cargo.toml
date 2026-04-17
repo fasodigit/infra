@@ -1,0 +1,29 @@
+[package]
+name = "armageddon-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+axum = { workspace = true }
+arc-swap = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+prometheus = { workspace = true }
+subtle = { workspace = true }
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+axum = { workspace = true }
+tower = { workspace = true }
+serde_yaml = { workspace = true }
+tempfile = "3"

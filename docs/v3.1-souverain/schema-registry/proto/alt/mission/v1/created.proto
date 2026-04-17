@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+// ALT-MISSION — a mission order is created (internal administration).
+// Topic: alt.mission.created.v1
+
+package faso.alt.mission.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/alt/mission/v1;missionv1";
+option java_package = "bf.faso.schemas.alt.mission.v1";
+option java_multiple_files = true;
+
+message MissionCreated {
+  // UUID of the mission.
+  string mission_id = 1;
+
+  // UUID of the tenant (ministry / directorate).
+  string tenant_id = 2;
+
+  // UUID of the requesting agent (opaque).
+  string requester_id = 3;
+
+  // UUID of the organizational unit that pays.
+  string cost_center_id = 4;
+
+  // Mission type: "NATIONAL", "INTERNATIONAL", "INTERNE_SERVICE".
+  string mission_type = 5;
+
+  // Destination city (admin granularity only — not PII).
+  string destination_city_code = 6;
+
+  // Destination country (ISO 3166-1 alpha-3), "BFA" by default.
+  string destination_country = 7;
+
+  // Estimated start date.
+  google.protobuf.Timestamp starts_at = 8;
+
+  // Estimated end date.
+  google.protobuf.Timestamp ends_at = 9;
+
+  // Estimated per-diem amount (CFA cents).
+  int64 estimated_amount_cents = 10;
+
+  // When the mission order was created.
+  google.protobuf.Timestamp created_at = 11;
+
+  // Idempotency key.
+  string idempotency_key = 12;
+
+  reserved 13 to 20;
+  reserved "nom_agent", "motif_detaille";
+}

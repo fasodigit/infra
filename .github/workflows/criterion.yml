@@ -1,0 +1,88 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Criterion benchmarks + bencher.dev regression tracking.
+
+name: Criterion Benchmarks
+
+on:
+  pull_request:
+    paths:
+      - 'INFRA/kaya/**'
+      - '.github/workflows/criterion.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'INFRA/kaya/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  criterion:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: INFRA/kaya
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: INFRA/kaya
+
+      - name: Install bencher CLI
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSfL \
+            https://bencher.dev/download/install-cli.sh | sh
+
+      - name: Run criterion (save baseline)
+        run: cargo bench -p kaya-bench -- --save-baseline pr-${{ github.event.number || 'main' }}
+
+      - name: Track with bencher.dev (PR)
+        if: github.event_name == 'pull_request'
+        env:
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+        run: |
+          bencher run \
+            --project kaya \
+            --token "$BENCHER_API_TOKEN" \
+            --branch "${{ github.head_ref }}" \
+            --branch-start-point "${{ github.base_ref }}" \
+            --branch-start-point-hash "${{ github.event.pull_request.base.sha }}" \
+            --testbed ubuntu-latest \
+            --adapter rust_criterion \
+            --err \
+            --github-actions "${{ secrets.GITHUB_TOKEN }}" \
+            "cargo bench -p kaya-bench"
+
+      - name: Track baseline (main)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          BENCHER_API_TOKEN: ${{ secrets.BENCHER_API_TOKEN }}
+        run: |
+          bencher run \
+            --project kaya \
+            --token "$BENCHER_API_TOKEN" \
+            --branch main \
+            --testbed ubuntu-latest \
+            --adapter rust_criterion \
+            "cargo bench -p kaya-bench"
+
+      - name: Upload HTML reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-report
+          path: INFRA/kaya/target/criterion
+          retention-days: 14

@@ -1,0 +1,28 @@
+[package]
+name = "armageddon-mesh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+bytes = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+spiffe = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+arc-swap = { workspace = true }
+parking_lot = { workspace = true }
+subtle = { workspace = true }
+x509-parser = "0.15"
+tokio-stream = "0.1"
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+rustls-pemfile = { workspace = true }
+ring = { workspace = true }

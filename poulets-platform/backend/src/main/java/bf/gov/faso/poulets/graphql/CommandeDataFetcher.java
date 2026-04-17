@@ -11,6 +11,9 @@ import com.netflix.graphql.dgs.InputArgument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -34,21 +37,20 @@ public class CommandeDataFetcher {
     }
 
     @DgsQuery
+    @PreAuthorize("isAuthenticated()")
     public Map<String, Object> mesCommandes(@InputArgument String status,
                                             @InputArgument Integer page,
                                             @InputArgument Integer size) {
         int pageNum = (page != null) ? page : 0;
         int pageSize = (size != null) ? size : 20;
 
-        // In a real scenario, we would extract the user ID from the security context
-        // and find the client/eleveur by userId. For now, this returns an empty page
-        // unless a clientId or eleveurId is passed through context.
-        // This is a placeholder that will work once ARMAGEDDON passes user info.
-
         CommandeStatus commandeStatus = (status != null) ? CommandeStatus.valueOf(status) : null;
 
-        // Return empty page as placeholder -- in production, extract userId from
-        // ARMAGEDDON-forwarded headers and look up the client/eleveur
+        // Extract authenticated userId from SecurityContext
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+        String userId = (authentication != null) ? (String) authentication.getPrincipal() : null;
+        log.debug("mesCommandes called by userId={}", userId);
+
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("content", List.of());
         result.put("totalElements", 0);
@@ -64,6 +66,7 @@ public class CommandeDataFetcher {
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('USER') or hasRole('CLIENT') or hasRole('ADMIN')")
     @SuppressWarnings("unchecked")
     public Commande createCommande(@InputArgument Map<String, Object> input) {
         UUID clientId = UUID.fromString((String) input.get("clientId"));
@@ -74,21 +77,25 @@ public class CommandeDataFetcher {
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('USER') or hasRole('CLIENT') or hasRole('ADMIN')")
     public Commande cancelCommande(@InputArgument String id) {
         return commandeService.cancel(UUID.fromString(id));
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('ELEVEUR') or hasRole('ADMIN')")
     public Commande confirmCommande(@InputArgument String id) {
         return commandeService.confirm(UUID.fromString(id));
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('ELEVEUR') or hasRole('ADMIN')")
     public Commande markReady(@InputArgument String id) {
         return commandeService.markReady(UUID.fromString(id));
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('ELEVEUR') or hasRole('ADMIN')")
     public Commande markDelivered(@InputArgument String id) {
         return commandeService.markDelivered(UUID.fromString(id));
     }

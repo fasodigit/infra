@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Chaos Mesh Schedule — DNS Failure poulets-api
+# sovereignty=true
+#
+# Objectif : forcer des réponses DNS en erreur pour poulets-api.
+# Vérifie :
+#   - Fallback sur le cache DNS local (TTL configuré)
+#   - Retries automatiques (Resilience4j / Spring Retry)
+#   - Pas de 5xx propagés aux clients pendant la panne
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: dns-failure-poulets-api
+  namespace: faso
+  labels:
+    app: poulets-api
+    chaos-type: dns-failure
+    sovereignty: "true"
+    team: faso-sre
+  annotations:
+    description: "Erreur DNS sur poulets-api. Teste fallback DNS cache et retry policy."
+spec:
+  schedule: "0 4 * * 4"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: NetworkChaos
+  networkChaos:
+    action: dns
+    mode: all
+    selector:
+      namespaces:
+        - faso
+      labelSelectors:
+        app: poulets-api
+    device: eth0
+    duration: "60s"
+    dnsConfig:
+      patterns:
+        - "*.faso.svc.cluster.local"
+      dnsType: error

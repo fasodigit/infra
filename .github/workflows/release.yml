@@ -1,0 +1,214 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# FASO DIGITALISATION — Release pipeline
+# Triggered on tag v* — cross-compiles KAYA + ARMAGEDDON, attaches SBOM + SHA256
+
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+  id-token: write
+  packages: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ── Cross-compile binaries ────────────────────────────────────────────────
+  build-binaries:
+    name: build · ${{ matrix.binary }} · ${{ matrix.target }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # KAYA
+          - binary: kaya
+            workspace: kaya
+            target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            cross: true
+          - binary: kaya
+            workspace: kaya
+            target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            cross: true
+          - binary: kaya
+            workspace: kaya
+            target: x86_64-apple-darwin
+            runner: macos-latest
+            cross: false
+          - binary: kaya
+            workspace: kaya
+            target: aarch64-apple-darwin
+            runner: macos-latest
+            cross: false
+          # ARMAGEDDON
+          - binary: armageddon
+            workspace: armageddon
+            target: x86_64-unknown-linux-musl
+            runner: ubuntu-latest
+            cross: true
+          - binary: armageddon
+            workspace: armageddon
+            target: aarch64-unknown-linux-musl
+            runner: ubuntu-latest
+            cross: true
+          - binary: armageddon
+            workspace: armageddon
+            target: x86_64-apple-darwin
+            runner: macos-latest
+            cross: false
+          - binary: armageddon
+            workspace: armageddon
+            target: aarch64-apple-darwin
+            runner: macos-latest
+            cross: false
+
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.workspace }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo-release-${{ matrix.target }}
+          workspaces: INFRA/${{ matrix.workspace }}
+
+      # Cross (Linux cross-compilation via Docker)
+      - name: Install cross
+        if: matrix.cross == true
+        run: cargo install cross --locked
+
+      - name: Build (native)
+        if: matrix.cross == false
+        run: |
+          cargo build --workspace --release --target ${{ matrix.target }}
+
+      - name: Build (cross)
+        if: matrix.cross == true
+        run: |
+          cross build --workspace --release --target ${{ matrix.target }}
+
+      - name: Rename binary
+        run: |
+          BIN_PATH="target/${{ matrix.target }}/release/${{ matrix.binary }}"
+          ARTIFACT="${{ matrix.binary }}-${{ github.ref_name }}-${{ matrix.target }}"
+          cp "${BIN_PATH}" "${ARTIFACT}"
+          echo "ARTIFACT=${ARTIFACT}" >> "$GITHUB_ENV"
+
+      - name: Compute SHA256
+        run: |
+          sha256sum "${{ env.ARTIFACT }}" > "${{ env.ARTIFACT }}.sha256"
+
+      - name: Upload binary + checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ARTIFACT }}
+          path: |
+            INFRA/${{ matrix.workspace }}/${{ env.ARTIFACT }}
+            INFRA/${{ matrix.workspace }}/${{ env.ARTIFACT }}.sha256
+          retention-days: 7
+
+  # ── SBOM for each workspace ───────────────────────────────────────────────
+  sbom-release:
+    name: sbom · ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [kaya, armageddon]
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM CycloneDX
+        uses: anchore/sbom-action@v0
+        with:
+          path: INFRA/${{ matrix.workspace }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json
+          artifact-name: sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json
+
+      - name: Compute SBOM SHA256
+        run: |
+          sha256sum "sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json" \
+            > "sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json.sha256"
+
+      - name: Upload SBOM + checksum artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-release-${{ matrix.workspace }}-${{ github.ref_name }}
+          path: |
+            sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json
+            sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json.sha256
+          retention-days: 90
+
+  # ── Publish GitHub Release ────────────────────────────────────────────────
+  github-release:
+    name: GitHub Release ${{ github.ref_name }}
+    needs: [build-binaries, sbom-release]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets/
+          merge-multiple: true
+
+      - name: List release assets
+        run: ls -lhR release-assets/
+
+      - name: Generate combined checksums file
+        run: |
+          find release-assets/ -name "*.sha256" -exec cat {} \; | sort > release-assets/SHA256SUMS.txt
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "FASO DIGITALISATION ${{ github.ref_name }}"
+          tag_name: ${{ github.ref_name }}
+          draft: false
+          prerelease: ${{ contains(github.ref_name, '-rc') || contains(github.ref_name, '-beta') || contains(github.ref_name, '-alpha') }}
+          generate_release_notes: true
+          files: |
+            release-assets/**
+          body: |
+            ## FASO DIGITALISATION ${{ github.ref_name }}
+
+            ### SPDX-License-Identifier: AGPL-3.0-only
+
+            ### Binaries
+            | Binary | Target | SHA256 |
+            |--------|--------|--------|
+            | KAYA | linux/x86_64, linux/aarch64, darwin/x86_64, darwin/aarch64 | see SHA256SUMS.txt |
+            | ARMAGEDDON | linux/x86_64, linux/aarch64, darwin/x86_64, darwin/aarch64 | see SHA256SUMS.txt |
+
+            ### SBOM
+            CycloneDX JSON SBOM files are included for KAYA and ARMAGEDDON.
+            Verify integrity with the accompanying `.sha256` files.
+
+            ```
+            sha256sum -c SHA256SUMS.txt
+            ```

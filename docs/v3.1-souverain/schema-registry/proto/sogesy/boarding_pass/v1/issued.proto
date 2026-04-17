@@ -1,0 +1,52 @@
+syntax = "proto3";
+
+// SOGESY — a boarding pass is issued, chained to the previous one
+// with a hash for non-repudiation.
+// Topic: sogesy.boarding-pass.issued.v1
+
+package faso.sogesy.boarding_pass.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/sogesy/boarding_pass/v1;boardingpassv1";
+option java_package = "bf.faso.schemas.sogesy.boarding_pass.v1";
+option java_multiple_files = true;
+
+message BoardingPassIssued {
+  // UUID of the boarding pass.
+  string boarding_pass_id = 1;
+
+  // UUID of the tenant (operator).
+  string tenant_id = 2;
+
+  // UUID of the trip / departure.
+  string trip_id = 3;
+
+  // UUID of the passenger (opaque).
+  string passenger_id = 4;
+
+  // UUID of the issuing agent.
+  string issuer_id = 5;
+
+  // When the pass was issued.
+  google.protobuf.Timestamp issued_at = 6;
+
+  // Seat code assigned (functional, not PII).
+  string seat_code = 7;
+
+  // Departure gate code.
+  string gate_code = 8;
+
+  // HMAC-SHA256 of the canonical pass payload (signing key held by SOGESY).
+  bytes hmac_hash = 9;
+
+  // Hash of the previous pass for the same trip (hash chain).
+  // Empty bytes for the very first pass of the trip.
+  bytes prev_hash = 10;
+
+  // Idempotency key.
+  string idempotency_key = 11;
+
+  reserved 12 to 20;
+  reserved "nom_passager", "numero_piece_identite", "date_naissance";
+}

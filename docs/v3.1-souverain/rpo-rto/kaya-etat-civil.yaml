@@ -1,0 +1,142 @@
+# =============================================================================
+# KAYA — Tenant ÉTAT-CIVIL (code tenant : ec)
+# -----------------------------------------------------------------------------
+# RPO/RTO cibles (voir MATRICE-RPO-RTO-v3.1.md) :
+#   - Actes signés (naissance/mariage/décès)  : RPO = 0 s      | RTO = 15 min
+#   - Demandes en cours (brouillons citoyens) : RPO ≤ 1 s      | RTO = 15 min
+#   - Sessions / rate-limit                   : RPO ≤ 5 s      | RTO = 15 min
+#
+# Obligation légale BF : rétention 10 ans (Code des personnes et de la famille).
+# Signataire métier : DGMEC / Ministère Administration Territoriale.
+# =============================================================================
+
+include: kaya-common.yaml
+
+tenant:
+  code: "ec"
+  project: "etat-civil"
+  display_name: "FASO État Civil"
+  criticality: "A"          # classe A — signé / opposable
+  legal_retention_years: 10
+
+# -----------------------------------------------------------------------------
+# Persistance — mode sync (fsync always) pour les clés "actes signés"
+# -----------------------------------------------------------------------------
+# KAYA supporte un mode de persistance par préfixe de clé (policy-based).
+# Les actes signés (préfixe tenant-ec:acte:*) sont en sync, le reste en async-1s.
+persistence:
+  default_mode: "async-1s"            # fsync everysec par défaut
+  policies:
+    - name: "actes-signes"
+      match: "tenant-ec:acte:*"
+      mode: "sync"                    # fsync always
+      wal_group_commit_max_us: 200    # fenêtre de group-commit pour throughput
+    - name: "demandes-en-cours"
+      match: "tenant-ec:demande:*"
+      mode: "async-1s"
+    - name: "sessions"
+      match: "tenant-ec:sess:*"
+      mode: "async-1s"
+  snapshot:
+    frequency: "5m"                   # snapshot complet toutes les 5 minutes
+    retention_count: 288              # 24h glissantes
+    retention_days: 30                # 30 derniers jours conservés localement
+  encryption:
+    backend: "luks2"
+    kek_vault_path: "transit/kaya/ec/kek"
+    kek_rotation_period: "365d"
+    backup_kek_vault_path: "transit/kaya-backup/ec/kek"
+
+# -----------------------------------------------------------------------------
+# ACL — utilisateur dédié etat_civil_svc
+# -----------------------------------------------------------------------------
+acl:
+  users:
+    - username: "etat_civil_svc"
+      password_file: "/run/vault/secrets/kaya/ec/password"
+      key_patterns:
+        - "~tenant-ec:*"              # strictement son préfixe
+      allow_commands:
+        - "+@read"
+        - "+@write"
+        - "+eval"                     # autorisé au niveau protocole mais EVAL global denial en common
+        - "+evalsha"
+        - "+bf.*"                     # Bloom filters natifs KAYA
+        - "+xadd"
+        - "+xreadgroup"
+        - "+xack"
+        - "+xpending"
+      deny_commands:
+        - "-keys"
+        - "-flushall"
+        - "-flushdb"
+        - "-config"
+        - "-debug"
+        - "-shutdown"
+      channels: "resetchannels"       # pas de pub/sub croisé
+
+# -----------------------------------------------------------------------------
+# Réplication — 3 réplicas asynchrones, hors-site obligatoire (RPO=0)
+# -----------------------------------------------------------------------------
+replication:
+  mode: "async"
+  replicas_count: 3
+  off_site_required: true             # flux RPO=0 → au moins 1 réplica hors-site
+  topology:
+    - id: "replica-ouaga-1"
+      zone: "ouaga-a"
+      off_site: false
+    - id: "replica-ouaga-2"
+      zone: "ouaga-b"
+      off_site: false
+    - id: "replica-bobo-dlso"
+      zone: "bobo-dioulasso"
+      off_site: true                  # DR hors-site Bobo-Dioulasso
+  # Lag max toléré avant alerting (pour flux sync, 200 ms → investigation).
+  lag_alert_threshold_ms: 200
+
+# -----------------------------------------------------------------------------
+# Bloom filters — volumétrie annuelle : 100 000 actes, FP 0.1 %
+# -----------------------------------------------------------------------------
+bloom_filters:
+  preallocate_on_boot: true
+  reserves:
+    - name: "bf:tenant-ec:actes:signes"
+      capacity: 100000
+      error_rate: 0.001               # 0.1 %
+      expansion: 2
+    - name: "bf:tenant-ec:demandes:en-cours"
+      capacity: 50000
+      error_rate: 0.01
+      expansion: 2
+
+# -----------------------------------------------------------------------------
+# Réseau — overrides tenant
+# -----------------------------------------------------------------------------
+network:
+  resp3:
+    listen: "0.0.0.0:6380"
+  grpc:
+    listen: "0.0.0.0:6381"
+  tls:
+    enabled: true
+    cert_file: "/run/vault/secrets/kaya/ec/tls/cert.pem"
+    key_file: "/run/vault/secrets/kaya/ec/tls/key.pem"
+    ca_file: "/run/vault/secrets/kaya/ec/tls/ca.pem"
+
+# -----------------------------------------------------------------------------
+# Mémoire
+# -----------------------------------------------------------------------------
+maxmemory: "4GB"
+maxmemory_policy: "noeviction"        # jamais d'éviction sur classe A
+
+# -----------------------------------------------------------------------------
+# Observabilité — override labels Prometheus
+# -----------------------------------------------------------------------------
+observability:
+  metrics:
+    listen: "127.0.0.1:9121"
+    labels:
+      tenant: "ec"
+      project: "etat-civil"
+      criticality: "A"

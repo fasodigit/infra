@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// FASO-KALAN — a learning session is started by a learner.
+// Topic: kalan.session.started.v1
+
+package faso.kalan.session.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/kalan/session/v1;sessionv1";
+option java_package = "bf.faso.schemas.kalan.session.v1";
+option java_multiple_files = true;
+
+message SessionStarted {
+  // UUID of the session.
+  string session_id = 1;
+
+  // UUID of the tenant (learning program / operator).
+  string tenant_id = 2;
+
+  // UUID of the learner (opaque).
+  string learner_id = 3;
+
+  // UUID of the course.
+  string course_id = 4;
+
+  // UUID of the lesson started.
+  string lesson_id = 5;
+
+  // When the session started (client clock reported by the app).
+  google.protobuf.Timestamp started_at = 6;
+
+  // Device type: "MOBILE_ANDROID", "MOBILE_IOS", "WEB", "FEATURE_PHONE".
+  string device_type = 7;
+
+  // Learner language: "FR", "MOORE", "DIOULA", "FULFULDE".
+  string language_code = 8;
+
+  // Idempotency key.
+  string idempotency_key = 9;
+
+  reserved 10 to 15;
+  reserved "nom_apprenant";
+}

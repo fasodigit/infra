@@ -22,7 +22,9 @@ use armageddon_common::decision::Action;
 use armageddon_common::types::{AuthMode, ConnectionInfo, HttpRequest, HttpVersion, Protocol};
 use armageddon_forge::cors::CorsHandler;
 use armageddon_forge::jwt::JwtValidator;
+use armageddon_forge::kafka_producer::RedpandaProducer;
 use armageddon_forge::router::Router;
+use armageddon_forge::webhooks::GithubWebhookHandler;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
@@ -58,6 +60,8 @@ struct GatewayState {
     forge: armageddon_forge::ForgeServer,
     veil: armageddon_veil::Veil,
     auth_mode: AuthMode,
+    /// GitHub webhook handler (bypasses Pentagon pipeline).
+    github_webhook: Option<Arc<GithubWebhookHandler>>,
 }
 
 #[tokio::main]
@@ -116,6 +120,9 @@ async fn main() -> anyhow::Result<()> {
     // Start health checks
     let _health_handles = forge.start_health_checks();
 
+    // Build GitHub webhook handler (optional — disabled if secret env is absent or feature off).
+    let github_webhook = build_github_webhook_handler(&config).await;
+
     // Build shared state
     let auth_mode = config.gateway.auth_mode.clone();
     let state = Arc::new(GatewayState {
@@ -123,6 +130,7 @@ async fn main() -> anyhow::Result<()> {
         forge,
         veil,
         auth_mode,
+        github_webhook,
     });
 
     // Determine listen address from first listener config
@@ -188,6 +196,168 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Build the GitHub webhook handler from config.
+///
+/// Returns `None` if:
+/// - `webhooks.github.enabled = false`
+/// - Secret env var is absent or empty
+/// - KAYA client construction fails
+async fn build_github_webhook_handler(
+    config: &armageddon_config::ArmageddonConfig,
+) -> Option<Arc<GithubWebhookHandler>> {
+    if !config.gateway.webhooks.github.enabled {
+        tracing::info!("GitHub webhook handler disabled in configuration");
+        return None;
+    }
+
+    let wh_cfg = &config.gateway.webhooks.github;
+    let secret = match std::env::var(&wh_cfg.secret_env) {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            tracing::warn!(
+                "GitHub webhook handler disabled: env var '{}' not set or empty",
+                wh_cfg.secret_env
+            );
+            return None;
+        }
+    };
+
+    // Build Redpanda producer (logging fallback — rdkafka requires native lib).
+    // To use the real rdkafka backend, enable feature `rdkafka-backend` on armageddon-forge.
+    let producer = Arc::new(RedpandaProducer::new_logging());
+    tracing::info!(
+        brokers = %wh_cfg.kafka_brokers.join(","),
+        topic = %wh_cfg.topic,
+        "Redpanda producer initialized (logging backend)"
+    );
+
+    // Build KAYA redis::Client
+    let kaya_url = format!(
+        "redis://{}:{}/{}",
+        config.kaya.host,
+        config.kaya.port,
+        config.kaya.db,
+    );
+
+    let kaya_client = match redis::Client::open(kaya_url.as_str()) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!(
+                "GitHub webhook handler disabled: KAYA client build failed: {}",
+                e
+            );
+            return None;
+        }
+    };
+
+    let handler = GithubWebhookHandler::new(
+        secret.into_bytes(),
+        producer,
+        kaya_client,
+        wh_cfg.topic.clone(),
+        wh_cfg.rate_limit_per_ip_per_min,
+    );
+
+    tracing::info!(
+        topic = %wh_cfg.topic,
+        "GitHub webhook handler enabled"
+    );
+
+    Some(Arc::new(handler))
+}
+
+/// Dedicated handler for `POST /webhooks/github`.
+///
+/// This bypasses the normal Pentagon pipeline entirely; the webhook has its own
+/// HMAC validation, rate-limiting, deduplication, and Redpanda publication flow.
+async fn handle_github_webhook(
+    state: &Arc<GatewayState>,
+    headers: &HashMap<String, String>,
+    body_bytes: &Bytes,
+    peer_addr: &SocketAddr,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    let handler = match &state.github_webhook {
+        Some(h) => h.clone(),
+        None => {
+            tracing::warn!("GitHub webhook request received but handler is disabled");
+            return Ok(Response::builder()
+                .status(503)
+                .header("content-type", "application/json")
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "error": "webhook_disabled",
+                        "gateway": "ARMAGEDDON"
+                    })
+                    .to_string(),
+                )))
+                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Service Unavailable")))));
+        }
+    };
+
+    let http_req = HttpRequest {
+        method: "POST".to_string(),
+        uri: "/webhooks/github".to_string(),
+        path: "/webhooks/github".to_string(),
+        query: None,
+        headers: headers.clone(),
+        body: if body_bytes.is_empty() {
+            None
+        } else {
+            Some(body_bytes.to_vec())
+        },
+        version: HttpVersion::Http11,
+    };
+
+    let source_ip = peer_addr.ip().to_string();
+
+    match handler.handle(&http_req, &source_ip).await {
+        Ok(wh_resp) => {
+            tracing::info!(
+                source_ip = %source_ip,
+                status = wh_resp.status,
+                event_type = %headers.get("x-github-event").map(|s| s.as_str()).unwrap_or("unknown"),
+                delivery_id = %headers.get("x-github-delivery").map(|s| s.as_str()).unwrap_or("unknown"),
+                "GitHub webhook handled"
+            );
+            Ok(Response::builder()
+                .status(wh_resp.status)
+                .header("content-type", "application/json")
+                .body(Full::new(Bytes::from(wh_resp.body)))
+                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("OK")))))
+        }
+        Err(wh_err) => {
+            use armageddon_forge::webhooks::WebhookError;
+            tracing::warn!(
+                source_ip = %source_ip,
+                error = %wh_err,
+                "GitHub webhook error"
+            );
+            let (status, error_key) = match &wh_err {
+                WebhookError::BodyTooLarge { .. } => (413u16, "payload_too_large"),
+                WebhookError::MissingHeader(_) => (400, "missing_header"),
+                WebhookError::InvalidSignature => (401, "invalid_signature"),
+                WebhookError::UnsupportedEvent(_) => (400, "unsupported_event"),
+                WebhookError::InvalidJson(_) => (400, "invalid_json"),
+                WebhookError::DuplicateDelivery(_) => (200, "duplicate"),
+                WebhookError::RateLimitExceeded { .. } => (429, "rate_limit_exceeded"),
+                WebhookError::Kaya(_) | WebhookError::Redpanda(_) => (500, "internal_error"),
+            };
+            Ok(Response::builder()
+                .status(status)
+                .header("content-type", "application/json")
+                .body(Full::new(Bytes::from(
+                    serde_json::json!({
+                        "error": error_key,
+                        "message": wh_err.to_string(),
+                        "gateway": "ARMAGEDDON"
+                    })
+                    .to_string(),
+                )))
+                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Error")))))
+        }
+    }
+}
+
 /// Handle a single HTTP request through the full ARMAGEDDON pipeline.
 async fn handle_request(
     req: Request<Incoming>,
@@ -244,6 +414,11 @@ async fn handle_request(
             .status(403)
             .body(Full::new(Bytes::from("CORS origin not allowed")))
             .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Forbidden")))));
+    }
+
+    // --- GitHub webhook fast path (bypasses Pentagon pipeline) ---
+    if method == "POST" && path == "/webhooks/github" {
+        return handle_github_webhook(&state, &headers, &body_bytes, &peer_addr).await;
     }
 
     // Build RequestContext for the Pentagon pipeline

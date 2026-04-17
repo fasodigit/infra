@@ -1,0 +1,219 @@
+// =============================================================================
+// FASO DIGITALISATION — Home / Landing components refresh
+// =============================================================================
+
+@use "mixins" as *;
+
+// ---------------------------------------------------------------- HERO
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: var(--faso-gradient-hero);
+  padding: var(--faso-space-16) 0 var(--faso-space-24);
+  border-bottom: 1px solid var(--faso-border);
+
+  @include bp-md { padding: var(--faso-space-24) 0 var(--faso-space-24); }
+
+  // Thin flag stripe on top
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 4px;
+    background: linear-gradient(
+      90deg,
+      var(--faso-flag-red) 0 33.333%,
+      var(--faso-flag-yellow) 33.333% 66.666%,
+      var(--faso-flag-green) 66.666% 100%
+    );
+  }
+
+  .container {
+    @include container;
+    position: relative;
+    text-align: center;
+
+    @include bp-md { text-align: left; max-width: var(--faso-container-xl); }
+  }
+
+  h1 {
+    @include text-5xl;
+    color: var(--faso-primary-700);
+    margin: 0 0 var(--faso-space-4);
+    max-width: 22ch;
+    margin-inline: auto;
+
+    @include bp-md { margin-inline: 0; }
+  }
+
+  p {
+    @include text-lg;
+    color: var(--faso-text-muted);
+    margin: 0 0 var(--faso-space-8);
+    max-width: 60ch;
+    margin-inline: auto;
+
+    @include bp-md { margin-inline: 0; }
+  }
+
+  .hero-actions {
+    display: flex;
+    flex-direction: column;
+    gap: var(--faso-space-3);
+    align-items: stretch;
+
+    @include bp-sm {
+      flex-direction: row;
+      align-items: center;
+      justify-content: center;
+    }
+    @include bp-md { justify-content: flex-start; }
+  }
+
+  .hero-btn {
+    min-height: 48px;
+    padding-inline: var(--faso-space-6);
+    font-weight: var(--faso-weight-semibold);
+
+    mat-icon { margin-right: var(--faso-space-2); }
+  }
+
+  .hero-btn-outline {
+    border-width: 1.5px !important;
+  }
+}
+
+// ---------------------------------------------------------------- FEATURES
+
+.features {
+  @include container;
+  padding-block: var(--faso-space-16);
+
+  h2 {
+    @include text-3xl;
+    text-align: center;
+    margin: 0 0 var(--faso-space-10);
+    color: var(--faso-text);
+  }
+
+  .feature-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: var(--faso-space-4);
+
+    @include bp-md { grid-template-columns: repeat(3, 1fr); gap: var(--faso-space-6); }
+  }
+
+  .feature-card {
+    background: var(--faso-surface);
+    border: 1px solid var(--faso-border);
+    border-radius: var(--faso-radius-xl);
+    padding: var(--faso-space-8) var(--faso-space-6);
+    text-align: center;
+    transition: transform var(--faso-duration-normal) var(--faso-ease-emphasized),
+                box-shadow var(--faso-duration-normal) var(--faso-ease-emphasized),
+                border-color var(--faso-duration-normal) var(--faso-ease-emphasized);
+
+    &:hover {
+      transform: translateY(-4px);
+      box-shadow: var(--faso-shadow-lg);
+      border-color: var(--faso-primary-300);
+    }
+
+    @include reduce-motion { &:hover { transform: none; } }
+
+    .feature-icon {
+      width: 64px;
+      height: 64px;
+      font-size: 64px;
+      padding: var(--faso-space-3);
+      background: var(--faso-primary-50);
+      color: var(--faso-primary-600);
+      border-radius: var(--faso-radius-2xl);
+      margin: 0 auto var(--faso-space-4);
+      display: grid;
+      place-items: center;
+    }
+
+    h3 {
+      @include text-xl;
+      margin: 0 0 var(--faso-space-2);
+      color: var(--faso-text);
+    }
+
+    p {
+      @include text-sm;
+      color: var(--faso-text-muted);
+      margin: 0;
+      line-height: var(--faso-leading-relaxed);
+    }
+  }
+}
+
+// ---------------------------------------------------------------- AVAILABLE POULETS section
+
+.available-poulets {
+  @include container;
+  padding-block: var(--faso-space-12);
+
+  h2 {
+    @include text-2xl;
+    margin: 0 0 var(--faso-space-2);
+  }
+  .section-subtitle {
+    @include text-sm;
+    color: var(--faso-text-muted);
+    margin: 0 0 var(--faso-space-6);
+  }
+
+  .poulet-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: var(--faso-space-4);
+  }
+}
+
+// ---------------------------------------------------------------- poulet card
+
+.poulet-card {
+  background: var(--faso-surface);
+  border: 1px solid var(--faso-border);
+  border-radius: var(--faso-radius-lg);
+  overflow: hidden;
+  transition: transform var(--faso-duration-fast) var(--faso-ease-standard),
+              box-shadow var(--faso-duration-fast) var(--faso-ease-standard);
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--faso-shadow-md);
+  }
+  @include reduce-motion { &:hover { transform: none; } }
+
+  &__media {
+    aspect-ratio: 4 / 3;
+    width: 100%;
+    background: var(--faso-primary-50);
+    display: grid;
+    place-items: center;
+    color: var(--faso-primary-500);
+
+    mat-icon {
+      font-size: 64px;
+      width: 64px;
+      height: 64px;
+    }
+  }
+
+  &__body { padding: var(--faso-space-4); display: flex; flex-direction: column; gap: var(--faso-space-2); }
+
+  &__title { @include text-lg; margin: 0; color: var(--faso-text); font-weight: 600; }
+
+  &__meta { display: flex; justify-content: space-between; align-items: center; }
+
+  &__price {
+    @include text-lg;
+    color: var(--faso-primary-700);
+    font-weight: 700;
+  }
+}

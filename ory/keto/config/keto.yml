@@ -51,4 +51,4 @@ limit:
 log:
   level: debug
   format: json
-  leak_sensitive_values: true    # DEV only - NEVER in production
+  leak_sensitive_values: false

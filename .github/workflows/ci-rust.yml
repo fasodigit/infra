@@ -1,0 +1,213 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# FASO DIGITALISATION — Rust CI (fmt / clippy / test / audit / coverage / sbom)
+# Runs on 3 Rust workspaces: kaya, armageddon, xds-controller
+
+name: CI Rust
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  # ── fmt ──────────────────────────────────────────────────────────────────────
+  fmt:
+    name: fmt · ${{ matrix.workspace }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        workspace: [kaya, armageddon, xds-controller]
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + rustfmt
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo
+          workspaces: INFRA/${{ matrix.workspace }}
+
+      - name: cargo fmt --all --check
+        run: cargo fmt --all --check
+
+  # ── clippy ───────────────────────────────────────────────────────────────────
+  clippy:
+    name: clippy · ${{ matrix.workspace }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        workspace: [kaya, armageddon, xds-controller]
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + clippy
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo
+          workspaces: INFRA/${{ matrix.workspace }}
+
+      - name: cargo clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+
+  # ── test ─────────────────────────────────────────────────────────────────────
+  test:
+    name: test · ${{ matrix.workspace }} · ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest]
+        workspace: [kaya, armageddon, xds-controller]
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo
+          workspaces: INFRA/${{ matrix.workspace }}
+
+      - name: Install cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-nextest
+
+      - name: cargo nextest run
+        run: cargo nextest run --workspace --all-features
+
+  # ── audit (ubuntu-latest only) ───────────────────────────────────────────────
+  audit:
+    name: audit · ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [kaya, armageddon, xds-controller]
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo
+          workspaces: INFRA/${{ matrix.workspace }}
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: cargo audit --deny warnings
+        run: cargo audit --deny warnings
+
+  # ── coverage (ubuntu-latest only) ────────────────────────────────────────────
+  coverage:
+    name: coverage · ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [kaya, armageddon, xds-controller]
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust stable + llvm-tools
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      - name: Rust cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ runner.os }}-cargo
+          workspaces: INFRA/${{ matrix.workspace }}
+
+      - name: Install cargo-llvm-cov & cargo-nextest
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov,cargo-nextest
+
+      - name: Generate LCOV coverage
+        run: cargo llvm-cov --workspace --all-features --lcov --output-path coverage.lcov
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: INFRA/${{ matrix.workspace }}/coverage.lcov
+          flags: ${{ matrix.workspace }}
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ── sbom (ubuntu-latest only) ────────────────────────────────────────────────
+  sbom:
+    name: sbom · ${{ matrix.workspace }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+      id-token: write
+    strategy:
+      fail-fast: false
+      matrix:
+        workspace: [kaya, armageddon, xds-controller]
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.workspace }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          path: INFRA/${{ matrix.workspace }}
+          format: cyclonedx-json
+          output-file: sbom-${{ matrix.workspace }}.cdx.json
+          artifact-name: sbom-${{ matrix.workspace }}-${{ github.sha }}.cdx.json
+
+      - name: Upload SBOM artifact (90 days)
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.workspace }}-${{ github.sha }}
+          path: INFRA/${{ matrix.workspace }}/sbom-${{ matrix.workspace }}.cdx.json
+          retention-days: 90

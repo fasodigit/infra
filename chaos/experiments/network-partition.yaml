@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Chaos Mesh Schedule — Network Partition KAYA ↔ ARMAGEDDON (nightly 03h UTC)
+# sovereignty=true
+#
+# Objectif : partitionner KAYA d'ARMAGEDDON pendant 30s.
+# Vérifie que le circuit breaker Resilience4j d'ARMAGEDDON s'ouvre
+# et que les retries reprennent après rétablissement du réseau.
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: network-partition-kaya-armageddon
+  namespace: faso
+  labels:
+    app: armageddon
+    chaos-type: network-partition
+    sovereignty: "true"
+    team: faso-sre
+  annotations:
+    description: "Partition réseau KAYA ↔ ARMAGEDDON 30s. Valide circuit breaker + retry ARMAGEDDON."
+spec:
+  schedule: "0 3 * * *"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: NetworkChaos
+  networkChaos:
+    action: partition
+    mode: all
+    selector:
+      namespaces:
+        - faso
+      labelSelectors:
+        app: kaya
+    direction: both
+    target:
+      mode: all
+      selector:
+        namespaces:
+          - faso
+        labelSelectors:
+          app: armageddon
+    duration: "30s"

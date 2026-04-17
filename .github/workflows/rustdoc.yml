@@ -1,0 +1,99 @@
+name: rustdoc
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "INFRA/kaya/**"
+      - "INFRA/armageddon/**"
+
+permissions:
+  contents: write
+
+jobs:
+  build-docs:
+    name: Build Rustdoc
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            INFRA/kaya -> target
+            INFRA/armageddon -> target
+
+      - name: Build docs — kaya
+        working-directory: INFRA/kaya
+        run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "--cfg docsrs"
+
+      - name: Build docs — armageddon
+        working-directory: INFRA/armageddon
+        run: cargo doc --workspace --no-deps --all-features
+        env:
+          RUSTDOCFLAGS: "--cfg docsrs"
+
+      - name: Generate root index.html
+        run: |
+          mkdir -p gh-pages
+          cp -r INFRA/kaya/target/doc gh-pages/kaya
+          cp -r INFRA/armageddon/target/doc gh-pages/armageddon
+          cat > gh-pages/index.html <<'EOF'
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>FASO DIGITALISATION — API Docs</title>
+            <style>
+              body { font-family: system-ui, sans-serif; max-width: 800px; margin: 4rem auto; padding: 0 1rem; }
+              h1 { border-bottom: 2px solid #333; padding-bottom: 0.5rem; }
+              ul { list-style: none; padding: 0; }
+              li { margin: 1rem 0; }
+              a { font-size: 1.1rem; font-weight: 600; color: #2563eb; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              p.desc { margin: 0.2rem 0 0 0; color: #555; font-size: 0.9rem; }
+            </style>
+          </head>
+          <body>
+            <h1>FASO DIGITALISATION — Documentation</h1>
+            <h2>Rustdoc</h2>
+            <ul>
+              <li>
+                <a href="kaya/kaya_server/index.html">KAYA — Sovereign In-Memory DB</a>
+                <p class="desc">All kaya-* crates (store, protocol, network, pubsub, cluster, scripting, …)</p>
+              </li>
+              <li>
+                <a href="armageddon/armageddon/index.html">ARMAGEDDON — API Gateway</a>
+                <p class="desc">All armageddon-* crates (common, forge, sentinel, nexus, veil, …)</p>
+              </li>
+            </ul>
+            <h2>OpenAPI / Redoc</h2>
+            <ul>
+              <li><a href="openapi/auth-ms/index.html">auth-ms</a></li>
+              <li><a href="openapi/poulets-api/index.html">poulets-api</a></li>
+            </ul>
+            <h2>External Links</h2>
+            <ul>
+              <li><a href="https://buf.build/faso-digitalisation" target="_blank">Buf Schema Registry</a></li>
+              <li><a href="https://grafana.fasodigit.io" target="_blank">Grafana Dashboards</a></li>
+            </ul>
+          </body>
+          </html>
+          EOF
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages
+          destination_dir: .
+          keep_files: true

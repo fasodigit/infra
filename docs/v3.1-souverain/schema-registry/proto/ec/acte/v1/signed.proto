@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+// ETAT-CIVIL — the officier d'etat civil cryptographically signs the
+// final act. Topic: ec.acte.signed.v1
+
+package faso.ec.acte.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/ec/acte/v1;actev1";
+option java_package = "bf.faso.schemas.ec.acte.v1";
+option java_multiple_files = true;
+
+message ActeSigned {
+  // UUID of the acte (new aggregate produced from the demande).
+  string acte_id = 1;
+
+  // UUID of the parent demande.
+  string demande_id = 2;
+
+  // UUID of the tenant.
+  string tenant_id = 3;
+
+  // When the signature was produced.
+  google.protobuf.Timestamp signed_at = 4;
+
+  // UUID of the signing officier (opaque).
+  string signer_id = 5;
+
+  // Signature algorithm: "ED25519", "RSA-PSS-SHA256".
+  string signature_algorithm = 6;
+
+  // Detached digital signature of the act canonical payload.
+  bytes signature = 7;
+
+  // SHA-256 hash of the signed payload (for index / proof of integrity).
+  bytes payload_hash = 8;
+
+  // Fingerprint of the signer certificate (for revocation checks).
+  bytes signer_cert_fingerprint = 9;
+
+  // Idempotency key.
+  string idempotency_key = 10;
+
+  reserved 11 to 20;
+  reserved "nom_officier", "nom_demandeur";
+}

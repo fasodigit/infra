@@ -1,0 +1,45 @@
+syntax = "proto3";
+
+// HOSPITAL — a patient admission is registered.
+// Topic: hosp.admission.registered.v1
+// NO medical data and NO patient name in the payload.
+
+package faso.hosp.admission.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/hosp/admission/v1;admissionv1";
+option java_package = "bf.faso.schemas.hosp.admission.v1";
+option java_multiple_files = true;
+
+message AdmissionRegistered {
+  // UUID of the admission (aggregate root).
+  string admission_id = 1;
+
+  // UUID of the tenant (hospital / CHU / CMA).
+  string tenant_id = 2;
+
+  // When the admission was registered.
+  google.protobuf.Timestamp registered_at = 3;
+
+  // UUID of the patient (opaque; demographics live in Yugabyte encrypted).
+  string patient_id = 4;
+
+  // UUID of the registering staff member.
+  string registrar_id = 5;
+
+  // Service code: "URGENCES", "MATERNITE", "CHIRURGIE_GEN"...
+  string service_code = 6;
+
+  // Admission type: "EMERGENCY", "SCHEDULED", "TRANSFER".
+  string admission_type = 7;
+
+  // Triage priority: "P1", "P2", "P3", "P4" (no clinical content).
+  string triage_level = 8;
+
+  // Idempotency key.
+  string idempotency_key = 9;
+
+  reserved 10 to 20;
+  reserved "nom_patient", "diagnostic", "symptomes", "adresse";
+}

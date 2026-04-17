@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <title>[ÉTAT CIVIL] Mise à jour — {{repo_full_name}}</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; padding:0; }
+    .container { max-width:680px; margin:32px auto; background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); overflow:hidden; }
+    .header { background:#37474f; color:#fff; padding:24px 32px; }
+    .header h1 { margin:0; font-size:20px; }
+    .badge { background:#eceff1; color:#37474f; border-radius:4px; padding:2px 8px; font-size:12px; font-weight:600; }
+    .body { padding:24px 32px; }
+    .important-notice { background:#fff3e0; border-left:4px solid #ff8f00; padding:12px 16px; margin:16px 0; font-size:13px; color:#e65100; border-radius:0 4px 4px 0; }
+    .commit-list { border-left:3px solid #37474f; padding-left:16px; margin:16px 0; }
+    .commit-item { margin-bottom:10px; }
+    .commit-sha { font-family:monospace; font-size:12px; color:#37474f; }
+    .btn { background:#37474f; color:#fff; padding:10px 28px; border-radius:4px; text-decoration:none; font-size:14px; display:inline-block; margin-top:16px; }
+    .footer { background:#f5f5f5; padding:14px 32px; font-size:12px; color:#999; border-top:1px solid #eee; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>📋 Mise à jour Système État Civil</h1>
+    <p style="margin:4px 0 0;font-size:13px;opacity:.8">Actes administratifs · FASO DIGITALISATION</p>
+  </div>
+  <div class="body">
+    <div class="important-notice">
+      ⚠ Ce dépôt gère des actes administratifs sensibles. Toute modification impacte les données citoyennes.
+      Veuillez vérifier la conformité réglementaire avant déploiement.
+    </div>
+    <p style="font-size:13px;color:#555;">
+      <strong>Dépôt :</strong> <a href="{{repo_url}}" style="color:#37474f">{{repo_full_name}}</a> &nbsp;|&nbsp;
+      <strong>Branche :</strong> <span class="badge">{{branch}}</span> &nbsp;|&nbsp;
+      <strong>{{commit_count}} commit(s)</strong>
+    </p>
+    <div class="commit-list">
+      {{#each commits}}
+      <div class="commit-item">
+        <span class="commit-sha">{{shortSha this.id}}</span>
+        <span style="font-size:14px;color:#222;"> — {{truncate this.message len=100}}</span>
+        <div style="font-size:12px;color:#888;">par {{this.author.name}} &lt;{{this.author.email}}&gt;</div>
+      </div>
+      {{/each}}
+    </div>
+    <a href="{{compare_url}}" class="btn">Examiner les changements</a>
+  </div>
+  <div class="footer">FASO DIGITALISATION — notifier-ms · {{rendered_at}}</div>
+</div>
+</body>
+</html>

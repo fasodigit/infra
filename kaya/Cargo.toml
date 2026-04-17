@@ -18,6 +18,12 @@ members = [
     "src/server",
     "src/bench",
     "src/sdk",
+    "src/pubsub",
+    "src/json",
+    "src/vector",
+    "src/timeseries",
+    "src/fulltext",
+    "src/tiered",
 ]
 
 [workspace.package]
@@ -80,6 +86,18 @@ chrono = { version = "0.4", features = ["serde"] }
 rand = "0.8"
 smallvec = { version = "1", features = ["serde"] }
 arc-swap = "1"
+once_cell = "1"
+hmac = "0.12"
+sha2 = "0.10"
+subtle = "2"
+
+# Vague 3 external deps
+jsonpath-rust = "0.7"
+hnsw_rs = "0.3"
+tantivy = "0.22"
+fjall = "2"
+tokio-uring = "0.5"
+memchr = "2"
 
 # Internal crates
 kaya-store = { path = "src/store" }
@@ -97,8 +115,18 @@ kaya-security = { path = "src/security" }
 kaya-observe = { path = "src/observe" }
 kaya-cli = { path = "src/cli" }
 kaya-server = { path = "src/server" }
+kaya-pubsub = { path = "src/pubsub" }
 kaya-bench = { path = "src/bench" }
 kaya-sdk = { path = "src/sdk" }
+kaya-json = { path = "src/json" }
+kaya-vector = { path = "src/vector" }
+kaya-timeseries = { path = "src/timeseries" }
+kaya-fulltext = { path = "src/fulltext" }
+kaya-tiered = { path = "src/tiered" }
+
+[workspace.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
 
 [profile.release]
 lto = "thin"

@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+// HOSPITAL — a medical record is sealed (WORM: Write Once Read Many).
+// After this event, the dossier becomes immutable.
+// Topic: hosp.dossier.sealed.v1
+
+package faso.hosp.dossier.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/hosp/dossier/v1;dossierv1";
+option java_package = "bf.faso.schemas.hosp.dossier.v1";
+option java_multiple_files = true;
+
+message DossierSealed {
+  // UUID of the dossier.
+  string dossier_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // When the dossier was sealed.
+  google.protobuf.Timestamp sealed_at = 3;
+
+  // UUID of the patient (opaque).
+  string patient_id = 4;
+
+  // UUID of the staff who triggered the sealing.
+  string sealer_id = 5;
+
+  // Reason code: "DISCHARGE", "TRANSFER_OUT", "DEATH_CERTIFIED", "ARCHIVE".
+  string seal_reason = 6;
+
+  // SHA-256 Merkle root of all documents composing the dossier.
+  bytes merkle_root = 7;
+
+  // Total number of documents sealed.
+  int32 document_count = 8;
+
+  // HMAC of the sealing, using the hospital signing key.
+  bytes seal_hmac = 9;
+
+  // Idempotency key.
+  string idempotency_key = 10;
+
+  reserved 11 to 20;
+}

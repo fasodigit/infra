@@ -1,0 +1,25 @@
+name: cargo-deny
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: ["**"]
+
+jobs:
+  deny:
+    name: Licenses / Bans / Advisories / Sources
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
+          arguments: --config deny.toml
+          # deny.toml is located at the workspace root (INFRA/deny.toml)

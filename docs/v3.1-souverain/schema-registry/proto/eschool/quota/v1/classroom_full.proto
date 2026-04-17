@@ -1,0 +1,38 @@
+syntax = "proto3";
+
+// E-SCHOOL — emitted when a classroom reaches its maximum enrollment.
+// Downstream consumers stop accepting inscriptions on this classroom.
+// Topic: eschool.quota.classroom-full.v1
+
+package faso.eschool.quota.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/eschool/quota/v1;quotav1";
+option java_package = "bf.faso.schemas.eschool.quota.v1";
+option java_multiple_files = true;
+
+message ClassroomFull {
+  // UUID of the classroom.
+  string classroom_id = 1;
+
+  // UUID of the tenant (school).
+  string tenant_id = 2;
+
+  // School year label: "2026-2027".
+  string school_year = 3;
+
+  // Maximum quota (pedagogical capacity).
+  int32 max_capacity = 4;
+
+  // Current enrollment count (expected == max_capacity).
+  int32 current_count = 5;
+
+  // When the full-quota event was detected.
+  google.protobuf.Timestamp detected_at = 6;
+
+  // Idempotency key (one event per classroom per year).
+  string idempotency_key = 7;
+
+  reserved 8 to 15;
+}

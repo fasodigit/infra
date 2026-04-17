@@ -1,5 +1,6 @@
 package bf.gov.faso.auth.model;
 
+import bf.gov.faso.auth.persistence.EncryptedStringConverter;
 import jakarta.persistence.*;
 import java.time.Instant;
 import java.util.UUID;
@@ -22,6 +23,7 @@ public class JwtSigningKey {
     private String publicKeyPem;
 
     @Column(name = "private_key_pem", nullable = false, columnDefinition = "TEXT")
+    @Convert(converter = EncryptedStringConverter.class)
     private String privateKeyPem;
 
     @Column(nullable = false)

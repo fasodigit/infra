@@ -9,6 +9,9 @@ use dashmap::DashMap;
 use crate::entry::{Entry, EntryMetadata};
 use crate::error::StoreError;
 use crate::eviction::EvictionManager;
+use crate::geo::index::{GeoIndex, GeoSearchQuery, GeoSearchResult};
+use crate::geo::point::GeoPoint;
+use crate::geo::error::GeoError;
 use crate::EvictionPolicyKind;
 
 /// A member of a sorted set: (score, member).
@@ -28,6 +31,8 @@ pub struct Shard {
     sets: DashMap<Vec<u8>, BTreeSet<Bytes>, ahash::RandomState>,
     /// Sorted set data: key -> (member -> score) + a sorted index.
     sorted_sets: DashMap<Vec<u8>, SortedSetData, ahash::RandomState>,
+    /// Geo indexes: key -> GeoIndex (geohash-sorted spatial index).
+    pub geos: DashMap<Vec<u8>, GeoIndex, ahash::RandomState>,
     /// Eviction manager.
     eviction: EvictionManager,
 }
@@ -79,6 +84,7 @@ impl Shard {
             data: DashMap::with_hasher(ahash::RandomState::with_seeds(1, 2, 3, 4)),
             sets: DashMap::with_hasher(ahash::RandomState::with_seeds(5, 6, 7, 8)),
             sorted_sets: DashMap::with_hasher(ahash::RandomState::with_seeds(9, 10, 11, 12)),
+            geos: DashMap::with_hasher(ahash::RandomState::with_seeds(13, 14, 15, 16)),
             eviction: EvictionManager::new(eviction_policy),
         }
     }
@@ -106,11 +112,11 @@ impl Shard {
     }
 
     pub fn len(&self) -> usize {
-        self.data.len() + self.sets.len() + self.sorted_sets.len()
+        self.data.len() + self.sets.len() + self.sorted_sets.len() + self.geos.len()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.data.is_empty() && self.sets.is_empty() && self.sorted_sets.is_empty()
+        self.data.is_empty() && self.sets.is_empty() && self.sorted_sets.is_empty() && self.geos.is_empty()
     }
 
     pub fn set_expiry(&self, key: &[u8], duration: Duration) -> bool {
@@ -336,6 +342,113 @@ impl Shard {
             .unwrap_or_default()
     }
 
+    // -- geo operations -------------------------------------------------------
+
+    /// GEOADD: add (point, member) pairs to a geo index. Returns the count of
+    /// newly inserted members (existing members are updated in-place).
+    pub fn geo_add(
+        &self,
+        key: &[u8],
+        members: &[(GeoPoint, Bytes)],
+        nx: bool,
+        xx: bool,
+        ch: bool,
+    ) -> i64 {
+        let idx = self.geos.entry(key.to_vec()).or_insert_with(GeoIndex::new);
+        let mut count = 0i64;
+        for (point, name) in members {
+            let exists = idx.pos(name).is_some();
+            if nx && exists {
+                continue; // NX: skip if already present
+            }
+            if xx && !exists {
+                continue; // XX: skip if not present
+            }
+            let was_new = idx.add(name.clone(), *point);
+            if ch {
+                // CH: count changed (new OR updated)
+                count += 1;
+            } else if was_new {
+                // Default: count only insertions
+                count += 1;
+            }
+        }
+        count
+    }
+
+    /// GEOPOS: retrieve the position of one member.
+    pub fn geo_pos(&self, key: &[u8], member: &[u8]) -> Option<GeoPoint> {
+        self.geos.get(key)?.pos(member)
+    }
+
+    /// GEODIST: haversine distance in metres between two members.
+    pub fn geo_dist(&self, key: &[u8], m1: &[u8], m2: &[u8]) -> Result<Option<f64>, GeoError> {
+        match self.geos.get(key) {
+            None => Ok(None),
+            Some(idx) => Ok(idx.dist(m1, m2)),
+        }
+    }
+
+    /// GEOSEARCH: run a spatial query on a geo index.
+    pub fn geo_search(
+        &self,
+        key: &[u8],
+        query: &GeoSearchQuery,
+    ) -> Result<Vec<GeoSearchResult>, GeoError> {
+        match self.geos.get(key) {
+            None => Ok(Vec::new()),
+            Some(idx) => Ok(idx.search(query)),
+        }
+    }
+
+    /// GEOHASH: base32 geohash (11 chars) for a member.
+    pub fn geo_hash(&self, key: &[u8], member: &[u8]) -> Option<String> {
+        let idx = self.geos.get(key)?;
+        let point = idx.pos(member)?;
+        Some(point.geohash(11))
+    }
+
+    /// GEOREM: remove members from a geo index. Returns count removed.
+    pub fn geo_rem(&self, key: &[u8], members: &[&[u8]]) -> i64 {
+        match self.geos.get(key) {
+            None => 0,
+            Some(idx) => members.iter().filter(|m| idx.remove(m)).count() as i64,
+        }
+    }
+
+    /// GEOSEARCHSTORE: clone matching results into a destination geo index.
+    /// Returns the count of members stored in the destination.
+    pub fn geo_search_store(
+        &self,
+        dest_key: &[u8],
+        src_key: &[u8],
+        query: &GeoSearchQuery,
+    ) -> i64 {
+        let results = match self.geos.get(src_key) {
+            None => return 0,
+            Some(idx) => idx.search(query),
+        };
+        let count = results.len() as i64;
+        if count == 0 {
+            return 0;
+        }
+        let dest = self.geos.entry(dest_key.to_vec()).or_insert_with(GeoIndex::new);
+        for r in results {
+            dest.add(r.member, r.point);
+        }
+        count
+    }
+
+    /// Iterate over all `(key, entry)` pairs in the primary KV map.
+    ///
+    /// Returns an iterator yielding `dashmap::mapref::multiple::RefMulti` items
+    /// so callers can access both the key and the value without cloning.
+    pub fn iter_kv(
+        &self,
+    ) -> impl Iterator<Item = dashmap::mapref::multiple::RefMulti<'_, Vec<u8>, Entry>> {
+        self.data.iter()
+    }
+
     // -- flush ---------------------------------------------------------------
 
     /// Remove all data from this shard.
@@ -343,6 +456,7 @@ impl Shard {
         self.data.clear();
         self.sets.clear();
         self.sorted_sets.clear();
+        self.geos.clear();
     }
 
     // -- eviction -----------------------------------------------------------

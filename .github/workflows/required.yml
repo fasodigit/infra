@@ -1,0 +1,73 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# FASO DIGITALISATION — Aggregator required status check
+#
+# Configure this job as the SOLE required branch-protection status check.
+# It fans-in all CI jobs: a PR cannot merge unless every upstream CI passes.
+# Add new CI workflows by listing their jobs in the `needs` array.
+
+name: Required checks
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: required-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Wait for all CI workflows ──────────────────────────────────────────────
+  # NOTE: cross-workflow fan-in uses the `workflow_run` approach or a re-usable
+  # caller pattern. Here we call each CI workflow as a reusable workflow so that
+  # "Required checks / all-green" is the single required status in branch
+  # protection rules.
+  #
+  # Strategy: use `needs` with all matrix-expanded jobs from sibling workflows
+  # by calling them as reusable workflows from this aggregator.
+
+  rust-fmt:
+    uses: ./.github/workflows/ci-rust.yml
+    secrets: inherit
+
+  java-build:
+    uses: ./.github/workflows/ci-java.yml
+    secrets: inherit
+
+  frontend-build:
+    uses: ./.github/workflows/ci-frontend.yml
+    secrets: inherit
+
+  # ── Final gate ────────────────────────────────────────────────────────────
+  all-green:
+    name: all-green
+    if: always()
+    needs:
+      - rust-fmt
+      - java-build
+      - frontend-build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check all upstream jobs succeeded
+        run: |
+          results='${{ toJson(needs) }}'
+          echo "Upstream job results: $results"
+          # Fail if any upstream job did not succeed
+          if echo "$results" | python3 -c "
+          import sys, json
+          needs = json.load(sys.stdin)
+          failed = [
+              name
+              for name, data in needs.items()
+              if data.get('result') not in ('success', 'skipped')
+          ]
+          if failed:
+              print('FAILED jobs:', failed)
+              sys.exit(1)
+          print('All required checks passed.')
+          "; then
+            echo "All CI checks passed — merge is allowed."
+          else
+            echo "One or more required CI checks failed — merge is blocked."
+            exit 1
+          fi

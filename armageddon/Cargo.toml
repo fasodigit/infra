@@ -13,6 +13,13 @@ members = [
     "armageddon-veil",
     "armageddon-wasm",
     "armageddon-ai",
+    "armageddon-quic",
+    "armageddon-xds",
+    "armageddon-mesh",
+    "armageddon-cache",
+    "armageddon-admin",
+    "armageddon-lb",
+    "armageddon-retry",
 ]
 
 [workspace.package]
@@ -34,6 +41,31 @@ armageddon-nexus = { path = "armageddon-nexus" }
 armageddon-veil = { path = "armageddon-veil" }
 armageddon-wasm = { path = "armageddon-wasm" }
 armageddon-ai = { path = "armageddon-ai" }
+armageddon-quic = { path = "armageddon-quic" }
+armageddon-xds = { path = "armageddon-xds" }
+armageddon-mesh = { path = "armageddon-mesh" }
+armageddon-cache = { path = "armageddon-cache" }
+armageddon-admin = { path = "armageddon-admin" }
+armageddon-lb = { path = "armageddon-lb" }
+armageddon-retry = { path = "armageddon-retry" }
+
+# Vague 1 external deps
+quinn = "0.11"
+h3 = "0.0.8"
+h3-quinn = "0.0.10"
+rustls = { version = "0.23", default-features = false, features = ["std", "ring"] }
+rustls-pemfile = "2"
+spiffe = "0.4"
+tokio-tungstenite = "0.24"
+futures-util = "0.3"
+tonic-web = "0.12"
+tonic-health = "0.12"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["full"] }
+blake3 = "1.5"
+axum = "0.7"
+parking_lot = "0.12"
+rand = "0.8"
 
 # Async runtime
 tokio = { version = "1", features = ["full"] }
@@ -83,6 +115,21 @@ ring = "0.17"
 
 # Redis-compatible client (for KAYA)
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+
+# HMAC-SHA256 for webhook signature validation
+hmac = "0.12"
+sha2 = "0.10"
+# Constant-time comparison (HMAC validation)
+subtle = "2"
+
+# Kafka / Redpanda producer (optional; requires librdkafka on the host)
+rdkafka = { version = "0.36", default-features = false, features = ["tokio", "dynamic-linking"] }
+
+# Hex encoding
+hex = "0.4"
+
+# Base64 encoding (gRPC-Web text variant)
+base64 = "0.22"
 
 # Config
 config = { version = "0.14", default-features = false, features = ["yaml"] }

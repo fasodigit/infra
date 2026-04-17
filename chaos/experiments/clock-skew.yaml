@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Chaos Mesh Schedule — Clock Skew auth-ms (hebdomadaire 04h UTC dimanche)
+# sovereignty=true
+#
+# Objectif : décaler l'horloge de auth-ms de +5 minutes pendant 60s.
+# Vérifie que les JWT sont tolérants au clock skew (leeway configuré)
+# et qu'aucun token valide n'est rejeté à tort.
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: clock-skew-auth-ms-weekly
+  namespace: faso
+  labels:
+    app: auth-ms
+    chaos-type: clock-skew
+    sovereignty: "true"
+    team: faso-sre
+  annotations:
+    description: "Décale horloge auth-ms de +5min pendant 60s. Teste tolérance JWT clock skew (leeway)."
+spec:
+  schedule: "0 4 * * 0"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: TimeChaos
+  timeChaos:
+    mode: all
+    selector:
+      namespaces:
+        - faso
+      labelSelectors:
+        app: auth-ms
+    timeOffset: "+5m0s"
+    duration: "60s"

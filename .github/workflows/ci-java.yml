@@ -1,0 +1,77 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# FASO DIGITALISATION — Java CI (verify / SpotBugs / OWASP dependency-check)
+
+name: CI Java
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-java-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.service }} · Java ${{ matrix.java-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service:
+          - auth-ms
+          - poulets-platform/backend
+          - notifier-ms
+        java-version: [21]
+
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.service }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Java ${{ matrix.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java-version }}
+          cache: maven
+
+      # ── mvn verify (compile + unit + integration tests) ────────────────────
+      - name: mvn verify
+        run: mvn --batch-mode --no-transfer-progress verify
+
+      # ── SpotBugs static analysis ───────────────────────────────────────────
+      - name: SpotBugs
+        run: mvn --batch-mode --no-transfer-progress com.github.spotbugs:spotbugs-maven-plugin:check
+        continue-on-error: false
+
+      # ── OWASP dependency-check ─────────────────────────────────────────────
+      - name: OWASP Dependency-Check
+        run: |
+          mvn --batch-mode --no-transfer-progress \
+            org.owasp:dependency-check-maven:check \
+            -DfailBuildOnCVSS=7 \
+            -DsuppressionFile=.owasp-suppressions.xml \
+            -DnvdApiKey=${{ secrets.NVD_API_KEY }}
+
+      # ── Upload Surefire reports ────────────────────────────────────────────
+      - name: Upload Surefire reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-${{ matrix.service == 'poulets-platform/backend' && 'poulets-backend' || matrix.service }}-java${{ matrix.java-version }}
+          path: INFRA/${{ matrix.service }}/target/surefire-reports/
+          retention-days: 30
+
+      # ── Upload OWASP HTML report ───────────────────────────────────────────
+      - name: Upload OWASP report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: owasp-${{ matrix.service == 'poulets-platform/backend' && 'poulets-backend' || matrix.service }}-java${{ matrix.java-version }}
+          path: INFRA/${{ matrix.service }}/target/dependency-check-report.html
+          retention-days: 30

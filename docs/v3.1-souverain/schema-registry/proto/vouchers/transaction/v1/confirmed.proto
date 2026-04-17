@@ -1,0 +1,55 @@
+syntax = "proto3";
+
+// VOUCHERS — a monetary transaction (mobile money, bank, wallet) is
+// confirmed. 7 years retention for fiscal/accounting obligations.
+// Topic: vouchers.transaction.confirmed.v1
+
+package faso.vouchers.transaction.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/vouchers/transaction/v1;transactionv1";
+option java_package = "bf.faso.schemas.vouchers.transaction.v1";
+option java_multiple_files = true;
+
+message TransactionConfirmed {
+  // UUID of the transaction.
+  string transaction_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // UUID of the payer (opaque).
+  string payer_id = 3;
+
+  // UUID of the payee (opaque).
+  string payee_id = 4;
+
+  // Provider code: "ORANGE_MONEY", "MOOV_MONEY", "WAVE_BF", "BANK_WIRE".
+  string provider_code = 5;
+
+  // Opaque reference produced by the provider (already anonymized).
+  string provider_reference = 6;
+
+  // Amount in CFA cents.
+  int64 amount_cents = 7;
+
+  // Currency: always "XOF".
+  string currency = 8;
+
+  // When the provider confirmed settlement.
+  google.protobuf.Timestamp confirmed_at = 9;
+
+  // Transaction type: "TOPUP", "CASHOUT", "P2P", "MERCHANT_PAYMENT",
+  //                   "SUBSIDY_PAYOUT".
+  string transaction_type = 10;
+
+  // Idempotency key.
+  string idempotency_key = 11;
+
+  // Fiscal label propagated for reconciliation with DGI.
+  optional string fiscal_tag = 12;
+
+  reserved 13 to 25;
+  reserved "numero_compte", "numero_tel", "iban";
+}

@@ -17,6 +17,7 @@ use kaya_protocol::{Command, Frame};
 use kaya_scripting::{ScriptConfig, ScriptEngine};
 use kaya_store::{BloomManager, Store, StoreConfig};
 use kaya_streams::StreamManager;
+use tokio::sync::mpsc;
 
 // ---------------------------------------------------------------------------
 // CLI arguments
@@ -81,7 +82,7 @@ impl Default for KayaConfig {
 // ---------------------------------------------------------------------------
 
 struct KayaHandler {
-    router: CommandRouter,
+    router: Arc<CommandRouter>,
 }
 
 impl RequestHandler for KayaHandler {
@@ -91,6 +92,18 @@ impl RequestHandler for KayaHandler {
 
     fn handle_multi(&self, commands: &[Command]) -> Frame {
         self.router.execute_multi(commands)
+    }
+
+    fn handle_command_with_session(
+        &self,
+        cmd: Command,
+        client_id: u64,
+        push_sink: mpsc::Sender<Frame>,
+    ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Frame> + Send + '_>> {
+        let router = self.router.clone();
+        Box::pin(async move {
+            router.execute_with_session(&cmd, client_id, &push_sink).await
+        })
     }
 }
 
@@ -151,7 +164,7 @@ async fn main() -> Result<()> {
         ctx = ctx.with_scripting(engine.clone());
     }
     let ctx = Arc::new(ctx);
-    let router = CommandRouter::new(ctx);
+    let router = Arc::new(CommandRouter::new(ctx));
     let handler = Arc::new(KayaHandler { router });
 
     // Server config with CLI overrides.

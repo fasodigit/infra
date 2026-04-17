@@ -12,7 +12,7 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5432}/poulets_db
     username: ${DB_USER:poulets_api}
-    password: ${DB_PASSWORD:changeme}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -67,7 +67,13 @@ grpc:
   server:
     port: 9901
     security:
-      enabled: false
+      enabled: true
+      certificate-chain: ${GRPC_TLS_CERT_CHAIN:classpath:tls/server.crt}
+      private-key: ${GRPC_TLS_PRIVATE_KEY:classpath:tls/server.key}
+
+# Auth / JWT
+auth:
+  jwks-uri: ${AUTH_JWKS_URI:http://localhost:8801/.well-known/jwks.json}
 
 # Cache configuration
 cache:

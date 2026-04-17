@@ -10,6 +10,7 @@ import com.netflix.graphql.dgs.InputArgument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
+import org.springframework.security.access.prepost.PreAuthorize;
 
 import java.util.LinkedHashMap;
 import java.util.Map;
@@ -53,6 +54,7 @@ public class PouletDataFetcher {
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('ELEVEUR') or hasRole('ADMIN')")
     public Poulet addPoulet(@InputArgument Map<String, Object> input) {
         UUID eleveurId = UUID.fromString((String) input.get("eleveurId"));
         Race race = Race.valueOf((String) input.get("race"));
@@ -67,6 +69,7 @@ public class PouletDataFetcher {
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('ELEVEUR') or hasRole('ADMIN')")
     public Poulet updatePoulet(@InputArgument String id, @InputArgument Map<String, Object> input) {
         Race race = input.containsKey("race") ? Race.valueOf((String) input.get("race")) : null;
         Double weight = input.containsKey("weight") ? ((Number) input.get("weight")).doubleValue() : null;
@@ -80,6 +83,7 @@ public class PouletDataFetcher {
     }
 
     @DgsMutation
+    @PreAuthorize("hasRole('ELEVEUR') or hasRole('ADMIN')")
     public boolean deletePoulet(@InputArgument String id) {
         return pouletService.delete(UUID.fromString(id));
     }

@@ -7,6 +7,14 @@ edition.workspace = true
 name = "kaya-bench"
 path = "src/main.rs"
 
+[[bin]]
+name = "kaya-bench-uring"
+path = "src/uring_bench.rs"
+
+[features]
+default = []
+io_uring = ["kaya-network/io_uring"]
+
 [dependencies]
 tokio = { workspace = true }
 clap = { workspace = true }
@@ -15,5 +23,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 anyhow = { workspace = true }
+bytes = { workspace = true }
 kaya-sdk = { workspace = true }
 kaya-protocol = { workspace = true }
+kaya-network = { workspace = true }

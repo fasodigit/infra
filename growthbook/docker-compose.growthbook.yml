@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# GrowthBook feature-flag service. Compose override : `podman-compose -f docker-compose.yml -f docker-compose.growthbook.yml up -d growthbook`.
+name: faso-growthbook
+services:
+  growthbook-mongo:
+    image: mongo:7.0@sha256:a4b95cec5735ca8b40f5bde54eb85d2d68b5c7968e1d4b9b086b5e1b6f0f2cd1
+    container_name: faso-growthbook-mongo
+    restart: unless-stopped
+    volumes:
+      - growthbook-mongo-data:/data/db
+    networks: [faso-network]
+
+  growthbook:
+    image: growthbook/growthbook:3.7.0
+    container_name: faso-growthbook
+    restart: unless-stopped
+    depends_on: [growthbook-mongo]
+    environment:
+      MONGODB_URI: mongodb://growthbook-mongo:27017/growthbook
+      APP_ORIGIN: ${GROWTHBOOK_APP_ORIGIN:-http://localhost:3100}
+      API_HOST: ${GROWTHBOOK_API_HOST:-http://localhost:3100}
+      NODE_ENV: production
+    secrets: [growthbook_jwt_secret, growthbook_encryption_key]
+    ports:
+      - "127.0.0.1:3100:3100"
+    networks: [faso-network]
+
+volumes:
+  growthbook-mongo-data:
+
+secrets:
+  growthbook_jwt_secret:
+    file: ./secrets/growthbook_jwt_secret.txt
+  growthbook_encryption_key:
+    file: ./secrets/growthbook_encryption_key.txt
+
+networks:
+  faso-network:
+    external: true

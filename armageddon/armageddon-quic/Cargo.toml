@@ -1,0 +1,45 @@
+[package]
+name = "armageddon-quic"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+# Async runtime
+tokio = { workspace = true }
+
+# Bytes and HTTP types
+bytes = { workspace = true }
+http = { workspace = true }
+
+# QUIC transport + HTTP/3
+quinn = { workspace = true }
+h3 = { workspace = true }
+h3-quinn = { workspace = true }
+
+# TLS
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+# Async trait support
+async-trait = { workspace = true }
+
+# Internal crates
+armageddon-common = { workspace = true }
+armageddon-config = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "time"] }
+# Self-signed cert generation for tests
+rcgen = "0.13"
+# Temporary files for test cert/key PEM storage
+tempfile = "3"
+# async-trait is also needed in tests (re-export via main deps is fine, but explicit is clearer)
+async-trait = { workspace = true }

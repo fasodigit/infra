@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Validate Sloth SLO definitions and ensure generated Prometheus rules are in sync.
+name: SLO Validate
+
+on:
+  pull_request:
+    paths:
+      - 'INFRA/observability/slo/**'
+      - 'INFRA/observability/prometheus/rules/**'
+      - '.github/workflows/slo-validate.yml'
+  workflow_dispatch:
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install sloth
+        run: |
+          curl -sLo sloth.tar.gz https://github.com/slok/sloth/releases/download/v0.12.0/sloth-linux-amd64.tar.gz
+          tar -xzf sloth.tar.gz
+          sudo mv sloth /usr/local/bin/sloth
+      - name: Validate SLO definitions
+        run: sloth validate -i INFRA/observability/slo/
+      - name: Generate rules and check for drift
+        run: |
+          bash INFRA/observability/scripts/generate-prometheus-rules.sh
+          if ! git diff --exit-code INFRA/observability/prometheus/rules/; then
+            echo "::error::Prometheus rules are out of sync with SLO definitions. Run scripts/generate-prometheus-rules.sh"
+            exit 1
+          fi

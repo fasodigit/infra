@@ -1,0 +1,49 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Test profile overrides for notifier-ms
+
+spring:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+
+  flyway:
+    enabled: false  # Testcontainers handles schema via Hibernate DDL
+
+  data:
+    redis:
+      url: redis://localhost:6379  # Override in test via @DynamicPropertySource if needed
+
+  kafka:
+    bootstrap-servers: ${spring.embedded.kafka.brokers}
+    consumer:
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+
+  mail:
+    host: localhost
+    port: 3025
+
+resilience4j:
+  retry:
+    instances:
+      mail-dispatch:
+        max-attempts: 3
+        wait-duration: 100ms  # Fast retries in tests
+        exponential-backoff-multiplier: 1.5
+
+notifier:
+  topics:
+    github-events: github.events.v1
+    dlq: github.events.v1.dlq
+  dedupe:
+    ttl-seconds: 60  # Short TTL for tests
+    key-prefix: "test:delivery:"
+
+management:
+  server:
+    port: 0
+
+logging:
+  level:
+    bf.gov.faso.notifier: DEBUG
+    org.springframework.kafka: WARN

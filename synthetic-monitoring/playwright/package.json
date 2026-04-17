@@ -1,0 +1,16 @@
+{
+  "name": "faso-synthetic-monitoring",
+  "version": "0.1.0",
+  "description": "FASO DIGITALISATION synthetic monitoring — Playwright scenarios → Prometheus Pushgateway",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "install:browsers": "playwright install chromium"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.0",
+    "typescript": "5.5.4"
+  }
+}

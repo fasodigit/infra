@@ -1,0 +1,58 @@
+syntax = "proto3";
+
+// Common audit trail event used by every sub-project for the
+// `*.audit-trail.v1` topics. 10 years retention — legal evidence.
+// No PII ever: only opaque UUIDs.
+
+package faso.common.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/common/v1;commonv1";
+option java_package = "bf.faso.schemas.common.v1";
+option java_multiple_files = true;
+
+message AuditTrail {
+  // UUID v4 of the audit entry itself.
+  string audit_id = 1;
+
+  // UUID of the tenant (project / ministry / operator).
+  string tenant_id = 2;
+
+  // Short code of the originating sub-project: "ec", "hosp", "eticket"...
+  string project_code = 3;
+
+  // Type of the business event: "demande.created", "acte.signed"...
+  string event_type = 4;
+
+  // UUID of the aggregate the event applies to (opaque).
+  string aggregate_id = 5;
+
+  // UUID of the actor (user, system, integration). Never a name.
+  string actor_id = 6;
+
+  // Role of the actor: "AGENT", "CITIZEN", "SYSTEM", "AUDITOR"...
+  string actor_role = 7;
+
+  // Monotonic event timestamp (when the action effectively happened).
+  google.protobuf.Timestamp occurred_at = 8;
+
+  // Idempotency key (UUID) to deduplicate replays.
+  string idempotency_key = 9;
+
+  // SHA-256 hash of the previous audit entry for this aggregate
+  // (hash chain, non-repudiation). Empty for the first entry.
+  bytes prev_hash = 10;
+
+  // HMAC of the current entry using the project signing key.
+  bytes hmac = 11;
+
+  // Outcome of the action: "SUCCESS", "FAILURE", "PARTIAL".
+  string outcome = 12;
+
+  // Optional error code when outcome != SUCCESS (never free text).
+  optional string error_code = 13;
+
+  // Reserved for future sensitive fields (legal metadata).
+  reserved 14 to 20;
+}

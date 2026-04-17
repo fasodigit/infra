@@ -1,0 +1,77 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 FASO DIGITALISATION
+//
+// Canary / progressive rollout service. Orchestrates 1%→10%→50%→100% traffic
+// shift via xDS weighted clusters with auto-rollback on SLO breach.
+
+syntax = "proto3";
+
+package faso.canary.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_package = "bf.gov.faso.canary.v1";
+option java_multiple_files = true;
+
+service CanaryService {
+  rpc StartCanary(StartCanaryRequest)       returns (StartCanaryResponse);
+  rpc PauseCanary(PauseCanaryRequest)       returns (PauseCanaryResponse);
+  rpc AbortCanary(AbortCanaryRequest)       returns (AbortCanaryResponse);
+  rpc PromoteCanary(PromoteCanaryRequest)   returns (PromoteCanaryResponse);
+  rpc GetCanaryStatus(GetCanaryStatusRequest) returns (CanaryStatus);
+  rpc ListCanaries(ListCanariesRequest)     returns (ListCanariesResponse);
+}
+
+message StartCanaryRequest {
+  string service       = 1;
+  string image_tag     = 2;
+  repeated uint32 stages = 3;  // e.g. [1, 10, 50, 100]
+  uint64 min_stage_duration_secs = 4;
+  SloConfig slo        = 5;
+}
+
+message SloConfig {
+  double error_rate_max     = 1;
+  double latency_p99_max_ms = 2;
+  string prometheus_endpoint = 3;
+}
+
+message StartCanaryResponse   { string canary_id = 1; }
+message PauseCanaryRequest    { string canary_id = 1; }
+message PauseCanaryResponse   { CanaryStatus status = 1; }
+message AbortCanaryRequest    { string canary_id = 1; string reason = 2; }
+message AbortCanaryResponse   { CanaryStatus status = 1; }
+message PromoteCanaryRequest  { string canary_id = 1; }
+message PromoteCanaryResponse { CanaryStatus status = 1; }
+message GetCanaryStatusRequest{ string canary_id = 1; }
+message ListCanariesRequest   { string service = 1; optional Stage stage_filter = 2; }
+message ListCanariesResponse  { repeated CanaryStatus canaries = 1; }
+
+enum Stage {
+  STAGE_UNSPECIFIED = 0;
+  STAGE_1_PCT       = 1;
+  STAGE_10_PCT      = 2;
+  STAGE_50_PCT      = 3;
+  STAGE_PROMOTED    = 4;
+  STAGE_ROLLED_BACK = 5;
+  STAGE_PAUSED      = 6;
+}
+
+message CanaryStatus {
+  string canary_id                      = 1;
+  string service                        = 2;
+  string image_tag                      = 3;
+  Stage current_stage                   = 4;
+  uint32 current_weight_pct             = 5;
+  google.protobuf.Timestamp started_at  = 6;
+  google.protobuf.Timestamp stage_started_at = 7;
+  SloCompliance slo_compliance          = 8;
+  string rollback_reason                = 9;
+}
+
+message SloCompliance {
+  double observed_error_rate       = 1;
+  double observed_latency_p99_ms   = 2;
+  bool   within_budget             = 3;
+  google.protobuf.Timestamp measured_at = 4;
+}

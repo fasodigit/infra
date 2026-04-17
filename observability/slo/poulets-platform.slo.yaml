@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+version: "prometheus/v1"
+service: "poulets-platform"
+labels:
+  project: faso-digitalisation
+  tier: pilote
+slos:
+  - name: "availability"
+    objective: 99.5
+    description: "poulets-api answers REST + GraphQL requests"
+    sli:
+      events:
+        error_query: |
+          sum(rate(http_server_requests_seconds_count{application="poulets-api",status=~"5.."}[{{.window}}]))
+        total_query: |
+          sum(rate(http_server_requests_seconds_count{application="poulets-api"}[{{.window}}]))
+    alerting:
+      name: PouletsAvailabilityBurn
+      ticket_alert: { labels: { severity: warning, team: poulets } }
+
+  - name: "graphql-mutation-success"
+    objective: 99
+    description: "GraphQL mutations (createCommande, addPoulet, ...) succeed 99% of time"
+    sli:
+      events:
+        error_query: |
+          sum(rate(graphql_mutation_total{status="error"}[{{.window}}]))
+        total_query: |
+          sum(rate(graphql_mutation_total[{{.window}}]))
+    alerting:
+      name: PouletsGraphqlErrorBurn
+      ticket_alert: { labels: { severity: warning } }

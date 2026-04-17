@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# k6 load test on every PR touching ARMAGEDDON. Fails if P99 > 10ms.
+
+name: Load Test (k6)
+
+on:
+  pull_request:
+    paths:
+      - 'INFRA/armageddon/**'
+      - 'INFRA/load-testing/**'
+      - '.github/workflows/load-test.yml'
+  workflow_dispatch:
+
+jobs:
+  k6-baseline:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Start ARMAGEDDON + KAYA + auth-ms
+        run: |
+          cd INFRA/docker/compose
+          bash scripts/init-secrets.sh
+          podman-compose up -d kaya auth-ms armageddon
+          timeout 60 bash -c 'until curl -fsS http://localhost:8080/api/poulets/health; do sleep 2; done'
+
+      - name: Run k6 baseline
+        uses: grafana/k6-action@v0.3.1
+        with:
+          filename: INFRA/load-testing/k6/scenarios/armageddon-baseline.ts
+        env:
+          ARMAGEDDON_URL: http://localhost:8080
+
+      - name: Comment PR with summary
+        if: always()
+        uses: peter-evans/commit-comment@v3
+        with:
+          body-path: summary.json
+          reactions: eyes
+
+      - name: Upload k6 summary
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: k6-summary
+          path: summary.json
+          retention-days: 30
+
+      - name: Stop compose
+        if: always()
+        run: cd INFRA/docker/compose && podman-compose down -v

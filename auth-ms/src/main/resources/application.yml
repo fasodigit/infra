@@ -12,7 +12,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/auth_ms
     username: auth_ms
-    password: ${AUTH_MS_DB_PASSWORD:changeme}
+    password: ${AUTH_MS_DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
@@ -67,7 +67,9 @@ grpc:
   server:
     port: 9801
     security:
-      enabled: false
+      enabled: true
+      certificate-chain: ${GRPC_TLS_CERT_CHAIN:classpath:tls/server.crt}
+      private-key: ${GRPC_TLS_PRIVATE_KEY:classpath:tls/server.key}
 
 # Ory Kratos
 kratos:

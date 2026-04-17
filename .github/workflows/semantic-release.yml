@@ -1,0 +1,84 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# FASO DIGITALISATION — Semantic-release: conventional commits → tag + changelog + GitHub Release
+# Runs BEFORE release.yml (which builds binaries from the tag created here)
+
+name: Semantic Release
+
+on:
+  push:
+    branches:
+      - main
+      - beta
+      - alpha
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Dry run (analyse commits, no publish, no tag)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+permissions:
+  contents: write        # create tags, push CHANGELOG.md commit
+  issues: write          # comment on issues when released
+  pull-requests: write   # comment/label PRs when released
+
+jobs:
+  semantic-release:
+    name: "semantic-release (${{ github.ref_name }})"
+    runs-on: ubuntu-latest
+
+    steps:
+      # ── Full history needed by semantic-release ──────────────────────────────
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── Java 21 (Maven version bumps) ────────────────────────────────────────
+      - name: Set up Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      # ── Node.js 20 (semantic-release itself + npm version bumps) ────────────
+      - name: Set up Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      # ── Install semantic-release + all required plugins ──────────────────────
+      - name: Install semantic-release
+        run: |
+          npm install --no-save \
+            semantic-release@24 \
+            @semantic-release/commit-analyzer@13 \
+            @semantic-release/release-notes-generator@14 \
+            @semantic-release/changelog@6 \
+            @semantic-release/exec@6 \
+            @semantic-release/git@10 \
+            @semantic-release/github@10 \
+            conventional-changelog-conventionalcommits@8
+
+      # ── Run semantic-release ─────────────────────────────────────────────────
+      - name: Run semantic-release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          GIT_AUTHOR_NAME: "faso-release-bot"
+          GIT_AUTHOR_EMAIL: "fasodigitalisation@gmail.com"
+          GIT_COMMITTER_NAME: "faso-release-bot"
+          GIT_COMMITTER_EMAIL: "fasodigitalisation@gmail.com"
+        run: |
+          if [[ "${{ github.event.inputs.dry_run }}" == "true" ]]; then
+            npx semantic-release --dry-run
+          else
+            npx semantic-release
+          fi

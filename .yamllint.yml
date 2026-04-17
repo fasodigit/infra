@@ -1,0 +1,36 @@
+---
+# FASO DIGITALISATION — yamllint configuration
+# Docs: https://yamllint.readthedocs.io/en/stable/configuration.html
+
+extends: default
+
+rules:
+  line-length:
+    max: 200
+    level: warning
+
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  truthy:
+    # Disabled: Kubernetes and Ansible use bare `yes`/`no`/`on`/`off`
+    level: disable
+
+  comments:
+    min-spaces-from-content: 1
+
+  braces:
+    min-spaces-inside: 0
+    max-spaces-inside: 1
+
+  brackets:
+    min-spaces-inside: 0
+    max-spaces-inside: 0
+
+  document-start:
+    present: true
+
+  new-line-at-end-of-file:
+    level: error

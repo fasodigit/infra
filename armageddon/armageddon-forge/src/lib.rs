@@ -12,10 +12,19 @@
 
 pub mod circuit_breaker;
 pub mod cors;
+pub mod grpc_web;
 pub mod health;
+pub mod health_grpc;
+pub mod health_tcp;
 pub mod jwt;
+pub mod kafka_producer;
 pub mod proxy;
 pub mod router;
+pub mod tcp_proxy;
+pub mod websocket;
+pub mod webhooks;
+
+pub use health::{EjectionPolicy, HealthCheckType, ProbeResult};
 
 use armageddon_common::types::{Cluster, CorsConfig, JwtConfig, KratosConfig, Route};
 use armageddon_config::gateway::{ExtAuthzConfig, ListenerConfig};

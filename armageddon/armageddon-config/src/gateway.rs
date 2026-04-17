@@ -34,6 +34,10 @@ pub struct GatewayConfig {
 
     /// xDS controller endpoint for dynamic config.
     pub xds: XdsEndpoint,
+
+    /// Webhook configurations.
+    #[serde(default)]
+    pub webhooks: WebhooksConfig,
 }
 
 fn default_auth_mode() -> AuthMode {
@@ -116,4 +120,82 @@ impl Default for XdsEndpoint {
             cluster_name: "armageddon".to_string(),
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// Webhook configuration
+// ---------------------------------------------------------------------------
+
+/// Top-level webhooks section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WebhooksConfig {
+    /// GitHub webhook configuration.
+    #[serde(default)]
+    pub github: GithubWebhookConfig,
+}
+
+impl Default for WebhooksConfig {
+    fn default() -> Self {
+        Self {
+            github: GithubWebhookConfig::default(),
+        }
+    }
+}
+
+/// GitHub-specific webhook configuration.
+///
+/// Serialized under `gateway.webhooks.github` in `armageddon.yaml`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GithubWebhookConfig {
+    /// Enable or disable GitHub webhook ingestion.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Environment variable that holds the HMAC-SHA256 secret.
+    #[serde(default = "default_github_secret_env")]
+    pub secret_env: String,
+
+    /// Redpanda/Kafka broker list.
+    #[serde(default = "default_kafka_brokers")]
+    pub kafka_brokers: Vec<String>,
+
+    /// Redpanda topic where GitHub events are published.
+    #[serde(default = "default_github_topic")]
+    pub topic: String,
+
+    /// Maximum requests per source IP per minute before rate-limiting.
+    #[serde(default = "default_rate_limit")]
+    pub rate_limit_per_ip_per_min: i64,
+}
+
+impl Default for GithubWebhookConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            secret_env: default_github_secret_env(),
+            kafka_brokers: default_kafka_brokers(),
+            topic: default_github_topic(),
+            rate_limit_per_ip_per_min: default_rate_limit(),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
+}
+
+fn default_github_secret_env() -> String {
+    "ARMAGEDDON_GITHUB_WEBHOOK_SECRET".to_string()
+}
+
+fn default_kafka_brokers() -> Vec<String> {
+    vec!["redpanda:9092".to_string()]
+}
+
+fn default_github_topic() -> String {
+    "github.events.v1".to_string()
+}
+
+fn default_rate_limit() -> i64 {
+    1000
 }

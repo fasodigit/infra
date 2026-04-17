@@ -5,6 +5,10 @@
 
 pub mod cache;
 pub mod engine;
+pub mod error;
+pub mod functions;
+pub mod metrics;
+pub mod parser;
 
 
 use serde::{Deserialize, Serialize};

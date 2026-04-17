@@ -97,7 +97,15 @@ impl XdsClient {
             self.node_id,
             self.cluster_name
         );
-        // TODO: implement gRPC ADS stream via tonic
+        // TODO(vague-1-A3): replace this stub with armageddon_xds::AdsClient:
+        //
+        //   let endpoint = format!("http://{}:{}", self.address, self.port);
+        //   let client = armageddon_xds::AdsClient::connect(&endpoint, self.node_id.clone())
+        //       .await
+        //       .map_err(|e| XdsError::Connection(e.to_string()))?;
+        //   client.run(callback).await.map_err(|e| XdsError::StreamBroken(e.to_string()))
+        //
+        // Wire-up intentionally deferred; see armageddon-xds/src/ads_client.rs.
         Ok(())
     }
 }

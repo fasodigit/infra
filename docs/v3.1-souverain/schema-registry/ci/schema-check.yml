@@ -1,0 +1,167 @@
+name: schema-check
+
+# Enforces Protobuf hygiene and BACKWARD_TRANSITIVE compatibility for
+# every schema used on the Redpanda durable layer of the sovereign
+# FASO DIGITALISATION platform.
+#
+# Triggers:
+#   - pull_request touching proto/**/*.proto : lint + breaking + compat check
+#   - push main touching proto/**/*.proto    : publish schemas to registry
+
+on:
+  pull_request:
+    paths:
+      - "proto/**/*.proto"
+      - "buf.yaml"
+      - "buf.gen.yaml"
+      - ".github/workflows/schema-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "proto/**/*.proto"
+
+concurrency:
+  group: schema-check-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REDPANDA_REGISTRY_URL: ${{ secrets.REDPANDA_REGISTRY_URL }}
+  REDPANDA_SASL_USER: ${{ secrets.REDPANDA_SASL_USER }}
+  REDPANDA_SASL_PASS: ${{ secrets.REDPANDA_SASL_PASS }}
+  COMPATIBILITY_MODE: BACKWARD_TRANSITIVE
+
+jobs:
+  lint-and-breaking:
+    name: buf lint + buf breaking
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install buf
+        uses: bufbuild/buf-setup-action@v1
+        with:
+          version: "1.47.2"
+
+      - name: buf lint
+        run: buf lint
+
+      - name: buf breaking against main
+        if: github.event_name == 'pull_request'
+        run: buf breaking --against ".git#branch=origin/main"
+
+  compat-check:
+    name: rpk BACKWARD_TRANSITIVE check
+    needs: lint-and-breaking
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install rpk (Redpanda CLI)
+        run: |
+          curl -LO https://github.com/redpanda-data/redpanda/releases/latest/download/rpk-linux-amd64.zip
+          sudo unzip -o rpk-linux-amd64.zip -d /usr/local/bin
+          sudo chmod +x /usr/local/bin/rpk
+          rpk version
+
+      - name: Configure rpk registry profile
+        run: |
+          rpk profile create ci \
+            --set registry.hosts=${REDPANDA_REGISTRY_URL} \
+            --set registry.tls.enabled=true \
+            --set registry.sasl.user=${REDPANDA_SASL_USER} \
+            --set registry.sasl.password=${REDPANDA_SASL_PASS} \
+            --set registry.sasl.mechanism=SCRAM-SHA-512
+          rpk profile use ci
+
+      - name: Compute list of modified .proto files
+        id: changed
+        run: |
+          git fetch origin main --depth=50
+          CHANGED=$(git diff --name-only origin/main...HEAD -- 'proto/**/*.proto' | tr '\n' ' ')
+          echo "files=${CHANGED}" >> "${GITHUB_OUTPUT}"
+          echo "Changed files: ${CHANGED}"
+
+      - name: Derive subject and check compatibility
+        if: steps.changed.outputs.files != ''
+        run: |
+          set -euo pipefail
+          FAIL=0
+          for file in ${{ steps.changed.outputs.files }}; do
+            # proto/ec/demande/v1/created.proto -> ec.demande.created.v1-value
+            STRIPPED=${file#proto/}
+            PROJECT=$(echo "${STRIPPED}" | cut -d/ -f1)
+            AGGREGATE=$(echo "${STRIPPED}" | cut -d/ -f2)
+            VERSION=$(echo "${STRIPPED}" | cut -d/ -f3)
+            EVENT_FILE=$(echo "${STRIPPED}" | cut -d/ -f4)
+            EVENT=${EVENT_FILE%.proto}
+            # sogesy uses boarding_pass folder but boarding-pass topic
+            AGG_TOPIC=$(echo "${AGGREGATE}" | tr '_' '-')
+            SUBJECT="${PROJECT}.${AGG_TOPIC}.${EVENT}.${VERSION}-value"
+            echo "==> ${file}  ->  subject=${SUBJECT}"
+
+            if ! rpk registry schema check-compatibility \
+                 --subject "${SUBJECT}" \
+                 --schema "${file}" \
+                 --type protobuf \
+                 --compatibility "${COMPATIBILITY_MODE}"; then
+              echo "::error file=${file}::BACKWARD_TRANSITIVE incompatibility detected"
+              FAIL=1
+            fi
+          done
+          if [ "${FAIL}" -eq 1 ]; then
+            echo "::error::Breaking change detected. Create a new topic .v(N+1) instead of mutating the current schema."
+            exit 1
+          fi
+
+  publish:
+    name: publish schemas to registry
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: lint-and-breaking
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install rpk
+        run: |
+          curl -LO https://github.com/redpanda-data/redpanda/releases/latest/download/rpk-linux-amd64.zip
+          sudo unzip -o rpk-linux-amd64.zip -d /usr/local/bin
+          sudo chmod +x /usr/local/bin/rpk
+
+      - name: Configure rpk profile
+        run: |
+          rpk profile create prod \
+            --set registry.hosts=${REDPANDA_REGISTRY_URL} \
+            --set registry.tls.enabled=true \
+            --set registry.sasl.user=${REDPANDA_SASL_USER} \
+            --set registry.sasl.password=${REDPANDA_SASL_PASS} \
+            --set registry.sasl.mechanism=SCRAM-SHA-512
+          rpk profile use prod
+
+      - name: Publish every .proto file
+        run: |
+          set -euo pipefail
+          find proto -type f -name '*.proto' | while read -r file; do
+            STRIPPED=${file#proto/}
+            PROJECT=$(echo "${STRIPPED}" | cut -d/ -f1)
+            AGGREGATE=$(echo "${STRIPPED}" | cut -d/ -f2)
+            VERSION=$(echo "${STRIPPED}" | cut -d/ -f3)
+            EVENT_FILE=$(echo "${STRIPPED}" | cut -d/ -f4)
+            EVENT=${EVENT_FILE%.proto}
+            AGG_TOPIC=$(echo "${AGGREGATE}" | tr '_' '-')
+            SUBJECT="${PROJECT}.${AGG_TOPIC}.${EVENT}.${VERSION}-value"
+            echo "Publishing ${file} -> ${SUBJECT}"
+            rpk registry schema create "${SUBJECT}" \
+                --schema "${file}" \
+                --type protobuf \
+                --compatibility "${COMPATIBILITY_MODE}"
+          done
