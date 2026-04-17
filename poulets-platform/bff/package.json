@@ -1,6 +1,6 @@
 {
   "name": "poulets-bff",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "FASO DIGITALISATION - Poulets Platform BFF (Next.js)",
   "private": true,
   "scripts": {
