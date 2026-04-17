@@ -5,6 +5,15 @@
 <!-- NEVER manually delete published tags or entries -->
 
 
+## 1.1.0 (2026-04-17)
+
+> FASO DIGITALISATION — Licensed under AGPL-3.0
+> Breaking changes require migration — see RELEASE.md
+
+### Features
+
+* **vault,podman:** integrate Vault+Consul secret management + rename to podman-compose ([911bf89](https://github.com/fasodigit/infra/commit/911bf8996a75d5bf1bd3ba5d7d7d6cf397f923e5))
+
 ## 1.0.0 (2026-04-17)
 
 > FASO DIGITALISATION — Licensed under AGPL-3.0
