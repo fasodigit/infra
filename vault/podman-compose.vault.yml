@@ -1,0 +1,76 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Compose override: Consul + Vault stack for FASO DIGITALISATION secrets management.
+# Usage: docker compose -f docker-compose.yml -f ../../vault/docker-compose.vault.yml up -d
+
+name: faso-digitalisation
+
+services:
+  # ---------------------------------------------------------------------------
+  # Consul — storage backend for Vault + service discovery
+  # ---------------------------------------------------------------------------
+  consul:
+    image: hashicorp/consul:1.20.1
+    container_name: faso-consul
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8500:8500"  # HTTP API (loopback only)
+      - "127.0.0.1:8600:8600/udp"  # DNS
+    volumes:
+      - consul-data:/consul/data
+      - ../../vault/consul/config:/consul/config
+    command:
+      - "agent"
+      - "-server"
+      - "-bootstrap-expect=1"
+      - "-ui"
+      - "-client=0.0.0.0"
+      - "-data-dir=/consul/data"
+      - "-config-dir=/consul/config"
+    networks:
+      - faso-network
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  # ---------------------------------------------------------------------------
+  # Vault — secrets engine backed by Consul
+  # ---------------------------------------------------------------------------
+  vault:
+    image: hashicorp/vault:1.18.2
+    container_name: faso-vault
+    restart: unless-stopped
+    depends_on:
+      consul:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8200:8200"  # API + UI (loopback only)
+    volumes:
+      - vault-data:/vault/data
+      - vault-logs:/vault/logs
+      - ../../vault/config:/vault/config:ro
+      - ../../vault/policies:/vault/policies:ro
+    cap_add:
+      - IPC_LOCK    # required by Vault for memory locking
+    environment:
+      VAULT_ADDR: http://127.0.0.1:8200
+      VAULT_API_ADDR: http://vault:8200
+    command: vault server -config=/vault/config/vault.hcl
+    networks:
+      - faso-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8200/v1/sys/health?uninitcode=200&sealedcode=200"]
+      interval: 10s
+      timeout: 3s
+      retries: 30
+      start_period: 15s
+
+volumes:
+  consul-data:
+  vault-data:
+  vault-logs:
+
+networks:
+  faso-network:
+    external: true
