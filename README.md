@@ -84,7 +84,7 @@ cd infra/INFRA/docker/compose
 bash scripts/init-secrets.sh
 
 # 2. Démarrer la stack complète (11 containers)
-podman-compose up -d
+podman-compose -f podman-compose.yml up -d
 
 # 3. Vérifier la santé
 curl http://localhost:8080/api/poulets/health  # ARMAGEDDON → poulets-api
