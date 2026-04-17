@@ -22,6 +22,18 @@ impl ScriptEngine {
         // Set execution limits.
         engine.set_max_operations(config.max_execution_ms as u64 * 1000);
 
+        // -- Sandbox hardening (SecFinding-RHAI-SANDBOX) ----------------------
+        // WHY: `eval` allows dynamic code injection at runtime, bypassing
+        // compile-time analysis. String/array/map size caps prevent OOM via
+        // oversized in-script allocations. Suppressing print/debug prevents
+        // side-channel exfiltration through stdout in a server context.
+        engine.disable_symbol("eval");
+        engine.set_max_string_size(8 * 1024);
+        engine.set_max_array_size(1024);
+        engine.set_max_map_size(1024);
+        engine.on_print(|_| {});
+        engine.on_debug(|_, _, _| {});
+
         // Register KAYA store functions available to scripts.
         let store_get = store.clone();
         engine.register_fn("kaya_get", move |key: &str| -> rhai::Dynamic {
@@ -149,6 +161,72 @@ impl ScriptEngine {
             .map_err(|e| ScriptError::Compilation(e.to_string()))?;
         self.cache.insert(script, ast.clone());
         Ok(ast)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use rhai::Engine;
+
+    // Helper: build a hardened engine with the same sandbox settings as
+    // ScriptEngine::new applies, without requiring a real Store.
+    fn hardened_engine() -> Engine {
+        let mut engine = Engine::new();
+        engine.disable_symbol("eval");
+        engine.set_max_string_size(8 * 1024);
+        engine.set_max_array_size(1024);
+        engine.set_max_map_size(1024);
+        engine.on_print(|_| {});
+        engine.on_debug(|_, _, _| {});
+        engine
+    }
+
+    // -- sandbox: eval is disabled (SecFinding-RHAI-SANDBOX) -----------------
+
+    #[test]
+    fn sandbox_eval_symbol_is_disabled() {
+        let engine = hardened_engine();
+        // Attempting to call `eval` should produce a compile-time error since
+        // the symbol is disabled.
+        let result = engine.eval::<i64>("eval(\"1 + 1\")");
+        assert!(
+            result.is_err(),
+            "eval must be disabled in the sandbox, got: {result:?}"
+        );
+    }
+
+    // -- sandbox: oversized string triggers limit error ----------------------
+
+    #[test]
+    fn sandbox_string_size_limit_is_enforced() {
+        let engine = hardened_engine();
+        // Build a string of 9 KiB (above the 8 KiB limit) at runtime.
+        let script = r#"
+            let s = "";
+            let chunk = "x".repeat(1024);
+            s += chunk; s += chunk; s += chunk;
+            s += chunk; s += chunk; s += chunk;
+            s += chunk; s += chunk; s += chunk;
+            s
+        "#;
+        let result = engine.eval::<String>(script);
+        assert!(
+            result.is_err(),
+            "string exceeding 8 KiB must be rejected by the engine"
+        );
+    }
+
+    // -- sandbox: normal script still runs -----------------------------------
+
+    #[test]
+    fn sandbox_normal_arithmetic_works() {
+        let engine = hardened_engine();
+        let result = engine.eval::<i64>("let x = 6; let y = 7; x * y");
+        assert_eq!(result.unwrap(), 42);
     }
 }
 

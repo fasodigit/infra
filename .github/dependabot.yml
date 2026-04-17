@@ -1,0 +1,19 @@
+version: 2
+# Renovate is the primary dependency update tool.
+# Dependabot is kept as fallback for security alerts on GitHub Actions and Docker only.
+updates:
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "github-actions"
+
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+      - "docker"

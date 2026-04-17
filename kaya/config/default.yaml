@@ -41,6 +41,25 @@ compression:
   # lz4 acceleration factor
   lz4_acceleration: 1
 
+persistence:
+  # Enable the KAYA persistence layer (WAL + periodic snapshots).
+  enabled: false
+  # Root data directory: WAL segments live under {data_dir}/wal and
+  # snapshots under {data_dir}/snapshots.
+  data_dir: "./data/kaya"
+  # Fsync policy for the Write-Ahead Log: always | every_sec | no.
+  fsync_policy: "every_sec"
+  # Max WAL segment size in bytes before rolling (default 64 MiB).
+  segment_size_bytes: 67108864
+  # Interval in seconds between periodic snapshots (0 disables).
+  snapshot_interval_secs: 3600
+  # Number of snapshots to keep per shard.
+  snapshot_retention: 7
+  # Snapshot compression algorithm: zstd | lz4 | none.
+  compression: "zstd"
+  # zstd compression level for snapshots (1-22).
+  zstd_level: 3
+
 tls:
   enabled: false
   cert_path: ""

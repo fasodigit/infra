@@ -12,6 +12,9 @@ public class Poulet {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    @Version
+    private Long version;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "eleveur_id", nullable = false)
     private Eleveur eleveur;
@@ -65,6 +68,8 @@ public class Poulet {
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }
+
+    public Long getVersion() { return version; }
 
     public Eleveur getEleveur() { return eleveur; }
     public void setEleveur(Eleveur eleveur) { this.eleveur = eleveur; }

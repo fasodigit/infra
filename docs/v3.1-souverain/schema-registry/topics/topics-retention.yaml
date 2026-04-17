@@ -1,0 +1,267 @@
+# -----------------------------------------------------------------------------
+# FASO DIGITALISATION - Redpanda topics and retention policy (v3.1 sovereign)
+# -----------------------------------------------------------------------------
+# Consumed by `rpk` bootstrap scripts or by the companion Terraform module
+# terraform-redpanda-topics. Retention values are normative and derived from
+# POLICY-SCHEMA-REGISTRY-v3.1.md - section 11 and 12.
+#
+# Conventions:
+#   - replication factor is always 3 (RF=3 RAFT, sovereign requirement)
+#   - partitions sized per expected throughput, not per tenant
+#   - retention.ms uses milliseconds; -1 means infinite (bounded only by storage)
+#   - segment.ms is ISO-ish in milliseconds (1d = 86_400_000)
+#   - cleanup.policy: "delete" (default) or "compact,delete" (state topics)
+# -----------------------------------------------------------------------------
+
+defaults:
+  replication_factor: 3
+  min_insync_replicas: 2
+  compression_type: zstd
+  schema_registry:
+    compatibility: BACKWARD_TRANSITIVE
+    format: protobuf
+
+retention_aliases:
+  90d: 7776000000        #  90 * 86_400_000
+  1y:  31536000000
+  2y:  63072000000
+  3y:  94608000000
+  5y:  157680000000
+  7y:  220752000000
+  10y: 315360000000
+
+topics:
+
+  # ===== ETAT-CIVIL (retention 5 ans pour les flux demandes ; 10 ans audit) ===
+  - name: ec.demande.created.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 157680000000   # 5y
+      segment.ms: 604800000        # 7d
+  - name: ec.demande.validated.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 157680000000
+      segment.ms: 604800000
+  - name: ec.acte.signed.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 157680000000
+      segment.ms: 604800000
+  - name: ec.acte.state.v1
+    partitions: 12
+    config:
+      cleanup.policy: compact,delete
+      retention.ms: -1
+      segment.ms: 86400000         # 1d
+  - name: ec.audit-trail.v1
+    partitions: 24
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000   # 10y
+      segment.ms: 2592000000       # 30d
+
+  # ===== HOSPITAL (10 ans : dossier medical legal) =========================
+  - name: hosp.admission.registered.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000   # 10y
+      segment.ms: 604800000
+  - name: hosp.prescription.validated.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 604800000
+  - name: hosp.dossier.sealed.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 604800000
+  - name: hosp.dossier.state.v1
+    partitions: 12
+    config:
+      cleanup.policy: compact,delete
+      retention.ms: 315360000000
+      segment.ms: 86400000
+  - name: hosp.audit-trail.v1
+    partitions: 24
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 2592000000
+
+  # ===== E-TICKET (90 jours : cycle court) =================================
+  - name: eticket.ticket.purchased.v1
+    partitions: 24
+    config:
+      cleanup.policy: delete
+      retention.ms: 7776000000     # 90d
+      segment.ms: 86400000
+  - name: eticket.ticket.validated.v1
+    partitions: 24
+    config:
+      cleanup.policy: delete
+      retention.ms: 7776000000
+      segment.ms: 86400000
+  - name: eticket.seat.reserved.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 7776000000
+      segment.ms: 86400000
+  - name: eticket.audit-trail.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000   # 10y pour audit
+      segment.ms: 2592000000
+
+  # ===== VOUCHERS (transactions 7 ans ; emissions 3 ans par defaut) ========
+  - name: vouchers.voucher.emitted.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 94608000000    # 3y
+      segment.ms: 604800000
+  - name: vouchers.voucher.consumed.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 94608000000
+      segment.ms: 604800000
+  - name: vouchers.transaction.confirmed.v1
+    partitions: 24
+    config:
+      cleanup.policy: delete
+      retention.ms: 220752000000   # 7y - NEVER compact
+      segment.ms: 2592000000
+  - name: vouchers.audit-trail.v1
+    partitions: 24
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 2592000000
+
+  # ===== SOGESY (boarding pass 1 an ; chaine hash append-only) ===========
+  - name: sogesy.boarding-pass.issued.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 31536000000    # 1y
+      segment.ms: 604800000
+  - name: sogesy.boarding-pass.scanned.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 31536000000
+      segment.ms: 604800000
+  - name: sogesy.boarding-pass.sealed.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 31536000000
+      segment.ms: 604800000
+  - name: sogesy.audit-trail.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 2592000000
+
+  # ===== E-SCHOOL (3 ans : annee scolaire + archivage) =====================
+  - name: eschool.inscription.created.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 94608000000    # 3y
+      segment.ms: 604800000
+  - name: eschool.inscription.validated.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 94608000000
+      segment.ms: 604800000
+  - name: eschool.quota.classroom-full.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 94608000000
+      segment.ms: 604800000
+  - name: eschool.audit-trail.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 2592000000
+
+  # ===== ALT-MISSION (2 ans : controles internes) ==========================
+  - name: alt.mission.created.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 63072000000    # 2y
+      segment.ms: 604800000
+  - name: alt.mission.approved.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 63072000000
+      segment.ms: 604800000
+  - name: alt.mission.completed.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 63072000000
+      segment.ms: 604800000
+  - name: alt.audit-trail.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 2592000000
+
+  # ===== FASO-KALAN (1 an : service educatif) ==============================
+  - name: kalan.session.started.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 31536000000    # 1y
+      segment.ms: 604800000
+  - name: kalan.session.completed.v1
+    partitions: 12
+    config:
+      cleanup.policy: delete
+      retention.ms: 31536000000
+      segment.ms: 604800000
+  - name: kalan.certificate.issued.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 31536000000
+      segment.ms: 604800000
+  - name: kalan.audit-trail.v1
+    partitions: 6
+    config:
+      cleanup.policy: delete
+      retention.ms: 315360000000
+      segment.ms: 2592000000
+
+# -----------------------------------------------------------------------------
+# Bootstrap script (generated example) - run once per cluster
+# -----------------------------------------------------------------------------
+# for each topic in topics:
+#   rpk topic create <topic.name> \
+#       --partitions <topic.partitions> \
+#       --replicas 3 \
+#       --config cleanup.policy=<topic.config.cleanup.policy> \
+#       --config retention.ms=<topic.config.retention.ms> \
+#       --config segment.ms=<topic.config.segment.ms> \
+#       --config compression.type=zstd \
+#       --config min.insync.replicas=2
+# -----------------------------------------------------------------------------

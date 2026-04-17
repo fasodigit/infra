@@ -1,0 +1,269 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// GITHUB INTEGRATION — Protobuf messages for GitHub webhook events ingested
+// by the FASO DIGITALISATION CI/CD observability layer.
+// Kafka key for all topics: repository.full_name (deterministic partitioning).
+// Compatibility mode: BACKWARD_TRANSITIVE (see POLICY-SCHEMA-REGISTRY-v3.1.md).
+// Topics:
+//   github.push.v1
+//   github.pull_request.v1
+//   github.issue.v1
+//   github.workflow_run.v1
+//   github.release.v1
+//   github.raw.v1  (fallback — unrecognised event types)
+
+syntax = "proto3";
+
+package faso.github.events.v1;
+
+import "github/events/v1/types.proto";
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "bf.gov.faso.github.events.v1";
+option go_package = "github.com/faso/schemas/github/events/v1;eventsv1";
+
+// GithubPushEvent is produced when commits are pushed to any branch or tag.
+// Topic: github.push.v1
+// Kafka key: repository.full_name
+message GithubPushEvent {
+  // X-GitHub-Delivery UUID — idempotency key for this webhook delivery.
+  string delivery_id = 1;
+
+  // Timestamp at which the webhook was received by the FASO ingestion gateway.
+  google.protobuf.Timestamp received_at = 2;
+
+  // Repository that received the push.
+  optional GithubRepository repository = 3;
+
+  // Full ref name, e.g. "refs/heads/main" or "refs/tags/v1.0.0".
+  optional string ref = 4;
+
+  // SHA of the most-recent commit before the push.
+  optional string before_sha = 5;
+
+  // SHA of the most-recent commit after the push (HEAD).
+  optional string after_sha = 6;
+
+  // Commits included in this push (may be empty on force-push deletion).
+  repeated GithubCommit commits = 7;
+
+  // Actor that performed the push.
+  optional GithubUser pusher = 8;
+
+  // True when this push overwrote history (git push --force).
+  optional bool forced = 9;
+
+  // GitHub compare URL covering the before → after range.
+  optional string compare_url = 10;
+
+  reserved 11 to 30;
+}
+
+// GithubPullRequestEvent is produced on any pull-request lifecycle transition.
+// Topic: github.pull_request.v1
+// Kafka key: repository.full_name
+message GithubPullRequestEvent {
+  // X-GitHub-Delivery UUID — idempotency key for this webhook delivery.
+  string delivery_id = 1;
+
+  // Timestamp at which the webhook was received by the FASO ingestion gateway.
+  google.protobuf.Timestamp received_at = 2;
+
+  // Repository that owns this pull request.
+  optional GithubRepository repository = 3;
+
+  // GitHub action string: "opened", "closed", "reopened", "synchronize",
+  // "ready_for_review", "converted_to_draft", "merged", "labeled",
+  // "unlabeled", "assigned", "unassigned", "review_requested".
+  optional string action = 4;
+
+  // Pull request data at the time of this event.
+  optional GithubPullRequest pull_request = 5;
+
+  // GitHub actor that triggered the event.
+  optional GithubUser sender = 6;
+
+  reserved 7 to 25;
+}
+
+// GithubIssueEvent is produced on any issue lifecycle transition.
+// Topic: github.issue.v1
+// Kafka key: repository.full_name
+message GithubIssueEvent {
+  // X-GitHub-Delivery UUID — idempotency key for this webhook delivery.
+  string delivery_id = 1;
+
+  // Timestamp at which the webhook was received by the FASO ingestion gateway.
+  google.protobuf.Timestamp received_at = 2;
+
+  // Repository that owns this issue.
+  optional GithubRepository repository = 3;
+
+  // GitHub action string: "opened", "edited", "closed", "reopened",
+  // "assigned", "unassigned", "labeled", "unlabeled", "deleted".
+  optional string action = 4;
+
+  // GitHub numeric issue number.
+  optional int64 issue_number = 5;
+
+  // Issue title (technical metadata, must not carry PII).
+  optional string issue_title = 6;
+
+  // Current issue state: "open", "closed".
+  optional string issue_state = 7;
+
+  // Labels currently applied to the issue.
+  repeated GithubLabel labels = 8;
+
+  // GitHub actor that triggered the event.
+  optional GithubUser sender = 9;
+
+  // Issue author.
+  optional GithubUser author = 10;
+
+  // HTTPS URL to the issue on GitHub.
+  optional string html_url = 11;
+
+  // Issue creation timestamp.
+  optional google.protobuf.Timestamp created_at = 12;
+
+  // Last update timestamp.
+  optional google.protobuf.Timestamp updated_at = 13;
+
+  reserved 14 to 30;
+}
+
+// GithubWorkflowRunEvent is produced when a GitHub Actions workflow run
+// transitions state. Used for CI/CD observability dashboards.
+// Topic: github.workflow_run.v1
+// Kafka key: repository.full_name
+message GithubWorkflowRunEvent {
+  // X-GitHub-Delivery UUID — idempotency key for this webhook delivery.
+  string delivery_id = 1;
+
+  // Timestamp at which the webhook was received by the FASO ingestion gateway.
+  google.protobuf.Timestamp received_at = 2;
+
+  // Repository that owns this workflow run.
+  optional GithubRepository repository = 3;
+
+  // GitHub action string: "requested", "in_progress", "completed".
+  optional string action = 4;
+
+  // GitHub numeric workflow run ID.
+  optional int64 workflow_run_id = 5;
+
+  // Workflow display name (e.g. "CI — buf lint + breaking check").
+  optional string workflow_name = 6;
+
+  // Git ref that triggered the run (e.g. "refs/heads/main").
+  optional string head_branch = 7;
+
+  // HEAD commit SHA for this run.
+  optional string head_sha = 8;
+
+  // Workflow run conclusion: "success", "failure", "cancelled", "skipped",
+  // "timed_out", "action_required", "neutral". Empty while in progress.
+  optional string conclusion = 9;
+
+  // Run status: "queued", "in_progress", "completed".
+  optional string status = 10;
+
+  // Triggering actor (the identity that initiated the run).
+  optional GithubUser triggering_actor = 11;
+
+  // Run start timestamp.
+  optional google.protobuf.Timestamp run_started_at = 12;
+
+  // Run completion timestamp (populated only when conclusion is set).
+  optional google.protobuf.Timestamp updated_at = 13;
+
+  // HTTPS URL to the workflow run on GitHub.
+  optional string html_url = 14;
+
+  // Event name that triggered the workflow (e.g. "push", "pull_request").
+  optional string event = 15;
+
+  reserved 16 to 35;
+}
+
+// GithubReleaseEvent is produced when a GitHub Release is published,
+// updated, or deleted. Used for deployment tracking and changelog generation.
+// Topic: github.release.v1
+// Kafka key: repository.full_name
+message GithubReleaseEvent {
+  // X-GitHub-Delivery UUID — idempotency key for this webhook delivery.
+  string delivery_id = 1;
+
+  // Timestamp at which the webhook was received by the FASO ingestion gateway.
+  google.protobuf.Timestamp received_at = 2;
+
+  // Repository that owns this release.
+  optional GithubRepository repository = 3;
+
+  // GitHub action string: "published", "unpublished", "created", "edited",
+  // "deleted", "prereleased", "released".
+  optional string action = 4;
+
+  // GitHub numeric release ID.
+  optional int64 release_id = 5;
+
+  // Tag name (e.g. "v1.2.3").
+  optional string tag_name = 6;
+
+  // Release display name.
+  optional string release_name = 7;
+
+  // Whether this is a pre-release.
+  optional bool prerelease = 8;
+
+  // Whether this is a draft release.
+  optional bool draft = 9;
+
+  // Target commit-ish: branch or SHA the tag points to.
+  optional string target_commitish = 10;
+
+  // Actor that authored the release.
+  optional GithubUser author = 11;
+
+  // Release publication timestamp.
+  optional google.protobuf.Timestamp published_at = 12;
+
+  // Release creation timestamp.
+  optional google.protobuf.Timestamp created_at = 13;
+
+  // HTTPS URL to the release on GitHub.
+  optional string html_url = 14;
+
+  reserved 15 to 30;
+}
+
+// GithubRawEvent is the fallback envelope for GitHub webhook event types
+// that have no dedicated strongly-typed message yet, or for future event
+// types not yet handled. The original JSON payload is stored gzip-compressed
+// for future reprocessing or analytics.
+// Topic: github.raw.v1
+// Kafka key: repository_full_name
+message GithubRawEvent {
+  // X-GitHub-Delivery UUID — idempotency key for this webhook delivery.
+  string delivery_id = 1;
+
+  // Timestamp at which the webhook was received by the FASO ingestion gateway.
+  google.protobuf.Timestamp received_at = 2;
+
+  // Value of the X-GitHub-Event header (e.g. "check_run", "deployment",
+  // "member", "project_card", "star"…).
+  string event_type = 3;
+
+  // Full repository name ("owner/repo") for Kafka partition key alignment.
+  // May be empty for org-level webhooks with no repository context.
+  optional string repository_full_name = 4;
+
+  // Original webhook JSON body compressed with gzip. Stored for future
+  // schema-driven reprocessing once a typed message is defined.
+  // Field type bytes: opaque binary, never decoded in transit.
+  optional bytes payload_json = 5;
+
+  reserved 6 to 20;
+}

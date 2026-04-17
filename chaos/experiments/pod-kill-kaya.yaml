@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Chaos Mesh Schedule — Pod Kill KAYA (nightly 02h UTC)
+# sovereignty=true
+#
+# Objectif : valider que KAYA redémarre proprement après kill d'un replica
+# et que le cluster maintain le quorum Raft.
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: pod-kill-kaya-nightly
+  namespace: faso
+  labels:
+    app: kaya
+    chaos-type: pod-kill
+    sovereignty: "true"
+    team: faso-sre
+  annotations:
+    description: "Kill un replica KAYA chaque nuit à 02h UTC. Vérifie la résilience Raft et le redémarrage automatique."
+spec:
+  schedule: "0 2 * * *"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: PodChaos
+  podChaos:
+    action: pod-kill
+    mode: one
+    selector:
+      namespaces:
+        - faso
+      labelSelectors:
+        app: kaya
+    duration: "30s"
+    gracePeriod: 0

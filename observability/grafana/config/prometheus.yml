@@ -1,0 +1,47 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: "faso-dev"
+    sovereignty: "faso-digitalisation"
+
+rule_files:
+  - "/etc/prometheus/alerts/*.yml"
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["otel-collector:8889"]
+
+  - job_name: kaya
+    static_configs:
+      - targets: ["kaya:9090"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: job
+        replacement: kaya
+
+  - job_name: armageddon-gateway
+    static_configs:
+      - targets: ["armageddon-gateway:9090"]
+
+  - job_name: auth-ms
+    static_configs:
+      - targets: ["auth-ms:9090"]
+
+  - job_name: poulets-platform
+    static_configs:
+      - targets: ["poulets-platform:9090"]
+
+  - job_name: notifier-ms
+    static_configs:
+      - targets: ["notifier-ms:9090"]

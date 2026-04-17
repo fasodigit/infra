@@ -1,13 +1,24 @@
 /**
  * FASO DIGITALISATION - Poulets Platform
  * Real simulation data for E2E tests with Burkinabe context.
+ *
+ * SECURITY: test passwords MUST come from env (E2E_TEST_PASSWORD) — never hard-code.
+ * Generate locally with `openssl rand -base64 24` and export in your shell.
  */
+
+const TEST_PASSWORD = process.env.E2E_TEST_PASSWORD
+  ?? (() => {
+    throw new Error(
+      'E2E_TEST_PASSWORD env var is required for seed data. ' +
+      'Export one before running tests, e.g. `export E2E_TEST_PASSWORD=$(openssl rand -base64 24)`.'
+    );
+  })();
 
 export const eleveurs = [
   {
     name: 'Ouedraogo Amadou',
     email: 'amadou.ouedraogo@test.bf',
-    password: '***FASO_REDACTED_TEST_PASSWORD***',
+    password: TEST_PASSWORD,
     phone: '+22670112233',
     role: 'eleveur' as const,
     location: 'Ouagadougou, Secteur 30',
@@ -17,7 +28,7 @@ export const eleveurs = [
   {
     name: 'Compaore Fatimata',
     email: 'fatimata.compaore@test.bf',
-    password: '***FASO_REDACTED_TEST_PASSWORD***',
+    password: TEST_PASSWORD,
     phone: '+22676445566',
     role: 'eleveur' as const,
     location: 'Bobo-Dioulasso, Secteur 8',
@@ -31,7 +42,7 @@ export const clients = [
   {
     name: 'Restaurant Le Sahel',
     email: 'contact@lesahel.bf',
-    password: '***FASO_REDACTED_TEST_PASSWORD***',
+    password: TEST_PASSWORD,
     phone: '+22625334455',
     role: 'client' as const,
     type: 'restaurant' as const,
@@ -40,7 +51,7 @@ export const clients = [
   {
     name: 'Traiteur Wendkuni',
     email: 'wendkuni@test.bf',
-    password: '***FASO_REDACTED_TEST_PASSWORD***',
+    password: TEST_PASSWORD,
     phone: '+22670998877',
     role: 'client' as const,
     type: 'evenement' as const,

@@ -13,6 +13,10 @@ http-body-util = { workspace = true }
 http = { workspace = true }
 bytes = { workspace = true }
 tonic = { workspace = true }
+tonic-web = { workspace = true }
+tonic-health = { workspace = true }
+base64 = { workspace = true }
+regex = { workspace = true }
 tracing = { workspace = true }
 thiserror = { workspace = true }
 anyhow = { workspace = true }
@@ -24,6 +28,22 @@ ring = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 prometheus = { workspace = true }
+redis = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+subtle = { workspace = true }
+hex = { workspace = true }
+tokio-tungstenite = { workspace = true }
+futures-util = { workspace = true }
+
+# Optional rdkafka backend; enable with feature "rdkafka-backend"
+rdkafka = { workspace = true, optional = true }
+
+[features]
+rdkafka-backend = ["dep:rdkafka"]
 
 [dev-dependencies]
 tokio = { workspace = true }
+tokio-stream = { version = "0.1", features = ["net"] }

@@ -1,0 +1,172 @@
+# =============================================================================
+# alerts-outbox.yaml — Règles Prometheus pour outbox-relay
+# Version : v3.1 (souverain)
+# Cible   : Prometheus 2.55+ / Alertmanager routé vers PagerDuty on-call FASO
+# Référence : SPEC-OUTBOX-RELAY-v3.1.md §12, runbook-outbox-dlq.md
+# =============================================================================
+
+groups:
+  - name: outbox-relay
+    interval: 30s
+    rules:
+
+      # -----------------------------------------------------------------------
+      # 1. Backlog PENDING élevé — avertissement, risque de congestion
+      # -----------------------------------------------------------------------
+      - alert: OutboxBacklogHigh
+        expr: outbox_relay_pending_count > 100
+        for: 5m
+        labels:
+          severity: warning
+          service: outbox-relay
+          team: platform-sre
+          compliance: souverain-v3.1
+        annotations:
+          summary: "Outbox PENDING backlog > 100 sur {{ $labels.module }} (shard {{ $labels.shard }})"
+          description: |
+            Le backlog PENDING du module {{ $labels.module }} dépasse 100 lignes
+            depuis 5 minutes (valeur actuelle : {{ $value }}).
+            Cause probable : Redpanda lent, KAYA saturé, ou writer `ingestion-rs`
+            qui produit plus vite que les 6 workers ne publient.
+            Impact : augmente la latence commit → livraison au-delà de la cible
+            p99 < 50 ms.
+          runbook_url: "https://docs.faso.bf/runbooks/outbox-dlq#etape-3"
+          dashboard_url: "https://grafana.faso.bf/d/outbox-relay/overview?var-module={{ $labels.module }}"
+
+      # -----------------------------------------------------------------------
+      # 2. Dead-letter détecté — critical, page on-call immédiatement
+      # -----------------------------------------------------------------------
+      - alert: OutboxDeadLetter
+        expr: increase(outbox_relay_dead_letter_count[5m]) > 0
+        for: 0m
+        labels:
+          severity: critical
+          service: outbox-relay
+          team: platform-sre
+          pager: oncall-primary
+          compliance: souverain-v3.1
+        annotations:
+          summary: "Outbox DEAD_LETTER détecté sur {{ $labels.module }} — action < 15 min"
+          description: |
+            Au moins un événement est passé en DEAD_LETTER sur les 5 dernières
+            minutes (module : {{ $labels.module }}, shard : {{ $labels.shard }}).
+            Cela signifie 6 tentatives échouées. Les consumers aval N'ONT PAS
+            reçu l'événement. Journal légal Redpanda possiblement incomplet.
+            SLA on-call : diagnostic + mitigation < 15 min (cf. runbook).
+          runbook_url: "https://docs.faso.bf/runbooks/outbox-dlq"
+          dashboard_url: "https://grafana.faso.bf/d/outbox-relay/overview?var-module={{ $labels.module }}"
+          impact: "Souveraineté numérique — perte de traçabilité légale potentielle"
+
+      # -----------------------------------------------------------------------
+      # 3. Lag commit → publish élevé (p99 > 30s)
+      # -----------------------------------------------------------------------
+      - alert: OutboxLagHigh
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (module, le) (rate(outbox_relay_lag_seconds_bucket[5m]))
+          ) > 30
+        for: 5m
+        labels:
+          severity: warning
+          service: outbox-relay
+          team: platform-sre
+          compliance: souverain-v3.1
+        annotations:
+          summary: "Outbox p99 lag > 30s sur {{ $labels.module }}"
+          description: |
+            Le p99 du temps entre l'écriture commit YugabyteDB et la publication
+            effective dépasse 30 secondes depuis 5 minutes (valeur : {{ $value | humanizeDuration }}).
+            Cible normale : p99 < 50 ms.
+            Cause probable : lenteur Redpanda ou contention YugabyteDB (lock).
+          runbook_url: "https://docs.faso.bf/runbooks/outbox-dlq#etape-3"
+          dashboard_url: "https://grafana.faso.bf/d/outbox-relay/overview?var-module={{ $labels.module }}"
+
+      # -----------------------------------------------------------------------
+      # 4. Publication lente (p99 > 500 ms)
+      # -----------------------------------------------------------------------
+      - alert: OutboxPublishSlow
+        expr: |
+          histogram_quantile(
+            0.99,
+            sum by (module, le) (rate(outbox_relay_publish_duration_ms_bucket[5m]))
+          ) > 500
+        for: 5m
+        labels:
+          severity: warning
+          service: outbox-relay
+          team: platform-sre
+          compliance: souverain-v3.1
+        annotations:
+          summary: "Outbox publish p99 > 500 ms sur {{ $labels.module }}"
+          description: |
+            La durée XADD + PRODUCE au p99 dépasse 500 ms depuis 5 minutes
+            (valeur : {{ $value }} ms). Cible : p99 < 50 ms.
+            Vérifier latence Redpanda (produce.latency.p99) et santé KAYA.
+          runbook_url: "https://docs.faso.bf/runbooks/outbox-dlq#etape-3-1"
+          dashboard_url: "https://grafana.faso.bf/d/outbox-relay/shards"
+
+      # -----------------------------------------------------------------------
+      # 5. Worker down — critical, perte de parallélisme par shard
+      # -----------------------------------------------------------------------
+      - alert: OutboxWorkerDown
+        expr: outbox_relay_worker_up == 0
+        for: 2m
+        labels:
+          severity: critical
+          service: outbox-relay
+          team: platform-sre
+          pager: oncall-primary
+          compliance: souverain-v3.1
+        annotations:
+          summary: "Worker outbox-relay DOWN (module {{ $labels.module }}, shard {{ $labels.shard }})"
+          description: |
+            Le worker du shard {{ $labels.shard }} ne remonte plus son heartbeat
+            depuis 2 minutes. Le shard n'est plus traité — backlog va croître.
+            L'autre instance HA peut éventuellement reprendre si configurée en
+            dynamic-shard-assignment (v3.2) ; en v3.1 les shards sont figés.
+            Redémarrer le pod.
+          runbook_url: "https://docs.faso.bf/runbooks/outbox-dlq#etape-3-6"
+          dashboard_url: "https://grafana.faso.bf/d/outbox-relay/overview"
+
+      # -----------------------------------------------------------------------
+      # 6. Taux de retry élevé — signal précoce, avant DEAD_LETTER
+      # -----------------------------------------------------------------------
+      - alert: OutboxRetryRateHigh
+        expr: |
+          (sum by (module) (rate(outbox_relay_retry_count_total[5m])))
+          /
+          clamp_min(sum by (module) (rate(outbox_relay_sent_total[5m])), 1)
+          > 0.1
+        for: 10m
+        labels:
+          severity: warning
+          service: outbox-relay
+          team: platform-sre
+          compliance: souverain-v3.1
+        annotations:
+          summary: "Outbox retry ratio > 10% sur {{ $labels.module }}"
+          description: |
+            Plus de 10% des publications subissent au moins un retry depuis
+            10 minutes. Signal précoce avant DEAD_LETTER : diagnostiquer
+            maintenant évite la page on-call.
+          runbook_url: "https://docs.faso.bf/runbooks/outbox-dlq#etape-3"
+
+      # -----------------------------------------------------------------------
+      # 7. Batch failure (erreur SQL ou autre au niveau batch)
+      # -----------------------------------------------------------------------
+      - alert: OutboxBatchFailuresHigh
+        expr: increase(outbox_relay_batch_failure_total[5m]) > 5
+        for: 5m
+        labels:
+          severity: warning
+          service: outbox-relay
+          team: platform-sre
+          compliance: souverain-v3.1
+        annotations:
+          summary: "Outbox batch failures > 5/5min sur {{ $labels.module }}"
+          description: |
+            Plus de 5 échecs de batch en 5 minutes. Typiquement : YugabyteDB
+            down, lock contention, ou erreur de parsing de ligne.
+            Vérifier les logs du worker concerné (shard {{ $labels.shard }}).
+          runbook_url: "https://docs.faso.bf/runbooks/outbox-dlq#etape-3-6"

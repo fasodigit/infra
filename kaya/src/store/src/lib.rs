@@ -9,6 +9,10 @@ pub mod shard;
 pub mod bloom;
 pub mod error;
 pub mod types;
+pub mod persistence;
+pub mod probabilistic;
+pub mod geo;
+pub mod simd;
 
 use std::time::{Duration, Instant};
 
@@ -21,6 +25,7 @@ pub use shard::Shard;
 pub use bloom::{BloomFilter, BloomManager};
 pub use error::StoreError;
 pub use types::KayaValue;
+pub use probabilistic::ProbabilisticStore;
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -68,6 +73,8 @@ pub struct Store {
     config: StoreConfig,
     compressor: kaya_compress::Compressor,
     started_at: Instant,
+    /// Probabilistic data structures (Cuckoo, HyperLogLog, CMS, TopK).
+    pub prob: probabilistic::ProbabilisticStore,
 }
 
 impl Store {
@@ -81,6 +88,7 @@ impl Store {
             config,
             compressor: kaya_compress::Compressor::new(compress_config),
             started_at: Instant::now(),
+            prob: probabilistic::ProbabilisticStore::new(),
         }
     }
 
@@ -94,6 +102,12 @@ impl Store {
 
     fn shard(&self, key: &[u8]) -> &Shard {
         &self.shards[self.shard_index(key)]
+    }
+
+    /// Access a shard directly by its zero-based index.
+    /// Used by [`crate::persistence::PersistenceManager`] to iterate shards.
+    pub fn shard_at(&self, idx: usize) -> &Shard {
+        &self.shards[idx]
     }
 
     // -- basic operations ---------------------------------------------------
@@ -156,7 +170,19 @@ impl Store {
     }
 
     /// EXISTS: returns how many of the given keys exist.
+    ///
+    /// For batches of ≥ 2 keys the shard indices are pre-computed in one
+    /// `simd::hash_batch` call, avoiding repeated hasher initialisation.
     pub fn exists(&self, keys: &[&[u8]]) -> u64 {
+        if keys.len() >= 2 {
+            let mut hashes = vec![0u64; keys.len()];
+            simd::hash_batch(keys, &mut hashes);
+            let n = self.shards.len();
+            return hashes.iter().zip(keys.iter()).filter(|&(&h, k)| {
+                let shard = &self.shards[(h as usize) % n];
+                shard.get(k).map(|e| !e.is_expired()).unwrap_or(false)
+            }).count() as u64;
+        }
         keys.iter()
             .filter(|k| {
                 self.shard(k)
@@ -213,7 +239,24 @@ impl Store {
     }
 
     /// MGET: get multiple keys at once.
+    ///
+    /// For batches of ≥ 2 keys the shard indices are pre-computed via
+    /// `simd::hash_batch` to amortise hasher initialisation cost.
     pub fn mget(&self, keys: &[&[u8]]) -> Vec<Option<Bytes>> {
+        if keys.len() >= 2 {
+            let mut hashes = vec![0u64; keys.len()];
+            simd::hash_batch(keys, &mut hashes);
+            let n = self.shards.len();
+            return hashes.iter().zip(keys.iter()).map(|(&h, &k)| {
+                let shard = &self.shards[(h as usize) % n];
+                match shard.get(k) {
+                    Some(entry) if !entry.is_expired() => {
+                        self.compressor.decompress(&entry.value).ok()
+                    }
+                    _ => None,
+                }
+            }).collect();
+        }
         keys.iter()
             .map(|k| self.get(k).ok().flatten())
             .collect()

@@ -1,0 +1,74 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:base",
+    ":semanticCommits",
+    ":maintainLockFilesMonthly"
+  ],
+  "separateMinorPatch": true,
+  "rangeStrategy": "bump",
+  "schedule": ["before 6am every weekday"],
+  "enabledManagers": ["cargo", "maven", "gradle", "npm", "bun", "dockerfile", "docker-compose"],
+  "vulnerabilityAlerts": {
+    "enabled": true,
+    "addLabels": ["security"],
+    "prHourlyLimit": 0
+  },
+  "packageRules": [
+    {
+      "description": "Auto-merge minor and patch updates when CI passes",
+      "matchUpdateTypes": ["minor", "patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "requiredStatusChecks": ["ci"]
+    },
+    {
+      "description": "Auto-merge major dev/test dependencies",
+      "matchDepTypes": ["devDependencies", "dev-dependencies"],
+      "matchUpdateTypes": ["major", "minor", "patch"],
+      "automerge": true,
+      "automergeType": "pr",
+      "requiredStatusChecks": ["ci"]
+    },
+    {
+      "description": "Block auto-merge on RustSec advisories",
+      "groupName": "rustsec-blocker",
+      "matchPackagePatterns": ["*"],
+      "matchManagers": ["cargo"],
+      "vulnerabilityAlerts": true,
+      "addLabels": ["security"],
+      "automerge": false,
+      "prPriority": 10
+    },
+    {
+      "description": "Group tokio ecosystem",
+      "groupName": "tokio",
+      "matchPackagePatterns": ["^tokio"]
+    },
+    {
+      "description": "Group serde ecosystem",
+      "groupName": "serde",
+      "matchPackagePatterns": ["^serde"]
+    },
+    {
+      "description": "Group tracing ecosystem",
+      "groupName": "tracing",
+      "matchPackagePatterns": ["^tracing"]
+    },
+    {
+      "description": "Group opentelemetry ecosystem",
+      "groupName": "opentelemetry",
+      "matchPackagePatterns": ["^opentelemetry", "^open-telemetry"]
+    },
+    {
+      "description": "Group rustls ecosystem",
+      "groupName": "rustls",
+      "matchPackagePatterns": ["^rustls"]
+    },
+    {
+      "description": "Group scripting runtimes: rhai, wasmtime, mlua",
+      "groupName": "scripting-runtimes",
+      "matchPackageNames": ["rhai", "wasmtime", "mlua"]
+    }
+  ]
+}

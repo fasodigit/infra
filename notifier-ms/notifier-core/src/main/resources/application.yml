@@ -1,0 +1,176 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+# ============================================================
+# notifier-ms — FASO DIGITALISATION Notification Microservice
+# ============================================================
+
+server:
+  port: 8803
+  shutdown: graceful
+
+spring:
+  application:
+    name: notifier-ms
+
+  # ── Database ────────────────────────────────────────────────
+  datasource:
+    url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:notifier}
+    username: ${POSTGRES_USER:notifier}
+    password: ${POSTGRES_PASSWORD:notifier}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: false
+
+  # ── Flyway ──────────────────────────────────────────────────
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+    validate-on-migrate: true
+
+  # ── Redpanda (Kafka-compatible protocol) ────────────────────
+  kafka:
+    bootstrap-servers: ${KAFKA_BROKERS:redpanda:9092}
+    consumer:
+      group-id: notifier-ms
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.ByteArrayDeserializer
+      enable-auto-commit: false
+      max-poll-records: 10
+      properties:
+        isolation.level: read_committed
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
+      acks: all
+      retries: 3
+    listener:
+      ack-mode: MANUAL_IMMEDIATE
+      concurrency: 3
+
+  # ── KAYA (sovereign in-memory store, Redis-protocol) ────────
+  data:
+    redis:
+      url: ${KAYA_URL:redis://kaya:6380}
+      connect-timeout: 5000
+      timeout: 3000
+      lettuce:
+        pool:
+          max-active: 8
+          max-idle: 4
+          min-idle: 1
+
+  # ── Mail (MailHog dev) ───────────────────────────────────────
+  mail:
+    host: ${SMTP_HOST:mailhog}
+    port: ${SMTP_PORT:1025}
+    username: ${SMTP_USER:}
+    password: ${SMTP_PASSWORD:}
+    properties:
+      mail:
+        smtp:
+          auth: false
+          starttls:
+            enable: false
+
+  # ── Thread pool for async mail dispatch ─────────────────────
+  task:
+    execution:
+      pool:
+        core-size: 4
+        max-size: 16
+        queue-capacity: 500
+      thread-name-prefix: notifier-async-
+
+# ── Actuator ────────────────────────────────────────────────────
+management:
+  server:
+    port: 9090
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus,info,metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+  metrics:
+    export:
+      prometheus:
+        enabled: true
+    tags:
+      application: notifier-ms
+      environment: ${FASO_ENV:dev}
+
+# ── Resilience4j ────────────────────────────────────────────────
+resilience4j:
+  retry:
+    instances:
+      mail-dispatch:
+        max-attempts: 3
+        wait-duration: 2s
+        exponential-backoff-multiplier: 2.0
+        retry-exceptions:
+          - org.springframework.mail.MailException
+          - java.io.IOException
+        ignore-exceptions:
+          - bf.gov.faso.notifier.service.TemplateNotFoundException
+
+# ── Notifier configuration ──────────────────────────────────────
+notifier:
+  topics:
+    github-events: ${GITHUB_EVENTS_TOPIC:github.events.v1}
+    dlq: ${GITHUB_EVENTS_DLQ_TOPIC:github.events.v1.dlq}
+  dedupe:
+    ttl-seconds: 604800   # 7 days
+    key-prefix: "delivery:"
+  mail:
+    from: ${MAIL_FROM:noreply@faso.gov.bf}
+    from-name: ${MAIL_FROM_NAME:FASO DIGITALISATION}
+  context-rules:
+    file: ${CONTEXT_RULES_FILE:classpath:context-rules.json}
+
+# ── Auth-ms JWKS endpoint for token validation ──────────────────
+spring.security.oauth2.resourceserver:
+  jwt:
+    jwk-set-uri: ${AUTH_MS_JWKS_URI:http://auth-ms:8801/.well-known/jwks.json}
+
+# ── gRPC (future) ───────────────────────────────────────────────
+grpc:
+  server:
+    port: 9803
+    enabled: false
+
+---
+# ── Production profile (Mailersend) ─────────────────────────────
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  mail:
+    host: smtp.mailersend.net
+    port: 587
+    username: ${MAILERSEND_SMTP_USER}
+    password: ${MAILERSEND_SMTP_PASSWORD}
+    properties:
+      mail:
+        smtp:
+          auth: true
+          starttls:
+            enable: true
+            required: true

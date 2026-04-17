@@ -1,0 +1,36 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+version: "prometheus/v1"
+service: "auth-ms"
+labels:
+  project: faso-digitalisation
+  tier: critical
+slos:
+  - name: "availability"
+    objective: 99.9
+    description: "auth-ms answers login/refresh/validate requests"
+    sli:
+      events:
+        error_query: |
+          sum(rate(http_server_requests_seconds_count{application="auth-ms",status=~"5.."}[{{.window}}]))
+        total_query: |
+          sum(rate(http_server_requests_seconds_count{application="auth-ms"}[{{.window}}]))
+    alerting:
+      name: AuthMsAvailabilityBurn
+      page_alert: { labels: { severity: critical } }
+      ticket_alert: { labels: { severity: warning } }
+
+  - name: "jwt-validation-p99-5ms"
+    objective: 99
+    description: "JWT validation stays under 5ms"
+    sli:
+      events:
+        error_query: |
+          sum(rate(jwt_validation_duration_seconds_count[{{.window}}]))
+          -
+          sum(rate(jwt_validation_duration_seconds_bucket{le="0.005"}[{{.window}}]))
+        total_query: |
+          sum(rate(jwt_validation_duration_seconds_count[{{.window}}]))
+    alerting:
+      name: AuthMsJwtLatencyBurn
+      ticket_alert: { labels: { severity: warning } }

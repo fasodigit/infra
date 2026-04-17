@@ -39,5 +39,33 @@ Thumbs.db
 .env.*
 !.env.example
 
+# Secrets (Docker compose secrets/ dir + any *.secret.* files)
+docker/compose/secrets/*
+!docker/compose/secrets/.gitkeep
+!docker/compose/secrets/.gitignore
+!docker/compose/secrets/README.md
+*.secret.*
+*.pem
+*.key
+!**/.github/**/*.pem
+**/spire/data/
+**/spire/**/*.crt
+**/spire/**/*.key
+
 # Generated
 *.txt.bak
+
+# Coverage
+coverage/
+lcov.info
+*.profraw
+
+# Playwright / E2E artifacts
+test-results/
+playwright-report/
+blob-report/
+results.json
+
+# Benchmarks
+criterion/
+bencher-*.json

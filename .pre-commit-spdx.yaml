@@ -1,0 +1,25 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# .pre-commit-spdx.yaml — Standalone pre-commit config for SPDX header enforcement.
+#
+# USAGE (standalone, does NOT conflict with .pre-commit-config.yaml):
+#   pre-commit run --config INFRA/.pre-commit-spdx.yaml --all-files
+#
+# To integrate later: merge the 'repos' entry below into the global
+# .pre-commit-config.yaml once agent #2 Pre-commit work is complete.
+
+repos:
+  - repo: local
+    hooks:
+      - id: spdx-check
+        name: SPDX license header check (AGPL-3.0-or-later)
+        language: script
+        entry: INFRA/scripts/spdx-check.sh
+        pass_filenames: false
+        always_run: true
+        stages: [pre-commit]
+        description: >
+          Verifies that all FASO Rust, Java, TypeScript, and Protobuf source
+          files carry an SPDX-License-Identifier: AGPL-3.0-or-later header.
+          Run spdx-headers.sh to auto-inject missing headers.

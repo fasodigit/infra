@@ -1,0 +1,39 @@
+# =============================================================================
+# FASO DIGITALISATION — Trivy CVE Acceptance List
+# =============================================================================
+# Format : CVE-XXXX-XXXXX
+# Each entry MUST have:
+#   - Justification
+#   - Accepted-by (team/person)
+#   - Expiry (max 30 days from acceptance date)
+#
+# Process: open a security ticket, get approval from security lead,
+# then add entry here. Remove on expiry or when fix is available.
+# =============================================================================
+
+# CVE-2023-44487 (HTTP/2 Rapid Reset)
+# Justification: Internal-only service, not exposed to public internet.
+#                Mitigated by Envoy XDS rate-limiting at ingress layer.
+# Accepted-by: security-lead@fasodigitalisation.bf
+# Accepted-date: 2026-04-17
+# Expiry: 2026-05-17
+# CVE-2023-44487
+
+# CVE-2024-21626 (runc container breakout)
+# Justification: Running on patched kernel >= 6.1.12; host runc updated.
+#                Verified mitigated on all FASO nodes via node-hardening playbook.
+# Accepted-by: infra-lead@fasodigitalisation.bf
+# Accepted-date: 2026-04-17
+# Expiry: 2026-05-17
+# CVE-2024-21626
+
+# =============================================================================
+# HOW TO ADD A NEW EXCEPTION
+# =============================================================================
+# 1. Create security ticket referencing the CVE
+# 2. Document mitigation or compensating control
+# 3. Get approval from security lead
+# 4. Uncomment the CVE line below the comments
+# 5. Set Expiry <= accepted-date + 30 days
+# 6. Schedule a calendar reminder to review before expiry
+# =============================================================================

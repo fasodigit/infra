@@ -1,0 +1,42 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Chaos Mesh Schedule — Memory Stress ARMAGEDDON (80% RAM, 60s)
+# sovereignty=true
+#
+# Objectif : stresser la RAM d'ARMAGEDDON à 80% pendant 60s.
+# Vérifie :
+#   - Pas d'OOM Kill (limits bien configurées)
+#   - Backpressure activée correctement (queue saturation → rejet propre)
+#   - Alertes PagerDuty déclenchées avant OOM
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: memory-stress-armageddon
+  namespace: faso
+  labels:
+    app: armageddon
+    chaos-type: memory-stress
+    sovereignty: "true"
+    team: faso-sre
+  annotations:
+    description: "Stress RAM ARMAGEDDON à 80% pendant 60s. Vérifie OOM-safety et backpressure."
+spec:
+  schedule: "0 3 * * 3"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: StressChaos
+  stressChaos:
+    mode: one
+    selector:
+      namespaces:
+        - faso
+      labelSelectors:
+        app: armageddon
+    stressors:
+      memory:
+        workers: 4
+        size: "80%"
+    duration: "60s"
+    containerNames:
+      - armageddon

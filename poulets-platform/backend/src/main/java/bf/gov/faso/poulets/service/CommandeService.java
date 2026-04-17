@@ -4,6 +4,7 @@ import bf.gov.faso.poulets.model.*;
 import bf.gov.faso.poulets.repository.*;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Sort;
@@ -59,8 +60,24 @@ public class CommandeService {
         return commandeRepository.findByEleveurId(eleveurId, pageRequest);
     }
 
-    @Transactional
     public Commande create(UUID clientId, UUID eleveurId, List<Map<String, Object>> itemInputs) {
+        int maxRetries = 3;
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            try {
+                return doCreate(clientId, eleveurId, itemInputs);
+            } catch (OptimisticLockingFailureException ex) {
+                if (attempt == maxRetries) {
+                    log.warn("Stock contention after {} attempts for clientId={}", maxRetries, clientId);
+                    throw new IllegalStateException("Stock épuisé — réessayez dans quelques instants", ex);
+                }
+                log.debug("Optimistic lock conflict on attempt {}, retrying...", attempt);
+            }
+        }
+        throw new IllegalStateException("Stock épuisé");
+    }
+
+    @Transactional
+    protected Commande doCreate(UUID clientId, UUID eleveurId, List<Map<String, Object>> itemInputs) {
         Client client = clientRepository.findById(clientId)
                 .orElseThrow(() -> new IllegalArgumentException("Client not found: " + clientId));
 
@@ -90,7 +107,8 @@ public class CommandeService {
                         ": requested=" + qty + " available=" + poulet.getQuantity());
             }
 
-            // Decrement stock
+            // Decrement stock — @Version on Poulet will throw OptimisticLockingFailureException
+            // if another transaction modified this row concurrently
             poulet.setQuantity(poulet.getQuantity() - qty);
             if (poulet.getQuantity() == 0) {
                 poulet.setAvailable(false);

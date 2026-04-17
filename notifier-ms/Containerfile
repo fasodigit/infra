@@ -1,0 +1,67 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+# ============================================================
+# notifier-ms — Multi-stage container build
+# Stage 1: Maven build
+# Stage 2: Runtime (eclipse-temurin:21-jre-alpine)
+# ============================================================
+
+# ── Stage 1: Builder ─────────────────────────────────────────
+FROM docker.io/library/maven:3.9.9-eclipse-temurin-21-alpine AS builder
+
+WORKDIR /build
+
+# Cache dependency layer: copy poms first
+COPY notifier-ms/pom.xml ./
+COPY notifier-ms/notifier-core/pom.xml notifier-core/
+COPY notifier-ms/notifier-api/pom.xml notifier-api/
+COPY notifier-ms/notifier-templates/pom.xml notifier-templates/
+
+RUN mvn dependency:go-offline -B --no-transfer-progress
+
+# Copy full source
+COPY notifier-ms/notifier-core/ notifier-core/
+COPY notifier-ms/notifier-api/ notifier-api/
+COPY notifier-ms/notifier-templates/ notifier-templates/
+
+# Build without tests (tests run in CI separately)
+RUN mvn package -DskipTests -B --no-transfer-progress
+
+# ── Stage 2: Runtime ─────────────────────────────────────────
+FROM docker.io/library/eclipse-temurin:21-jre-alpine AS runtime
+
+# Security: non-root user
+RUN addgroup -S notifier && adduser -S notifier -G notifier
+
+WORKDIR /app
+
+# Copy the executable JAR from the core module (Spring Boot fat JAR)
+COPY --from=builder /build/notifier-core/target/notifier-core-*.jar app.jar
+
+# Prepare directories with correct ownership
+RUN chown -R notifier:notifier /app
+
+USER notifier
+
+# Expose HTTP and gRPC ports
+EXPOSE 8803 9803 9090
+
+# JVM tuning for container environments
+ENV JAVA_OPTS="-XX:+UseContainerSupport \
+               -XX:MaxRAMPercentage=75.0 \
+               -XX:InitialRAMPercentage=50.0 \
+               -XX:+OptimizeStringConcat \
+               -Djava.security.egd=file:/dev/./urandom \
+               -Dspring.backgroundpreinitializer.ignore=true"
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS -jar /app/app.jar"]
+
+# Health check via Spring Boot Actuator
+HEALTHCHECK --interval=15s --timeout=10s --start-period=60s --retries=5 \
+  CMD wget --no-verbose --tries=1 --spider http://localhost:8803/actuator/health || exit 1
+
+LABEL org.opencontainers.image.title="notifier-ms" \
+      org.opencontainers.image.description="FASO DIGITALISATION Notification Microservice" \
+      org.opencontainers.image.vendor="Ministère du Numérique, Burkina Faso" \
+      org.opencontainers.image.licenses="AGPL-3.0-only" \
+      org.opencontainers.image.version="1.0.0-SNAPSHOT"

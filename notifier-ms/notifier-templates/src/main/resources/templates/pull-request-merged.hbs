@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8"/>
+  <title>[PR MERGED] — {{repo_full_name}}</title>
+  <style>
+    body { font-family: Arial, sans-serif; background:#f5f5f5; margin:0; padding:0; }
+    .container { max-width:680px; margin:32px auto; background:#fff; border-radius:8px; box-shadow:0 2px 8px rgba(0,0,0,.1); overflow:hidden; }
+    .header { background:#6a1b9a; color:#fff; padding:24px 32px; }
+    .header h1 { margin:0; font-size:20px; }
+    .merged-badge { display:inline-block; background:#e1bee7; color:#4a148c; border-radius:12px; padding:4px 14px; font-size:13px; font-weight:600; margin:12px 0; }
+    .pr-card { border:1px solid #e0e0e0; border-radius:6px; padding:16px 20px; margin:16px 0; }
+    .pr-title { font-size:18px; font-weight:600; color:#6a1b9a; margin-bottom:8px; }
+    .branch-pill { background:#f3e5f5; color:#6a1b9a; border-radius:12px; padding:2px 10px; font-size:12px; }
+    .btn { background:#6a1b9a; color:#fff; padding:10px 28px; border-radius:4px; text-decoration:none; font-size:14px; display:inline-block; margin-top:16px; }
+    .footer { background:#f5f5f5; padding:14px 32px; font-size:12px; color:#999; border-top:1px solid #eee; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>✅ Pull Request fusionnée</h1>
+    <p style="margin:4px 0 0;font-size:13px;opacity:.8">{{repo_full_name}} · FASO DIGITALISATION</p>
+  </div>
+  <div style="padding:24px 32px;">
+    <div class="merged-badge">MERGED</div>
+    <div class="pr-card">
+      <div class="pr-title">#{{pr_number}} — {{pr_title}}</div>
+      <div style="font-size:13px;color:#555;">
+        <span>Par : <strong>{{pr_author}}</strong></span> &nbsp;|&nbsp;
+        <span><span class="branch-pill">{{pr_head_ref}}</span> → <span class="branch-pill">{{pr_base_ref}}</span></span>
+      </div>
+    </div>
+    <p style="font-size:14px;color:#444;">
+      Cette PR a été fusionnée avec succès. Les changements sont maintenant intégrés dans la branche
+      <strong>{{pr_base_ref}}</strong>. Vérifiez les pipelines CI/CD pour le déploiement automatique.
+    </p>
+    <a href="{{pr_url}}" class="btn">Voir la Pull Request</a>
+  </div>
+  <div class="footer">FASO DIGITALISATION — notifier-ms · {{rendered_at}}</div>
+</div>
+</body>
+</html>

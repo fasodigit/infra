@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Sloth SLO definition for KAYA. Generates Prometheus recording + alert rules.
+version: "prometheus/v1"
+service: "kaya"
+labels:
+  project: faso-digitalisation
+  tier: critical
+slos:
+  - name: "availability"
+    objective: 99.95    # 4h22m/month error budget
+    description: "KAYA accepts RESP3 connections and responds without error"
+    sli:
+      events:
+        error_query: |
+          sum(rate(kaya_command_errors_total[{{.window}}]))
+        total_query: |
+          sum(rate(kaya_commands_total[{{.window}}]))
+    alerting:
+      name: KayaAvailabilityBurn
+      page_alert:
+        labels: { severity: critical, team: platform }
+        annotations: { runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/kaya-down.md" }
+      ticket_alert:
+        labels: { severity: warning, team: platform }
+
+  - name: "latency-p99-1ms"
+    objective: 99
+    description: "99% of RESP3 commands complete under 1ms"
+    sli:
+      events:
+        error_query: |
+          sum(rate(kaya_command_duration_seconds_count[{{.window}}]))
+          -
+          sum(rate(kaya_command_duration_seconds_bucket{le="0.001"}[{{.window}}]))
+        total_query: |
+          sum(rate(kaya_command_duration_seconds_count[{{.window}}]))
+    alerting:
+      name: KayaLatencyBurn
+      page_alert: { labels: { severity: critical } }
+      ticket_alert: { labels: { severity: warning } }

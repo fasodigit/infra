@@ -1,0 +1,81 @@
+[package]
+name        = "outbox-relay"
+version     = "3.1.0"
+edition     = "2021"
+authors     = ["FASO DIGITALISATION <fasodigitalisation@gmail.com>"]
+description = "Transactional Outbox relay (YugabyteDB -> KAYA Streams -> Redpanda) for FASO DIGITALISATION"
+license     = "Proprietary"
+repository  = "https://git.faso.bf/infra/outbox-relay"
+rust-version = "1.82"
+
+[[bin]]
+name = "outbox-relay"
+path = "src/main.rs"
+
+[dependencies]
+# Async runtime
+tokio              = { version = "1.40", features = ["full"] }
+tokio-util         = "0.7"
+futures            = "0.3"
+
+# YugabyteDB (wire PostgreSQL 11+)
+sqlx               = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "macros"] }
+
+# Redpanda (Kafka protocol)
+rdkafka            = { version = "0.36", features = ["cmake-build", "ssl", "sasl", "tokio"] }
+
+# KAYA (compat RESP3)
+redis              = { version = "0.27", features = ["tokio-comp", "tokio-rustls-comp", "connection-manager"] }
+
+# Observabilité
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+tracing-opentelemetry = "0.28"
+opentelemetry      = "0.27"
+opentelemetry_sdk  = { version = "0.27", features = ["rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic"] }
+prometheus         = { version = "0.13", features = ["process"] }
+
+# Serialization
+serde              = { version = "1", features = ["derive"] }
+serde_json         = "1"
+
+# Utilitaires
+uuid               = { version = "1.10", features = ["v4", "serde"] }
+chrono             = { version = "0.4", features = ["serde"] }
+mur3               = "0.1"                  # Murmur3 128 bits (compat côté SQL)
+thiserror          = "1"
+anyhow             = "1"
+rand               = "0.8"                  # jitter backoff
+backoff            = { version = "0.4", features = ["tokio"] }
+
+# Configuration
+envy               = "0.4"
+config             = "0.14"
+
+# SPIRE / SPIFFE
+spiffe             = "0.6"
+rustls             = { version = "0.23", features = ["ring"] }
+rustls-pemfile     = "2"
+
+# HTTP (Prometheus exporter endpoint)
+axum               = "0.7"
+hyper              = "1"
+
+[dev-dependencies]
+tokio-test         = "0.4"
+testcontainers     = "0.23"
+testcontainers-modules = { version = "0.11", features = ["postgres", "kafka"] }
+criterion          = { version = "0.5", features = ["async_tokio"] }
+mockall            = "0.13"
+
+[profile.release]
+opt-level       = 3
+lto             = "fat"
+codegen-units   = 1
+strip           = "symbols"
+panic           = "abort"
+
+[profile.dev]
+opt-level       = 1
+debug           = true

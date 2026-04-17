@@ -9,5 +9,6 @@ rustls = { workspace = true }
 rustls-pemfile = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+subtle = { workspace = true }
 serde = { workspace = true }
 parking_lot = { workspace = true }

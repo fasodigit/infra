@@ -302,6 +302,15 @@ gateway:
     node_id: armageddon-0
     cluster_name: armageddon
 
+  webhooks:
+    github:
+      enabled: true
+      secret_env: ARMAGEDDON_GITHUB_WEBHOOK_SECRET
+      kafka_brokers:
+        - redpanda:9092
+      topic: github.events.v1
+      rate_limit_per_ip_per_min: 1000
+
 security:
   sentinel:
     enabled: true

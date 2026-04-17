@@ -1,0 +1,123 @@
+# =============================================================================
+# KAYA — Tenant FASO-KALAN (code tenant : kalan)
+# -----------------------------------------------------------------------------
+# RPO/RTO cibles (voir MATRICE-RPO-RTO-v3.1.md) :
+#   - Progression apprenant                   : RPO ≤ 5 s      | RTO = 4 h
+#   - Quiz / évaluations intermédiaires       : RPO ≤ 5 s      | RTO = 4 h
+#   - Sessions apprenant                      : RPO ≤ 5 s      | RTO = 4 h
+#
+# Obligation légale BF : rétention certificats délivrés 10 ans (vérité niveau 2
+# Redpanda compact topic, pas KAYA).
+# Signataire métier : Directeur FASO-KALAN.
+# Criticité C — plateforme d'apprentissage, tout re-calculable.
+# =============================================================================
+
+include: kaya-common.yaml
+
+tenant:
+  code: "kalan"
+  project: "faso-kalan"
+  display_name: "FASO-KALAN (Apprentissage)"
+  criticality: "C"
+  legal_retention_years: 10           # certificats — géré niveau 2/3, pas KAYA
+
+persistence:
+  default_mode: "async-1s"
+  policies:
+    - name: "progression"
+      match: "tenant-kalan:progress:*"
+      mode: "async-1s"
+    - name: "quiz"
+      match: "tenant-kalan:quiz:*"
+      mode: "async-1s"
+    - name: "sessions"
+      match: "tenant-kalan:sess:*"
+      mode: "async-1s"
+  snapshot:
+    frequency: "15m"
+    retention_count: 96
+    retention_days: 14
+  encryption:
+    backend: "luks2"
+    kek_vault_path: "transit/kaya/kalan/kek"
+    kek_rotation_period: "365d"
+    backup_kek_vault_path: "transit/kaya-backup/kalan/kek"
+
+acl:
+  users:
+    - username: "faso_kalan_svc"
+      password_file: "/run/vault/secrets/kaya/kalan/password"
+      key_patterns:
+        - "~tenant-kalan:*"
+      allow_commands:
+        - "+@read"
+        - "+@write"
+        - "+eval"
+        - "+evalsha"
+        - "+bf.*"
+        - "+xadd"
+        - "+xreadgroup"
+        - "+xack"
+        - "+xpending"
+      deny_commands:
+        - "-keys"
+        - "-flushall"
+        - "-flushdb"
+        - "-config"
+        - "-debug"
+        - "-shutdown"
+      channels: "resetchannels"
+
+replication:
+  mode: "async"
+  replicas_count: 3
+  off_site_required: false
+  topology:
+    - id: "replica-ouaga-1"
+      zone: "ouaga-a"
+      off_site: false
+    - id: "replica-ouaga-2"
+      zone: "ouaga-b"
+      off_site: false
+    - id: "replica-ouaga-3"
+      zone: "ouaga-c"
+      off_site: false
+  lag_alert_threshold_ms: 2000
+
+# -----------------------------------------------------------------------------
+# Bloom filters — volumétrie estimée (extrapolation : 200 000 apprenants/an).
+# Non spécifié dans la matrice de référence ; dimensionnement conservatif.
+# -----------------------------------------------------------------------------
+bloom_filters:
+  preallocate_on_boot: true
+  reserves:
+    - name: "bf:tenant-kalan:apprenants:actifs"
+      capacity: 200000
+      error_rate: 0.01
+      expansion: 2
+    - name: "bf:tenant-kalan:quiz:soumis"
+      capacity: 500000
+      error_rate: 0.01
+      expansion: 2
+
+network:
+  resp3:
+    listen: "0.0.0.0:6380"
+  grpc:
+    listen: "0.0.0.0:6381"
+  tls:
+    enabled: true
+    cert_file: "/run/vault/secrets/kaya/kalan/tls/cert.pem"
+    key_file: "/run/vault/secrets/kaya/kalan/tls/key.pem"
+    ca_file: "/run/vault/secrets/kaya/kalan/tls/ca.pem"
+
+maxmemory: "2GB"
+maxmemory_policy: "allkeys-lru"
+
+observability:
+  metrics:
+    listen: "127.0.0.1:9121"
+    labels:
+      tenant: "kalan"
+      project: "faso-kalan"
+      criticality: "C"

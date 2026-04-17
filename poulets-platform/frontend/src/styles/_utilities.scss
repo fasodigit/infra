@@ -1,0 +1,176 @@
+// =============================================================================
+// FASO DIGITALISATION — Utility classes
+// =============================================================================
+
+@use "mixins" as *;
+
+// ---------------------------------------------------------------- layout
+
+.faso-container   { @include container; }
+.faso-container-sm { @include container(var(--faso-container-sm)); }
+.faso-container-lg { @include container(var(--faso-container-2xl)); }
+
+.faso-surface     { @include surface(sm); padding: var(--faso-space-5); }
+.faso-surface-md  { @include surface(md); padding: var(--faso-space-6); }
+
+.faso-stack       { display: flex; flex-direction: column; gap: var(--faso-space-4); }
+.faso-stack-sm    { display: flex; flex-direction: column; gap: var(--faso-space-2); }
+.faso-stack-lg    { display: flex; flex-direction: column; gap: var(--faso-space-6); }
+
+.faso-row         { display: flex; flex-direction: row; gap: var(--faso-space-4); align-items: center; }
+.faso-row-wrap    { display: flex; flex-wrap: wrap; gap: var(--faso-space-3); }
+.faso-row-between { display: flex; align-items: center; justify-content: space-between; gap: var(--faso-space-4); }
+
+.faso-grid-auto   {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: var(--faso-space-4);
+}
+
+.faso-center      { display: flex; align-items: center; justify-content: center; }
+
+.faso-hidden-mobile { @include bp-max-md { display: none !important; } }
+.faso-only-mobile   { @include bp-md    { display: none !important; } }
+
+// ---------------------------------------------------------------- text
+
+.faso-text-xs    { @include text-xs; }
+.faso-text-sm    { @include text-sm; }
+.faso-text-lg    { @include text-lg; }
+.faso-text-xl    { @include text-xl; }
+.faso-text-2xl   { @include text-2xl; }
+.faso-text-3xl   { @include text-3xl; }
+.faso-text-4xl   { @include text-4xl; }
+
+.faso-text-muted  { color: var(--faso-text-muted); }
+.faso-text-subtle { color: var(--faso-text-subtle); }
+.faso-text-brand  { color: var(--faso-primary-600); }
+
+.faso-line-clamp-2 { @include line-clamp(2); }
+.faso-line-clamp-3 { @include line-clamp(3); }
+
+.faso-sr-only     { @include visually-hidden; }
+
+// ---------------------------------------------------------------- badges / chips
+
+.faso-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--faso-space-1);
+  padding: var(--faso-space-1) var(--faso-space-2);
+  border-radius: var(--faso-radius-pill);
+  font-size: var(--faso-text-xs);
+  font-weight: var(--faso-weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  line-height: 1;
+
+  &.is-success { background: var(--faso-success-bg); color: var(--faso-success); }
+  &.is-warning { background: var(--faso-warning-bg); color: var(--faso-warning); }
+  &.is-danger  { background: var(--faso-danger-bg);  color: var(--faso-danger); }
+  &.is-info    { background: var(--faso-info-bg);    color: var(--faso-info); }
+  &.is-neutral { background: var(--faso-border);     color: var(--faso-text-muted); }
+  &.is-brand   { background: var(--faso-primary-50); color: var(--faso-primary-700); }
+}
+
+// ---------------------------------------------------------------- KPI card
+
+.faso-kpi {
+  @include surface(sm);
+  padding: var(--faso-space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--faso-space-2);
+  transition: transform var(--faso-duration-fast) var(--faso-ease-standard),
+              box-shadow var(--faso-duration-fast) var(--faso-ease-standard);
+
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--faso-shadow-md);
+  }
+
+  @include reduce-motion { &:hover { transform: none; } }
+
+  &__label { @include text-sm; color: var(--faso-text-muted); font-weight: 500; }
+  &__value { @include text-3xl; color: var(--faso-text); }
+  &__delta { @include text-sm; font-weight: 600;
+    &.is-up { color: var(--faso-success); }
+    &.is-down { color: var(--faso-danger); }
+  }
+}
+
+// ---------------------------------------------------------------- empty state
+
+.faso-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--faso-space-4);
+  padding: var(--faso-space-12) var(--faso-space-6);
+  text-align: center;
+  color: var(--faso-text-muted);
+
+  mat-icon, .mat-icon {
+    width: 64px; height: 64px; font-size: 64px;
+    color: var(--faso-border-strong);
+  }
+
+  h3 { @include text-xl; color: var(--faso-text); margin: 0; }
+  p  { @include text-sm; margin: 0; max-width: 40ch; }
+}
+
+// ---------------------------------------------------------------- skeleton
+
+@keyframes faso-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.faso-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--faso-border) 0%,
+    var(--faso-border-strong) 50%,
+    var(--faso-border) 100%
+  );
+  background-size: 200% 100%;
+  animation: faso-shimmer 1.4s ease-in-out infinite;
+  border-radius: var(--faso-radius-md);
+  min-height: 16px;
+
+  @include reduce-motion { animation: none; opacity: 0.6; }
+}
+
+// ---------------------------------------------------------------- divider
+
+.faso-divider {
+  height: 1px;
+  background: var(--faso-border);
+  border: 0;
+  margin-block: var(--faso-space-4);
+}
+
+// ---------------------------------------------------------------- interactive card
+
+.faso-card-interactive {
+  @include surface(sm);
+  padding: var(--faso-space-5);
+  cursor: pointer;
+  transition: transform var(--faso-duration-fast) var(--faso-ease-standard),
+              box-shadow var(--faso-duration-fast) var(--faso-ease-standard),
+              border-color var(--faso-duration-fast) var(--faso-ease-standard);
+  @include focus-ring;
+
+  &:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--faso-shadow-lg);
+    border-color: var(--faso-primary-300);
+  }
+  &:active { transform: translateY(-1px); }
+
+  @include reduce-motion {
+    &:hover, &:active { transform: none; }
+  }
+}

@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+// ALT-MISSION — a mission order is completed and closed.
+// Topic: alt.mission.completed.v1
+
+package faso.alt.mission.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/alt/mission/v1;missionv1";
+option java_package = "bf.faso.schemas.alt.mission.v1";
+option java_multiple_files = true;
+
+message MissionCompleted {
+  // UUID of the mission.
+  string mission_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // When the mission was closed administratively.
+  google.protobuf.Timestamp completed_at = 3;
+
+  // Actual amount finally consumed (CFA cents).
+  int64 actual_amount_cents = 4;
+
+  // Outcome: "SUCCESS", "CANCELLED", "PARTIAL", "DISPUTED".
+  string outcome = 5;
+
+  // UUID of the staff who closed the mission.
+  string closer_id = 6;
+
+  // SHA-256 of the uploaded justification bundle (stored in object store).
+  bytes justification_hash = 7;
+
+  // Idempotency key.
+  string idempotency_key = 8;
+
+  reserved 9 to 15;
+}

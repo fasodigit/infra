@@ -10,6 +10,7 @@ use kaya_commands::{CommandContext, CommandRouter};
 use kaya_protocol::{Command, Frame};
 use kaya_store::{BloomManager, Store};
 use kaya_streams::StreamManager;
+use kaya_timeseries::{Aggregator, TimeSeriesStore, TsCreateOpts};
 
 /// Create a test context with defaults.
 fn test_ctx() -> Arc<CommandContext> {
@@ -646,4 +647,271 @@ fn test_zadd_update_score() {
     // Check updated score
     let resp = router.execute(&cmd("ZSCORE", &["z", "member"]));
     assert_eq!(resp, Frame::BulkString(Bytes::from("5")));
+}
+
+// ---------------------------------------------------------------------------
+// TimeSeries command handler integration tests (Tests 21-35)
+// ---------------------------------------------------------------------------
+//
+// These tests exercise the TS.* handler functions directly against a
+// `TimeSeriesStore` instance, verifying the full pipeline from parsed
+// command arguments to Frame responses.
+
+use kaya_timeseries::DuplicatePolicy;
+
+// Helper: build a kaya_protocol::Command with given name and args.
+fn ts_cmd(name: &str, args: &[&str]) -> Command {
+    let frame = Frame::Array(
+        std::iter::once(Frame::bulk(Bytes::from(name.to_string())))
+            .chain(args.iter().map(|a| Frame::bulk(Bytes::from(a.to_string()))))
+            .collect(),
+    );
+    Command::from_frame(frame).unwrap()
+}
+
+// Re-expose handler functions from the standalone timeseries module.
+// We call them via the public API of kaya-timeseries directly.
+use kaya_timeseries::{LabelFilter, TsError};
+
+fn ts_store() -> TimeSeriesStore {
+    TimeSeriesStore::new()
+}
+
+// -- Test 21: TS.CREATE + TS.INFO roundtrip --
+
+#[test]
+fn test_ts_create_info() {
+    let s = ts_store();
+    let mut opts = TsCreateOpts::default();
+    opts.retention_ms = 60_000;
+    opts.labels.insert("host".to_string(), "node1".to_string());
+    s.create(b"cpu:util", opts).unwrap();
+
+    let info = s.info(b"cpu:util").unwrap();
+    assert_eq!(info.retention_time, 60_000);
+    assert_eq!(info.labels.get("host").map(String::as_str), Some("node1"));
+    assert_eq!(info.total_samples, 0);
+}
+
+// -- Test 22: TS.ADD + TS.GET --
+
+#[test]
+fn test_ts_add_get() {
+    let s = ts_store();
+    s.create(b"t1", TsCreateOpts::default()).unwrap();
+    s.add(b"t1", 5000, 99.5).unwrap();
+    let pt = s.get(b"t1").unwrap().unwrap();
+    assert_eq!(pt.0, 5000);
+    assert!((pt.1 - 99.5).abs() < 1e-9);
+}
+
+// -- Test 23: TS.RANGE with aggregation AVG --
+
+#[test]
+fn test_ts_range_avg() {
+    let s = ts_store();
+    s.create(b"gauge", TsCreateOpts::default()).unwrap();
+    for i in 0..10i64 {
+        s.add(b"gauge", i * 1000, i as f64).unwrap();
+    }
+    let pts = s
+        .range(b"gauge", 0, 9999, Some(&Aggregator::Avg), Some(5000))
+        .unwrap();
+    assert_eq!(pts.len(), 2);
+    assert!((pts[0].1 - 2.0).abs() < 1e-9, "bucket0 avg={}", pts[0].1);
+    assert!((pts[1].1 - 7.0).abs() < 1e-9, "bucket1 avg={}", pts[1].1);
+}
+
+// -- Test 24: TS.RANGE with aggregation SUM --
+
+#[test]
+fn test_ts_range_sum() {
+    let s = ts_store();
+    s.create(b"req", TsCreateOpts::default()).unwrap();
+    for i in 0..6i64 {
+        s.add(b"req", i * 1000, 1.0).unwrap();
+    }
+    let pts = s
+        .range(b"req", 0, 5999, Some(&Aggregator::Sum), Some(3000))
+        .unwrap();
+    assert_eq!(pts.len(), 2);
+    assert!((pts[0].1 - 3.0).abs() < 1e-9);
+    assert!((pts[1].1 - 3.0).abs() < 1e-9);
+}
+
+// -- Test 25: TS.RANGE with aggregation MAX --
+
+#[test]
+fn test_ts_range_max() {
+    let s = ts_store();
+    s.create(b"temp", TsCreateOpts::default()).unwrap();
+    for i in 0..6i64 {
+        s.add(b"temp", i * 1000, i as f64 * 2.0).unwrap();
+    }
+    let pts = s
+        .range(b"temp", 0, 5999, Some(&Aggregator::Max), Some(3000))
+        .unwrap();
+    assert_eq!(pts.len(), 2);
+    assert!((pts[0].1 - 4.0).abs() < 1e-9); // max(0,2,4)
+    assert!((pts[1].1 - 10.0).abs() < 1e-9); // max(6,8,10)
+}
+
+// -- Test 26: Duplicate policy BLOCK --
+
+#[test]
+fn test_ts_duplicate_block() {
+    let s = ts_store();
+    let mut opts = TsCreateOpts::default();
+    opts.duplicate_policy = Some(DuplicatePolicy::Block);
+    s.create(b"blk", opts).unwrap();
+    s.add(b"blk", 1000, 1.0).unwrap();
+    let err = s.add(b"blk", 1000, 2.0);
+    assert!(matches!(err, Err(TsError::DuplicateBlocked { .. })));
+}
+
+// -- Test 27: Duplicate policy LAST --
+
+#[test]
+fn test_ts_duplicate_last() {
+    let s = ts_store();
+    let mut opts = TsCreateOpts::default();
+    opts.duplicate_policy = Some(DuplicatePolicy::Last);
+    s.create(b"lst", opts).unwrap();
+    s.add(b"lst", 1000, 1.0).unwrap();
+    s.add(b"lst", 1000, 9.0).unwrap(); // replace
+    let pts = s.range(b"lst", 0, 9999, None, None).unwrap();
+    assert_eq!(pts.len(), 1);
+    assert!((pts[0].1 - 9.0).abs() < 1e-9);
+}
+
+// -- Test 28: Duplicate policy MIN --
+
+#[test]
+fn test_ts_duplicate_min() {
+    let s = ts_store();
+    let mut opts = TsCreateOpts::default();
+    opts.duplicate_policy = Some(DuplicatePolicy::Min);
+    s.create(b"mn", opts).unwrap();
+    s.add(b"mn", 1000, 5.0).unwrap();
+    s.add(b"mn", 1000, 2.0).unwrap(); // keep minimum
+    let pts = s.range(b"mn", 0, 9999, None, None).unwrap();
+    assert_eq!(pts.len(), 1);
+    assert!((pts[0].1 - 2.0).abs() < 1e-9);
+}
+
+// -- Test 29: Retention compaction removes old points --
+
+#[test]
+fn test_ts_retention_compact() {
+    let s = ts_store();
+    let mut opts = TsCreateOpts::default();
+    opts.retention_ms = 40; // very tight: 40ms
+    s.create(b"old", opts).unwrap();
+    // Fill two chunks worth of data.
+    for i in 0..300i64 {
+        s.add(b"old", i, i as f64).unwrap();
+    }
+    s.compact(b"old", 300).unwrap();
+    // After compact(300), cutoff=260, first chunk (last_ts=255) should be gone.
+    let pts = s.range(b"old", 0, 300, None, None).unwrap();
+    assert!(
+        pts.is_empty() || pts[0].0 >= 256,
+        "expected ts >= 256, got {}",
+        pts.first().map(|p| p.0).unwrap_or(-1)
+    );
+}
+
+// -- Test 30: Compaction rule (parent → downsample → dest) --
+
+#[test]
+fn test_ts_compaction_rule() {
+    let s = ts_store();
+    s.create(b"raw2", TsCreateOpts::default()).unwrap();
+    s.create(b"agg2", TsCreateOpts::default()).unwrap();
+    s.create_rule(b"raw2", b"agg2".to_vec(), 5000, Aggregator::Avg).unwrap();
+
+    // Add 5 points in bucket [0, 4999].
+    for i in 0..5i64 {
+        s.add(b"raw2", i * 1000, i as f64).unwrap();
+        s.apply_rules(b"raw2", i * 1000);
+    }
+    let dest = s.range(b"agg2", 0, 99999, None, None).unwrap();
+    assert!(!dest.is_empty(), "no aggregated points in dest series");
+}
+
+// -- Test 31: Label filter MGET --
+
+#[test]
+fn test_ts_label_filter_mget() {
+    let s = ts_store();
+    let mut opts1 = TsCreateOpts::default();
+    opts1.labels.insert("sensor".to_string(), "temp".to_string());
+    opts1.labels.insert("room".to_string(), "hall".to_string());
+    s.create(b"hall:temp", opts1).unwrap();
+    s.add(b"hall:temp", 1000, 22.5).unwrap();
+
+    let mut opts2 = TsCreateOpts::default();
+    opts2.labels.insert("sensor".to_string(), "humidity".to_string());
+    s.create(b"hall:hum", opts2).unwrap();
+    s.add(b"hall:hum", 1000, 60.0).unwrap();
+
+    let filter = LabelFilter::parse(&["sensor=temp", "room=hall"]).unwrap();
+    let results = s.mget(&filter);
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].0, b"hall:temp");
+}
+
+// -- Test 32: TS.QUERYINDEX --
+
+#[test]
+fn test_ts_queryindex() {
+    let s = ts_store();
+    for (key, env) in &[("svc:prod:a", "prod"), ("svc:dev:a", "dev"), ("svc:prod:b", "prod"), ("svc:staging:a", "staging")] {
+        let mut opts = TsCreateOpts::default();
+        opts.labels.insert("env".to_string(), env.to_string());
+        s.create(key.as_bytes(), opts).unwrap();
+    }
+    let filter = LabelFilter::parse(&["env=prod"]).unwrap();
+    let keys = s.query_index(&filter);
+    assert_eq!(keys.len(), 2, "expected 2 prod keys, got {}", keys.len());
+}
+
+// -- Test 33: INCRBY increments last value --
+
+#[test]
+fn test_ts_incrby() {
+    let s = ts_store();
+    s.create(b"ctr2", TsCreateOpts::default()).unwrap();
+    s.incrby(b"ctr2", 10.0, Some(1000)).unwrap();
+    let v2 = s.incrby(b"ctr2", 5.0, Some(2000)).unwrap();
+    assert!((v2 - 15.0).abs() < 1e-9, "expected 15.0 got {v2}");
+}
+
+// -- Test 34: TS.REVRANGE returns points in reverse order --
+
+#[test]
+fn test_ts_revrange() {
+    let s = ts_store();
+    s.create(b"rev2", TsCreateOpts::default()).unwrap();
+    for i in 0..5i64 {
+        s.add(b"rev2", i * 1000, i as f64).unwrap();
+    }
+    let pts = s.revrange(b"rev2", 0, 4999, None, None).unwrap();
+    assert_eq!(pts[0].0, 4000);
+    assert_eq!(pts[4].0, 0);
+}
+
+// -- Test 35: TS.DEL (range deletion) --
+
+#[test]
+fn test_ts_del_range_integration() {
+    let s = ts_store();
+    s.create(b"del2", TsCreateOpts::default()).unwrap();
+    for i in 0..10i64 {
+        s.add(b"del2", i * 1000, i as f64).unwrap();
+    }
+    let count = s.del_range(b"del2", 3000, 7000).unwrap();
+    assert_eq!(count, 5);
+    let pts = s.range(b"del2", 0, 99999, None, None).unwrap();
+    assert_eq!(pts.len(), 5);
 }

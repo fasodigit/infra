@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+// VOUCHERS — a voucher is consumed (fully or partially).
+// Topic: vouchers.voucher.consumed.v1
+
+package faso.vouchers.voucher.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/vouchers/voucher/v1;voucherv1";
+option java_package = "bf.faso.schemas.vouchers.voucher.v1";
+option java_multiple_files = true;
+
+message VoucherConsumed {
+  // UUID of the voucher.
+  string voucher_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // UUID of the consumption operation.
+  string consumption_id = 3;
+
+  // UUID of the merchant / point of service.
+  string merchant_id = 4;
+
+  // When the consumption happened.
+  google.protobuf.Timestamp consumed_at = 5;
+
+  // Amount consumed (CFA cents). May be less than face value (partial).
+  int64 amount_cents = 6;
+
+  // Remaining balance after this consumption (CFA cents).
+  int64 remaining_cents = 7;
+
+  // Currency: always "XOF".
+  string currency = 8;
+
+  // Idempotency key.
+  string idempotency_key = 9;
+
+  reserved 10 to 20;
+}

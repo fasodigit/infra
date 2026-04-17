@@ -8,8 +8,24 @@ bytes = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 serde = { workspace = true }
+serde_json = { workspace = true }
 parking_lot = { workspace = true }
+tokio = { workspace = true }
+rhai = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+dashmap = { workspace = true }
 kaya-store = { workspace = true }
 kaya-protocol = { workspace = true }
+kaya-network = { workspace = true }
 kaya-streams = { workspace = true }
 kaya-scripting = { workspace = true }
+kaya-pubsub = { workspace = true }
+kaya-json = { workspace = true }
+kaya-timeseries = { workspace = true }
+kaya-vector = { workspace = true }
+kaya-tiered = { workspace = true }
+kaya-fulltext = { workspace = true }
+
+[dev-dependencies]
+rand = { workspace = true }

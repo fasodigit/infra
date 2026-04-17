@@ -4,6 +4,7 @@ use std::path::Path;
 use std::sync::Arc;
 
 use parking_lot::RwLock;
+use subtle::ConstantTimeEq;
 use thiserror::Error;
 
 // ---------------------------------------------------------------------------
@@ -26,6 +27,21 @@ pub enum SecurityError {
 
     #[error("I/O error: {0}")]
     Io(#[from] std::io::Error),
+}
+
+// ---------------------------------------------------------------------------
+// Constant-time comparison (SecFinding-AUTH-TIMING)
+// ---------------------------------------------------------------------------
+
+/// Compare two byte strings in constant time to prevent timing-oracle attacks
+/// on password / HMAC comparisons. Uses `subtle::ConstantTimeEq` internally.
+///
+/// WHY: A plain `==` on `&str` short-circuits on the first differing byte,
+/// leaking information about where passwords differ. `ConstantTimeEq` runs in
+/// O(min(a,b)) time regardless of content.
+#[inline]
+pub fn ct_eq(a: &str, b: &str) -> bool {
+    a.as_bytes().ct_eq(b.as_bytes()).into()
 }
 
 // ---------------------------------------------------------------------------
@@ -190,7 +206,8 @@ impl AclManager {
 
         match &user.password_hash {
             None => Ok(user.clone()),
-            Some(expected) if expected == password_hash => Ok(user.clone()),
+            // Use constant-time comparison to prevent timing-oracle on hash value.
+            Some(expected) if ct_eq(expected, password_hash) => Ok(user.clone()),
             _ => Err(SecurityError::AuthFailed(username.into())),
         }
     }
@@ -236,5 +253,72 @@ impl AclManager {
 impl Default for AclManager {
     fn default() -> Self {
         Self::new()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Tests
+// ---------------------------------------------------------------------------
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- ct_eq: constant-time comparator behaves correctly -------------------
+
+    #[test]
+    fn ct_eq_equal_strings_returns_true() {
+        assert!(ct_eq("secret123", "secret123"));
+    }
+
+    #[test]
+    fn ct_eq_different_strings_returns_false() {
+        assert!(!ct_eq("secret123", "wrong_pw"));
+        assert!(!ct_eq("abc", "abcd"));
+        assert!(!ct_eq("", "x"));
+    }
+
+    #[test]
+    fn ct_eq_empty_strings() {
+        assert!(ct_eq("", ""));
+    }
+
+    // -- AclManager authenticate uses constant-time comparison ---------------
+
+    #[test]
+    fn authenticate_correct_hash_succeeds() {
+        let mgr = AclManager::new();
+        let hash = "abc123hash";
+        mgr.set_user(AclUser {
+            username: "alice".into(),
+            password_hash: Some(hash.into()),
+            enabled: true,
+            permissions: AclPermissions::default(),
+        });
+        let result = mgr.authenticate("alice", hash);
+        assert!(result.is_ok(), "correct hash must authenticate");
+    }
+
+    #[test]
+    fn authenticate_wrong_hash_fails() {
+        let mgr = AclManager::new();
+        mgr.set_user(AclUser {
+            username: "bob".into(),
+            password_hash: Some("correct_hash".into()),
+            enabled: true,
+            permissions: AclPermissions::default(),
+        });
+        let result = mgr.authenticate("bob", "wrong_hash");
+        assert!(
+            matches!(result, Err(SecurityError::AuthFailed(_))),
+            "wrong hash must be rejected"
+        );
+    }
+
+    #[test]
+    fn authenticate_unknown_user_fails() {
+        let mgr = AclManager::new();
+        let result = mgr.authenticate("nobody", "any");
+        assert!(matches!(result, Err(SecurityError::AuthFailed(_))));
     }
 }

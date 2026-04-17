@@ -1,0 +1,188 @@
+# =============================================================================
+# KAYA — Configuration commune FASO DIGITALISATION v3.1
+# -----------------------------------------------------------------------------
+# Fichier inclus par tous les kaya-{projet}.yaml via `include: kaya-common.yaml`.
+# Variables partagées : runtime, identité, observabilité, scripting Rhai.
+# KAYA = base in-memory souveraine (Rust). PAS DragonflyDB, PAS Redis.
+# Protocole compatible RESP3+ et gRPC côté fil, mais implémentation 100 % Rust.
+# =============================================================================
+
+runtime:
+  # Threads proactor (io_uring / epoll). Empiriquement 4 suffit pour 100k ops/s.
+  proactor_threads: 4
+  # Fréquence de tâches background (hz) : expiration TTL, compaction, snapshots.
+  hz: 100
+  # CPU pinning activé (réservation cœurs isolés via systemd IsolCpus).
+  cpu_pinning:
+    enabled: true
+    cores: "2-5"
+  # Mémoire overcommit désactivée (plus sûr pour workload in-memory).
+  memory:
+    overcommit: false
+    lock_in_ram: true   # mlockall — évite le swap des pages sensibles.
+
+# -----------------------------------------------------------------------------
+# Identité workload — SPIRE/SVID
+# -----------------------------------------------------------------------------
+identity:
+  spire:
+    agent_socket: "unix:///run/spire/agent/sockets/agent.sock"
+    trust_domain: "faso.bf"
+    # SVID X.509 renouvelé automatiquement (TTL 1h).
+    svid_refresh_interval: "15m"
+  # mTLS obligatoire entre clients et KAYA (pas de fallback clair).
+  mtls:
+    enforce: true
+    min_tls_version: "1.3"
+
+# -----------------------------------------------------------------------------
+# Authentification — mot de passe depuis Vault
+# -----------------------------------------------------------------------------
+auth:
+  # Fichier mappé par agent Vault (template rendu, permissions 0400).
+  requirepass_file: "/run/vault/secrets/kaya/requirepass"
+  # Rotation automatique toutes les 24 h (SIGHUP → rechargement à chaud).
+  rotation_signal: "SIGHUP"
+
+# -----------------------------------------------------------------------------
+# Scripting Rhai — whitelist SHA1 (pas Lua !)
+# -----------------------------------------------------------------------------
+# EVAL est REFUSÉ en production (ACL denial au niveau tenant).
+# Seul EVALSHA est autorisé, et uniquement pour des scripts dont le SHA1 figure
+# dans la whitelist ci-dessous. La whitelist est gérée via GitOps + signature
+# cosign ; le contenu des scripts vit dans /infra/kaya/rhai-scripts/.
+scripting:
+  engine: "rhai"
+  eval_disabled: true
+  evalsha_enabled: true
+  sha1_whitelist:
+    # Placeholders — remplir via pipeline CI (cosign verify + sha1sum).
+    - sha1: "PLACEHOLDER_SHA1_IDEMPOTENT_CLAIM"
+      purpose: "idempotence de requête (tous projets)"
+    - sha1: "PLACEHOLDER_SHA1_RATE_LIMIT_TOKEN_BUCKET"
+      purpose: "token bucket distribué"
+    - sha1: "PLACEHOLDER_SHA1_BF_CHECK_AND_ADD"
+      purpose: "check-and-add atomique Bloom + stream"
+    - sha1: "PLACEHOLDER_SHA1_STREAM_ACK_DEDUP"
+      purpose: "ack XSTREAM + dédup idempotente"
+    - sha1: "PLACEHOLDER_SHA1_COUNTER_TRANSACTIONAL"
+      purpose: "compteur transactionnel multi-clé"
+  # Sandbox Rhai : pas d'accès fichier, pas d'accès réseau, pas d'eval dynamique.
+  sandbox:
+    allow_file_io: false
+    allow_network: false
+    max_operations: 10000
+    max_memory_bytes: 1048576   # 1 MiB par exécution
+
+# -----------------------------------------------------------------------------
+# Observabilité
+# -----------------------------------------------------------------------------
+observability:
+  # Endpoint Prometheus scrapé par le xDS Controller (discovery via SPIRE SVID).
+  metrics:
+    enabled: true
+    listen: "127.0.0.1:9121"
+    path: "/metrics"
+    scrape_from_xds_controller: true
+  # Logs structurés JSON vers stdout (collectés par Vector → Loki souverain).
+  logging:
+    format: "json"
+    level: "info"
+    include_fields:
+      - timestamp
+      - level
+      - tenant
+      - client_id
+      - command
+      - latency_us
+      - result
+    # Pas de dump de clés ni de valeurs dans les logs (obligation CIL BF).
+    redact_payloads: true
+  # Traces OpenTelemetry exportées vers collector souverain.
+  tracing:
+    enabled: true
+    exporter: "otlp"
+    endpoint: "otel-collector.observability.svc.faso.bf:4317"
+    sampling_ratio: 0.01
+
+# -----------------------------------------------------------------------------
+# Réseau — défaults communs (surchargeables par projet)
+# -----------------------------------------------------------------------------
+network:
+  resp3:
+    listen: "0.0.0.0:6380"
+  grpc:
+    listen: "0.0.0.0:6381"
+  tls:
+    enabled: true
+    # Certificats rendus par Vault Agent (PKI souveraine).
+    cert_file: "/run/vault/secrets/kaya/tls/cert.pem"
+    key_file: "/run/vault/secrets/kaya/tls/key.pem"
+    ca_file: "/run/vault/secrets/kaya/tls/ca.pem"
+    client_auth: "require_and_verify"
+  # Timeouts par défaut.
+  timeouts:
+    idle_client: "300s"
+    connect: "5s"
+    command: "30s"
+
+# -----------------------------------------------------------------------------
+# ACL — règles communes de refus (héritées par tous les tenants)
+# -----------------------------------------------------------------------------
+# Chaque kaya-{projet}.yaml ajoute son utilisateur {projet}_svc et ses
+# permissions positives ; les denials ci-dessous sont toujours appliqués.
+acl:
+  global_denials:
+    - "-keys"         # pas de KEYS * en prod
+    - "-flushall"
+    - "-flushdb"
+    - "-config"       # CONFIG reste réservé à l'opérateur root via socket local
+    - "-debug"
+    - "-shutdown"
+    - "-eval"         # EVAL désactivé — EVALSHA uniquement
+    - "-script load"  # chargement via GitOps, pas via client
+    - "-cluster reset"
+    - "-replicaof"
+    - "-slaveof"
+  # Utilisateur root local uniquement via socket Unix (0600, group kaya-admin).
+  root:
+    socket: "/run/kaya/admin.sock"
+    tcp_enabled: false
+
+# -----------------------------------------------------------------------------
+# Persistance — options globales (modes par tenant)
+# -----------------------------------------------------------------------------
+persistence:
+  # Répertoire monté sur volume LUKS, clé via Vault.
+  data_dir: "/var/lib/kaya/data"
+  # Format snapshot binaire KAYA (pas RDB).
+  snapshot_format: "kaya-v1"
+  # Compression zstd des snapshots (ratio typique 3-5x).
+  compression:
+    algorithm: "zstd"
+    level: 3
+  # Validation checksum blake3 à chaque chargement.
+  integrity:
+    algorithm: "blake3"
+    verify_on_load: true
+
+# -----------------------------------------------------------------------------
+# Chiffrement at-rest — LUKS + clé Vault
+# -----------------------------------------------------------------------------
+persistence_encryption_defaults:
+  backend: "luks2"
+  # Clé primaire de chiffrement volume (KEK) lue depuis Vault transit.
+  kek_vault_path: "transit/kaya/kek"
+  # Rotation annuelle via procédure opérateur (re-chiffrement en ligne).
+  kek_rotation_period: "365d"
+  # Clé de backup DIFFÉRENTE (pour isolation blast-radius).
+  backup_kek_vault_path: "transit/kaya-backup/kek"
+
+# -----------------------------------------------------------------------------
+# Limites globales de sûreté
+# -----------------------------------------------------------------------------
+safety:
+  max_clients: 10000
+  max_pipeline_depth: 1000
+  max_value_size_bytes: 16777216    # 16 MiB
+  slow_log_threshold_us: 10000      # 10 ms

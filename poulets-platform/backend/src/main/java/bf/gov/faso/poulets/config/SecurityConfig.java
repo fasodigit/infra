@@ -1,23 +1,32 @@
 package bf.gov.faso.poulets.config;
 
+import bf.gov.faso.poulets.security.JwtAuthenticationFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
 
 /**
  * Security configuration for poulets-api.
  * <p>
- * Authentication is handled by ARMAGEDDON gateway.
- * This service trusts the gateway-forwarded headers.
- * GraphQL and actuator endpoints are accessible.
+ * JWT tokens are issued by auth-ms and validated here via JWKS.
+ * Method-level security ({@code @PreAuthorize}) guards mutations.
  */
 @Configuration
 @EnableWebSecurity
+@EnableMethodSecurity(prePostEnabled = true, securedEnabled = true)
 public class SecurityConfig {
+
+    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+
+    public SecurityConfig(JwtAuthenticationFilter jwtAuthenticationFilter) {
+        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+    }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -28,15 +37,16 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Public dashboard API (no auth required)
                 .requestMatchers("/api/public/**").permitAll()
-                // GraphQL endpoint
-                .requestMatchers("/graphql/**").permitAll()
-                // GraphiQL UI
+                // GraphiQL UI (dev-only; disabled in prod via application-prod.yml)
                 .requestMatchers("/graphiql/**").permitAll()
-                // Health/actuator endpoints
-                .requestMatchers("/actuator/**").permitAll()
-                // Everything else requires authentication
+                // Safe actuator probes: public
+                .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                // Sensitive actuator endpoints: require ACTUATOR role
+                .requestMatchers("/actuator/**").hasRole("ACTUATOR")
+                // All other endpoints (including /graphql) require authentication
                 .anyRequest().authenticated()
-            );
+            )
+            .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }

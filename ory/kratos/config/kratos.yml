@@ -165,13 +165,16 @@ hashers:
     key_length: 32
 
 # ---------------------------------------------------------------------------
-# Secrets (DEV only - must be rotated for production)
+# Secrets - loaded from env vars set by Docker secrets _FILE convention
+# Run scripts/init-secrets.sh and ensure SECRETS_COOKIE / SECRETS_CIPHER
+# are populated (Compose passes SECRETS_COOKIE_FILE / SECRETS_CIPHER_FILE).
+# For local dev without Compose: export SECRETS_COOKIE=$(cat secrets/kratos_cookie_secret.txt)
 # ---------------------------------------------------------------------------
 secrets:
   cookie:
-    - faso-dev-cookie-secret-change-in-production-minimum-32-chars
+    - "{{ env "SECRETS_COOKIE" }}"
   cipher:
-    - faso-dev-cipher-secret-32-chars!
+    - "{{ env "SECRETS_CIPHER" }}"
 
 # ---------------------------------------------------------------------------
 # Ciphers
@@ -185,4 +188,4 @@ ciphers:
 log:
   level: debug
   format: json
-  leak_sensitive_values: true  # DEV only - NEVER in production
+  leak_sensitive_values: false

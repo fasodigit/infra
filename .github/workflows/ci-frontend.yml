@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# FASO DIGITALISATION — Frontend CI (lint / test / build) — BFF (Next.js) + Angular
+
+name: CI Frontend
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+concurrency:
+  group: ci-frontend-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: ${{ matrix.app }} · Node ${{ matrix.node-version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [22]
+        app:
+          - poulets-platform/bff
+          - poulets-platform/frontend
+
+    defaults:
+      run:
+        working-directory: INFRA/${{ matrix.app }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Set up Bun 1.2
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.2"
+
+      # ── Install dependencies via bun ───────────────────────────────────────
+      - name: bun install
+        run: bun install --frozen-lockfile
+
+      # ── Lint ──────────────────────────────────────────────────────────────
+      - name: bun run lint
+        run: bun run lint
+
+      # ── Unit tests ────────────────────────────────────────────────────────
+      - name: bun run test
+        run: bun run test --passWithNoTests
+
+      # ── Production build ──────────────────────────────────────────────────
+      - name: bun run build
+        run: bun run build
+
+      # ── Upload build artifact ─────────────────────────────────────────────
+      - name: Upload build artifact
+        if: github.ref == 'refs/heads/main'
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-${{ matrix.app == 'poulets-platform/bff' && 'bff' || 'angular' }}-${{ github.sha }}
+          path: |
+            INFRA/${{ matrix.app }}/.next/
+            INFRA/${{ matrix.app }}/dist/
+          retention-days: 7
+          if-no-files-found: ignore

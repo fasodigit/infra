@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// ETAT-CIVIL — a citizen requests a civil-status act (birth, death,
+// marriage certificate...). Topic: ec.demande.created.v1
+// No PII: citizen identified by opaque UUID only.
+
+package faso.ec.demande.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/ec/demande/v1;demandev1";
+option java_package = "bf.faso.schemas.ec.demande.v1";
+option java_multiple_files = true;
+
+message DemandeCreated {
+  // UUID of the demande (aggregate root).
+  string demande_id = 1;
+
+  // UUID of the tenant (commune issuing the act).
+  string tenant_id = 2;
+
+  // Server-side creation timestamp.
+  google.protobuf.Timestamp created_at = 3;
+
+  // Type of act requested — closed enumeration of codes, never free text.
+  // e.g. "ACTE_NAISSANCE", "ACTE_DECES", "ACTE_MARIAGE".
+  string type_acte = 4;
+
+  // Idempotency key (UUID) propagated from the API gateway.
+  string idempotency_key = 5;
+
+  // UUID of the requesting citizen account (opaque; real identity in Yugabyte).
+  string requester_id = 6;
+
+  // Commune code (INSD) where the act is requested. Not PII (region granularity).
+  string commune_code = 7;
+
+  // Channel of creation: "WEB", "USSD", "AGENT_GUICHET", "MOBILE_APP".
+  string channel = 8;
+
+  // Reserved for future fields (priority flags, legal basis...).
+  reserved 9 to 15;
+  reserved "nom", "prenom", "adresse", "nip", "date_naissance";
+}

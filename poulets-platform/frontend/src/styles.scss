@@ -1,64 +1,111 @@
 // =============================================================================
-// Global styles - Poulets Platform
+// FASO DIGITALISATION — Global stylesheet
+// Sovereign design system : tokens, mixins, Material 3 overrides, utilities.
 // =============================================================================
+
+@use "./styles/tokens";
+@use "./styles/mixins" as *;
+@use "./styles/material-overrides";
+@use "./styles/utilities";
+@use "./styles/components-home";
+
+// ---------------------------------------------------------------- reset / base
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  -webkit-text-size-adjust: 100%;
+  tab-size: 4;
+  scroll-behavior: smooth;
+
+  @media (prefers-reduced-motion: reduce) {
+    scroll-behavior: auto;
+  }
+}
 
 html, body {
   height: 100%;
   margin: 0;
-  font-family: Roboto, "Helvetica Neue", sans-serif;
-}
-
-// FASO DIGITALISATION color palette
-:root {
-  --faso-primary: #2e7d32;       // Green (agriculture)
-  --faso-primary-light: #60ad5e;
-  --faso-primary-dark: #005005;
-  --faso-accent: #ff8f00;        // Amber (warmth)
-  --faso-accent-light: #ffc046;
-  --faso-accent-dark: #c56000;
-  --faso-warn: #d32f2f;
-  --faso-bg: #fafafa;
-  --faso-surface: #ffffff;
-  --faso-text: #212121;
-  --faso-text-secondary: #757575;
 }
 
 body {
-  background-color: var(--faso-bg);
+  font-family: var(--faso-font-sans);
+  font-size: var(--faso-text-base);
+  line-height: var(--faso-leading-normal);
   color: var(--faso-text);
+  background-color: var(--faso-bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-// Utility classes
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--faso-font-display);
+  color: var(--faso-text);
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+
+h1 { @include text-4xl; }
+h2 { @include text-3xl; }
+h3 { @include text-2xl; }
+h4 { @include text-xl; }
+h5 { @include text-lg; }
+h6 { @include text-base; font-weight: var(--faso-weight-semibold); }
+
+a {
+  color: var(--faso-text-link);
+  text-decoration: none;
+  transition: color var(--faso-duration-fast) var(--faso-ease-standard);
+  @include focus-ring;
+
+  &:hover { text-decoration: underline; text-underline-offset: 3px; }
+}
+
+button {
+  font-family: inherit;
+  @include focus-ring;
+}
+
+img, svg, video { display: block; max-width: 100%; height: auto; }
+
+// ---------------------------------------------------------------- high contrast
+
+@include high-contrast {
+  *, *::before, *::after {
+    border-color: CanvasText !important;
+  }
+  a { text-decoration: underline; }
+  button, input, select, textarea { forced-color-adjust: none; }
+}
+
+// ---------------------------------------------------------------- legacy classes preserved
+
 .container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0 16px;
+  @include container;
 }
 
 .page-header {
-  padding: 24px 0;
+  padding: var(--faso-space-6) 0 var(--faso-space-4);
 
   h1 {
-    font-size: 2rem;
-    font-weight: 500;
-    margin: 0;
-    color: var(--faso-primary-dark);
+    color: var(--faso-primary-700);
   }
 
   p {
-    color: var(--faso-text-secondary);
-    margin: 8px 0 0;
+    color: var(--faso-text-muted);
+    margin: var(--faso-space-2) 0 0;
   }
 }
 
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 16px;
-  padding: 16px 0;
+  gap: var(--faso-space-4);
+  padding: var(--faso-space-4) 0;
 }
 
-// Spinner overlay
+// Preserve previous loading-overlay + snackbar selectors
 .loading-overlay {
   display: flex;
   align-items: center;
@@ -66,11 +113,12 @@ body {
   min-height: 200px;
 }
 
-// Snackbar customization
-.snackbar-success {
-  --mdc-snackbar-container-color: var(--faso-primary);
-}
+.snackbar-success { --mdc-snackbar-container-color: var(--faso-success); }
+.snackbar-error   { --mdc-snackbar-container-color: var(--faso-danger); }
 
-.snackbar-error {
-  --mdc-snackbar-container-color: var(--faso-warn);
+// ---------------------------------------------------------------- print
+
+@media print {
+  body { background: white; color: black; }
+  .mat-mdc-button, .hero-actions, .layout-toolbar, .layout-sidenav { display: none !important; }
 }

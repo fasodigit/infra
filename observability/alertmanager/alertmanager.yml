@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Alertmanager configuration — critical → postmortem-bot → GitHub issue.
+global:
+  resolve_timeout: 5m
+
+route:
+  group_by: ['alertname', 'service']
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+  receiver: slack-default
+  routes:
+    - matchers: [severity = "critical"]
+      receiver: postmortem-bot
+      continue: true
+    - matchers: [severity = "critical"]
+      receiver: slack-critical
+
+inhibit_rules:
+  - source_matchers: [alertname = "ServiceDown"]
+    target_matchers: [alertname = "HighLatency"]
+    equal: [service]
+
+receivers:
+  - name: postmortem-bot
+    webhook_configs:
+      - url: http://postmortem-bot.observability.svc:8084/alert
+        send_resolved: true
+
+  - name: slack-critical
+    slack_configs:
+      - channel: '#faso-oncall'
+        api_url: ${SLACK_WEBHOOK_URL}
+        title: '🚨 CRITICAL {{ .GroupLabels.alertname }} on {{ .GroupLabels.service }}'
+        text: |
+          {{ range .Alerts }}
+          *Summary:* {{ .Annotations.summary }}
+          *Runbook:* {{ .Annotations.runbook_url }}
+          *Started:* {{ .StartsAt }}
+          {{ end }}
+
+  - name: slack-default
+    slack_configs:
+      - channel: '#faso-alerts'
+        api_url: ${SLACK_WEBHOOK_URL}

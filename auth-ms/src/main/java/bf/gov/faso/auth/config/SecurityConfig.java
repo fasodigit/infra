@@ -38,8 +38,10 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // JWKS endpoint: public (consumed by ARMAGEDDON)
                 .requestMatchers("/.well-known/jwks.json").permitAll()
-                // Health/actuator endpoints
-                .requestMatchers("/actuator/**").permitAll()
+                // Safe actuator probes: public
+                .requestMatchers("/actuator/health", "/actuator/info").permitAll()
+                // Sensitive actuator endpoints: require ACTUATOR role
+                .requestMatchers("/actuator/**").hasRole("ACTUATOR")
                 // GraphiQL in dev
                 .requestMatchers("/graphiql/**").permitAll()
                 // Everything else requires authentication

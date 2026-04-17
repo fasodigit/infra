@@ -1,0 +1,122 @@
+# =============================================================================
+# KAYA — Tenant E-TICKET (code tenant : eticket)
+# -----------------------------------------------------------------------------
+# RPO/RTO cibles (voir MATRICE-RPO-RTO-v3.1.md) :
+#   - Réservations de billet                  : RPO ≤ 1 s      | RTO = 30 min
+#   - Validations / scans embarquement        : RPO ≤ 1 s      | RTO = 30 min
+#   - Paniers / sessions                      : RPO ≤ 5 s      | RTO = 30 min
+#
+# Obligation légale BF : conservation billetterie 5 ans (droit fiscal).
+# Signataire métier : DGTT + SOTRACO / opérateurs partenaires.
+# Flux entièrement classe B — pas de RPO=0, tout en fsync everysec.
+# =============================================================================
+
+include: kaya-common.yaml
+
+tenant:
+  code: "eticket"
+  project: "e-ticket"
+  display_name: "FASO E-Ticket"
+  criticality: "B"
+  legal_retention_years: 5
+
+persistence:
+  default_mode: "async-1s"
+  policies:
+    - name: "reservations"
+      match: "tenant-eticket:resa:*"
+      mode: "async-1s"
+    - name: "scans"
+      match: "tenant-eticket:scan:*"
+      mode: "async-1s"
+    - name: "paniers"
+      match: "tenant-eticket:cart:*"
+      mode: "async-1s"
+  snapshot:
+    frequency: "5m"
+    retention_count: 288
+    retention_days: 14
+  encryption:
+    backend: "luks2"
+    kek_vault_path: "transit/kaya/eticket/kek"
+    kek_rotation_period: "365d"
+    backup_kek_vault_path: "transit/kaya-backup/eticket/kek"
+
+acl:
+  users:
+    - username: "eticket_svc"
+      password_file: "/run/vault/secrets/kaya/eticket/password"
+      key_patterns:
+        - "~tenant-eticket:*"
+      allow_commands:
+        - "+@read"
+        - "+@write"
+        - "+eval"
+        - "+evalsha"
+        - "+bf.*"
+        - "+xadd"
+        - "+xreadgroup"
+        - "+xack"
+        - "+xpending"
+      deny_commands:
+        - "-keys"
+        - "-flushall"
+        - "-flushdb"
+        - "-config"
+        - "-debug"
+        - "-shutdown"
+      channels: "resetchannels"
+
+replication:
+  mode: "async"
+  replicas_count: 3
+  off_site_required: false            # classe B — RPO ≤ 1s tolère zone unique
+  topology:
+    - id: "replica-ouaga-1"
+      zone: "ouaga-a"
+      off_site: false
+    - id: "replica-ouaga-2"
+      zone: "ouaga-b"
+      off_site: false
+    - id: "replica-ouaga-3"
+      zone: "ouaga-c"
+      off_site: false
+  lag_alert_threshold_ms: 500
+
+# -----------------------------------------------------------------------------
+# Bloom filters — volumétrie annuelle : 1 000 000 tickets, FP 0.01 %
+# Usage principal : déduplication scans (éviter double validation).
+# -----------------------------------------------------------------------------
+bloom_filters:
+  preallocate_on_boot: true
+  reserves:
+    - name: "bf:tenant-eticket:tickets:scanned"
+      capacity: 1000000
+      error_rate: 0.0001              # 0.01 % — évite double-scan
+      expansion: 2
+    - name: "bf:tenant-eticket:tickets:emis"
+      capacity: 1000000
+      error_rate: 0.001
+      expansion: 2
+
+network:
+  resp3:
+    listen: "0.0.0.0:6380"
+  grpc:
+    listen: "0.0.0.0:6381"
+  tls:
+    enabled: true
+    cert_file: "/run/vault/secrets/kaya/eticket/tls/cert.pem"
+    key_file: "/run/vault/secrets/kaya/eticket/tls/key.pem"
+    ca_file: "/run/vault/secrets/kaya/eticket/tls/ca.pem"
+
+maxmemory: "4GB"
+maxmemory_policy: "allkeys-lru"       # éviction LRU acceptable sur paniers expirés
+
+observability:
+  metrics:
+    listen: "127.0.0.1:9121"
+    labels:
+      tenant: "eticket"
+      project: "e-ticket"
+      criticality: "B"

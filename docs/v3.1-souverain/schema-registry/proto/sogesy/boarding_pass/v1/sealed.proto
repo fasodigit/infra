@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// SOGESY — all boarding passes for a trip are sealed once the
+// vehicle has departed (WORM).
+// Topic: sogesy.boarding-pass.sealed.v1
+
+package faso.sogesy.boarding_pass.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/sogesy/boarding_pass/v1;boardingpassv1";
+option java_package = "bf.faso.schemas.sogesy.boarding_pass.v1";
+option java_multiple_files = true;
+
+message BoardingPassSealed {
+  // UUID of the seal operation (one per trip).
+  string seal_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // UUID of the trip being sealed.
+  string trip_id = 3;
+
+  // When the seal happened (typically = departure + 5 min).
+  google.protobuf.Timestamp sealed_at = 4;
+
+  // Total number of boarding passes issued for the trip.
+  int32 pass_count = 5;
+
+  // Total number of passengers actually boarded.
+  int32 boarded_count = 6;
+
+  // Merkle root of the hash chain of all passes of the trip.
+  bytes chain_root = 7;
+
+  // HMAC of the seal (SOGESY key).
+  bytes seal_hmac = 8;
+
+  // Idempotency key.
+  string idempotency_key = 9;
+
+  reserved 10 to 20;
+}

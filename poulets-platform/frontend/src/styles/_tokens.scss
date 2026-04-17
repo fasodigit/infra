@@ -1,0 +1,211 @@
+// =============================================================================
+// FASO DIGITALISATION — Design tokens
+// Sovereign palette: Burkina Faso flag + agricultural green + warm amber.
+// =============================================================================
+
+:root {
+  // -------------------------------------------------------------------- colors
+  // Burkina Faso flag — canonical sRGB values
+  --faso-flag-red:      #CE1126;  // upper stripe
+  --faso-flag-yellow:   #FCD116;  // star
+  --faso-flag-green:    #009E49;  // lower stripe
+
+  // Primary — agriculture & growth
+  --faso-primary-50:    #E8F5E9;
+  --faso-primary-100:   #C8E6C9;
+  --faso-primary-200:   #A5D6A7;
+  --faso-primary-300:   #81C784;
+  --faso-primary-400:   #66BB6A;
+  --faso-primary-500:   #2E7D32;
+  --faso-primary-600:   #1B5E20;
+  --faso-primary-700:   #14532D;
+  --faso-primary-800:   #0F3E1E;
+  --faso-primary-900:   #082A14;
+
+  // Accent — warmth, sun, harvest
+  --faso-accent-50:     #FFF8E1;
+  --faso-accent-100:    #FFECB3;
+  --faso-accent-200:    #FFE082;
+  --faso-accent-300:    #FFD54F;
+  --faso-accent-400:    #FFCA28;
+  --faso-accent-500:    #FFB300;
+  --faso-accent-600:    #FF8F00;
+  --faso-accent-700:    #FF6F00;
+  --faso-accent-800:    #E65100;
+  --faso-accent-900:    #BF360C;
+
+  // Semantic
+  --faso-success:       #2E7D32;
+  --faso-success-bg:    #E8F5E9;
+  --faso-warning:       #ED6C02;
+  --faso-warning-bg:    #FFF4E5;
+  --faso-danger:        #D32F2F;
+  --faso-danger-bg:     #FDECEC;
+  --faso-info:          #0288D1;
+  --faso-info-bg:       #E1F5FE;
+
+  // Surfaces (light theme)
+  --faso-bg:            #F6F7F9;
+  --faso-surface:       #FFFFFF;
+  --faso-surface-alt:   #F9FAFB;
+  --faso-surface-raised:#FFFFFF;
+  --faso-border:        #E5E7EB;
+  --faso-border-strong: #D1D5DB;
+  --faso-overlay:       rgba(15, 23, 42, 0.45);
+
+  // Text
+  --faso-text:          #0F172A;
+  --faso-text-muted:    #475569;
+  --faso-text-subtle:   #64748B;
+  --faso-text-inverse:  #FFFFFF;
+  --faso-text-link:     var(--faso-primary-600);
+
+  // -------------------------------------------------------------- typography
+  --faso-font-sans: "Inter", "Roboto", "Helvetica Neue", system-ui, -apple-system, sans-serif;
+  --faso-font-display: "Inter", "Roboto", system-ui, sans-serif;
+  --faso-font-mono: "JetBrains Mono", "Fira Code", ui-monospace, SFMono-Regular, monospace;
+
+  --faso-text-xs:   0.75rem;   // 12
+  --faso-text-sm:   0.875rem;  // 14
+  --faso-text-base: 1rem;      // 16
+  --faso-text-lg:   1.125rem;  // 18
+  --faso-text-xl:   1.25rem;   // 20
+  --faso-text-2xl:  1.5rem;    // 24
+  --faso-text-3xl:  1.875rem;  // 30
+  --faso-text-4xl:  2.25rem;   // 36
+  --faso-text-5xl:  3rem;      // 48
+
+  --faso-leading-tight:   1.2;
+  --faso-leading-normal:  1.5;
+  --faso-leading-relaxed: 1.65;
+
+  --faso-weight-regular:  400;
+  --faso-weight-medium:   500;
+  --faso-weight-semibold: 600;
+  --faso-weight-bold:     700;
+
+  // --------------------------------------------------------------- spacing (4-base)
+  --faso-space-0:   0;
+  --faso-space-1:   0.25rem;   // 4
+  --faso-space-2:   0.5rem;    // 8
+  --faso-space-3:   0.75rem;   // 12
+  --faso-space-4:   1rem;      // 16
+  --faso-space-5:   1.25rem;   // 20
+  --faso-space-6:   1.5rem;    // 24
+  --faso-space-8:   2rem;      // 32
+  --faso-space-10:  2.5rem;    // 40
+  --faso-space-12:  3rem;      // 48
+  --faso-space-16:  4rem;      // 64
+  --faso-space-24:  6rem;      // 96
+
+  // ---------------------------------------------------------------- radii
+  --faso-radius-sm:    4px;
+  --faso-radius-md:    8px;
+  --faso-radius-lg:    12px;
+  --faso-radius-xl:    16px;
+  --faso-radius-2xl:   24px;
+  --faso-radius-pill:  9999px;
+
+  // --------------------------------------------------------------- shadows (elevation)
+  --faso-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.05);
+  --faso-shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.08), 0 1px 2px rgba(15, 23, 42, 0.04);
+  --faso-shadow-md: 0 4px 8px rgba(15, 23, 42, 0.08), 0 2px 4px rgba(15, 23, 42, 0.04);
+  --faso-shadow-lg: 0 12px 24px rgba(15, 23, 42, 0.10), 0 4px 8px rgba(15, 23, 42, 0.05);
+  --faso-shadow-xl: 0 20px 40px rgba(15, 23, 42, 0.12);
+  --faso-shadow-focus: 0 0 0 3px rgba(46, 125, 50, 0.35);
+
+  // ------------------------------------------------------------ motion / duration
+  --faso-duration-instant: 80ms;
+  --faso-duration-fast:    160ms;
+  --faso-duration-normal:  240ms;
+  --faso-duration-slow:    360ms;
+  --faso-ease-standard:    cubic-bezier(0.4, 0.0, 0.2, 1);
+  --faso-ease-decelerate:  cubic-bezier(0.0, 0.0, 0.2, 1);
+  --faso-ease-accelerate:  cubic-bezier(0.4, 0.0, 1, 1);
+  --faso-ease-emphasized:  cubic-bezier(0.2, 0.0, 0, 1);
+
+  // ------------------------------------------------------------ layout
+  --faso-container-sm:  640px;
+  --faso-container-md:  768px;
+  --faso-container-lg:  1024px;
+  --faso-container-xl:  1280px;
+  --faso-container-2xl: 1440px;
+
+  --faso-z-base:     0;
+  --faso-z-sticky:   10;
+  --faso-z-drawer:   40;
+  --faso-z-modal:    50;
+  --faso-z-popover:  60;
+  --faso-z-toast:    70;
+  --faso-z-tooltip:  80;
+
+  --faso-toolbar-height: 64px;
+  --faso-bottom-nav-height: 56px;
+
+  // ------------------------------------------------------------ gradients (brand)
+  --faso-gradient-brand: linear-gradient(135deg, var(--faso-primary-600) 0%, var(--faso-primary-500) 55%, var(--faso-accent-600) 100%);
+  --faso-gradient-flag:  linear-gradient(180deg, var(--faso-flag-red) 0% 50%, var(--faso-flag-green) 50% 100%);
+  --faso-gradient-hero:  radial-gradient(circle at 20% 0%, rgba(255, 193, 7, 0.18) 0%, transparent 50%),
+                         radial-gradient(circle at 80% 100%, rgba(0, 158, 73, 0.18) 0%, transparent 50%),
+                         linear-gradient(160deg, #F8FBF9 0%, #F3F6F4 100%);
+}
+
+// ============================================================================
+// Dark theme — activé par attribut ou par préférence système
+// ============================================================================
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --faso-bg:            #0B1220;
+    --faso-surface:       #111827;
+    --faso-surface-alt:   #0F172A;
+    --faso-surface-raised:#1F2937;
+    --faso-border:        #1F2937;
+    --faso-border-strong: #334155;
+    --faso-text:          #F8FAFC;
+    --faso-text-muted:    #CBD5E1;
+    --faso-text-subtle:   #94A3B8;
+    --faso-text-link:     var(--faso-primary-300);
+
+    --faso-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
+    --faso-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
+    --faso-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.35);
+    --faso-shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.45);
+    --faso-shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.55);
+
+    --faso-success-bg: rgba(46, 125, 50, 0.18);
+    --faso-warning-bg: rgba(237, 108, 2, 0.18);
+    --faso-danger-bg:  rgba(211, 47, 47, 0.20);
+    --faso-info-bg:    rgba(2, 136, 209, 0.18);
+
+    --faso-gradient-hero:
+      radial-gradient(circle at 20% 0%, rgba(255, 193, 7, 0.08) 0%, transparent 50%),
+      radial-gradient(circle at 80% 100%, rgba(0, 158, 73, 0.10) 0%, transparent 50%),
+      linear-gradient(160deg, #0B1220 0%, #111827 100%);
+  }
+}
+
+// Override explicite par data-theme — support toggle manuel
+:root[data-theme="dark"] {
+  --faso-bg:            #0B1220;
+  --faso-surface:       #111827;
+  --faso-surface-alt:   #0F172A;
+  --faso-surface-raised:#1F2937;
+  --faso-border:        #1F2937;
+  --faso-border-strong: #334155;
+  --faso-text:          #F8FAFC;
+  --faso-text-muted:    #CBD5E1;
+  --faso-text-subtle:   #94A3B8;
+  --faso-text-link:     var(--faso-primary-300);
+
+  --faso-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
+  --faso-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.30);
+  --faso-shadow-md: 0 4px 8px rgba(0, 0, 0, 0.35);
+  --faso-shadow-lg: 0 12px 24px rgba(0, 0, 0, 0.45);
+  --faso-shadow-xl: 0 24px 48px rgba(0, 0, 0, 0.55);
+
+  --faso-success-bg: rgba(46, 125, 50, 0.18);
+  --faso-warning-bg: rgba(237, 108, 2, 0.18);
+  --faso-danger-bg:  rgba(211, 47, 47, 0.20);
+  --faso-info-bg:    rgba(2, 136, 209, 0.18);
+}

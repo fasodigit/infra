@@ -3,7 +3,12 @@ name = "kaya-network"
 version.workspace = true
 edition.workspace = true
 
+[features]
+default = []
+io_uring = ["tokio-uring"]
+
 [dependencies]
+tokio-uring = { workspace = true, optional = true }
 tokio = { workspace = true }
 tokio-util = { workspace = true }
 tokio-rustls = { workspace = true }
@@ -11,5 +16,11 @@ bytes = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+dashmap = { workspace = true }
+parking_lot = { workspace = true }
+prometheus = { workspace = true }
+smallvec = { workspace = true }
+ahash = { workspace = true }
 kaya-protocol = { workspace = true }
 kaya-security = { workspace = true }
+subtle = { workspace = true }

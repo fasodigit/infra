@@ -1,0 +1,40 @@
+syntax = "proto3";
+
+// ETAT-CIVIL — an agent validates a demande after documentary control.
+// Topic: ec.demande.validated.v1
+
+package faso.ec.demande.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/ec/demande/v1;demandev1";
+option java_package = "bf.faso.schemas.ec.demande.v1";
+option java_multiple_files = true;
+
+message DemandeValidated {
+  // UUID of the demande being validated.
+  string demande_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // When the validation decision was taken.
+  google.protobuf.Timestamp validated_at = 3;
+
+  // UUID of the validating agent (opaque).
+  string validator_id = 4;
+
+  // Role of the validator: "OFFICIER_ETAT_CIVIL", "DELEGUE", "SECRETAIRE".
+  string validator_role = 5;
+
+  // Outcome: "APPROVED", "REJECTED", "PENDING_COMPLEMENT".
+  string outcome = 6;
+
+  // Code of the rejection reason when outcome=REJECTED.
+  optional string rejection_code = 7;
+
+  // Idempotency key (UUID).
+  string idempotency_key = 8;
+
+  reserved 9 to 15;
+}

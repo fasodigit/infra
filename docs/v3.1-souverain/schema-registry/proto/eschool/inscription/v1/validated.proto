@@ -1,0 +1,41 @@
+syntax = "proto3";
+
+// E-SCHOOL — an inscription is validated by the school administration.
+// Topic: eschool.inscription.validated.v1
+
+package faso.eschool.inscription.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/eschool/inscription/v1;inscriptionv1";
+option java_package = "bf.faso.schemas.eschool.inscription.v1";
+option java_multiple_files = true;
+
+message InscriptionValidated {
+  // UUID of the inscription.
+  string inscription_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // UUID of the validating staff.
+  string validator_id = 3;
+
+  // When the validation happened.
+  google.protobuf.Timestamp validated_at = 4;
+
+  // Outcome: "ACCEPTED", "REJECTED_QUOTA_FULL", "REJECTED_DOCUMENT_INVALID",
+  //          "ACCEPTED_WAITLIST".
+  string outcome = 5;
+
+  // UUID of the assigned classroom when accepted.
+  optional string assigned_classroom_id = 6;
+
+  // Position in waitlist when outcome=ACCEPTED_WAITLIST.
+  optional int32 waitlist_position = 7;
+
+  // Idempotency key.
+  string idempotency_key = 8;
+
+  reserved 9 to 15;
+}

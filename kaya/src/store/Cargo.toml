@@ -13,4 +13,15 @@ smallvec = { workspace = true }
 crossbeam = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+zstd = { workspace = true }
+lz4_flex = { workspace = true }
+prometheus = { workspace = true }
+xxhash-rust = { workspace = true }
+rand = { workspace = true }
+once_cell = { workspace = true }
 kaya-compress = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
+tempfile = "3"

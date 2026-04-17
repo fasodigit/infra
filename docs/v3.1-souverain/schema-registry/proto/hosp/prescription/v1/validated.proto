@@ -1,0 +1,49 @@
+syntax = "proto3";
+
+// HOSPITAL — a prescription is validated under the four-eyes rule:
+// a prescribing physician PLUS an independent validator.
+// Topic: hosp.prescription.validated.v1
+// Drug names and dosages stay in Yugabyte — only UUIDs here.
+
+package faso.hosp.prescription.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/hosp/prescription/v1;prescriptionv1";
+option java_package = "bf.faso.schemas.hosp.prescription.v1";
+option java_multiple_files = true;
+
+message PrescriptionValidated {
+  // UUID of the prescription.
+  string prescription_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // When the four-eyes validation was completed.
+  google.protobuf.Timestamp validated_at = 3;
+
+  // UUID of the prescribing physician (opaque).
+  string prescriber_id = 4;
+
+  // UUID of the validating second party (MUST differ from prescriber).
+  string validator_id = 5;
+
+  // Role of the validator: "PHARMACIST", "HEAD_OF_SERVICE".
+  string validator_role = 6;
+
+  // UUID of the patient (opaque).
+  string patient_id = 7;
+
+  // SHA-256 of the prescription body (proof of integrity).
+  bytes prescription_hash = 8;
+
+  // Category of drugs prescribed (coarse): "STANDARD", "CONTROLLED", "NARCOTIC".
+  string drug_category = 9;
+
+  // Idempotency key.
+  string idempotency_key = 10;
+
+  reserved 11 to 20;
+  reserved "nom_medicament", "posologie", "diagnostic";
+}

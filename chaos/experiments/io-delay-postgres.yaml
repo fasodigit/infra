@@ -1,0 +1,41 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Chaos Mesh Schedule — IO Delay PostgreSQL reads sur auth-ms
+# sovereignty=true
+#
+# Objectif : injecter 200ms de délai sur les lectures PostgreSQL dans auth-ms.
+# Durée 60s. Vérifie que le P99 request latency reste sous le SLO (< 500ms)
+# et que le connection pool ne sature pas.
+
+apiVersion: chaos-mesh.org/v1alpha1
+kind: Schedule
+metadata:
+  name: io-delay-postgres-auth-ms
+  namespace: faso
+  labels:
+    app: auth-ms
+    chaos-type: io-delay
+    sovereignty: "true"
+    team: faso-sre
+  annotations:
+    description: "Délai 200ms lectures PostgreSQL dans auth-ms pendant 60s. Vérifie P99 latency SLO."
+spec:
+  schedule: "0 2 * * 2"
+  startingDeadlineSeconds: 300
+  concurrencyPolicy: Forbid
+  historyLimit: 5
+  type: IOChaos
+  ioChaos:
+    action: latency
+    mode: all
+    selector:
+      namespaces:
+        - faso
+      labelSelectors:
+        app: auth-ms
+    volumePath: /var/lib/postgresql
+    path: "**"
+    methods:
+      - READ
+    delay: "200ms"
+    percent: 100
+    duration: "60s"

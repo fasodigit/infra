@@ -1,0 +1,35 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+version: "prometheus/v1"
+service: "notifier-ms"
+labels:
+  project: faso-digitalisation
+  tier: support
+slos:
+  - name: "mail-delivery-success"
+    objective: 99
+    description: "Mails dispatched successfully (not DLQ-ed)"
+    sli:
+      events:
+        error_query: |
+          sum(rate(notifier_mail_failed_total[{{.window}}]))
+        total_query: |
+          sum(rate(notifier_mail_sent_total[{{.window}}])) + sum(rate(notifier_mail_failed_total[{{.window}}]))
+    alerting:
+      name: NotifierMailDeliveryBurn
+      ticket_alert: { labels: { severity: warning, team: notifier } }
+
+  - name: "consumer-lag-p95-1000"
+    objective: 99
+    description: "Kafka consumer lag stays below 1000 msgs 95% of time"
+    sli:
+      events:
+        error_query: |
+          sum(rate(kafka_consumer_lag_bucket{le="1000"}[{{.window}}]))
+          -
+          sum(rate(kafka_consumer_lag_count[{{.window}}]))
+        total_query: |
+          sum(rate(kafka_consumer_lag_count[{{.window}}]))
+    alerting:
+      name: NotifierConsumerLagBurn
+      ticket_alert: { labels: { severity: info } }

@@ -1,0 +1,46 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Workflow: SPDX license header enforcement
+# Blocks PR merge if any FASO source file is missing AGPL-3.0-or-later header.
+
+name: SPDX License Header Check
+
+on:
+  pull_request:
+    branches:
+      - main
+      - develop
+      - "release/**"
+    paths:
+      - "kaya/src/**/*.rs"
+      - "armageddon/**/*.rs"
+      - "auth-ms/src/**/*.java"
+      - "poulets-platform/backend/src/**/*.java"
+      - "poulets-platform/frontend/src/**/*.ts"
+      - "poulets-platform/frontend/src/**/*.tsx"
+      - "poulets-platform/backend/src/main/proto/**/*.proto"
+      - "scripts/spdx-*.sh"
+
+jobs:
+  spdx-check:
+    name: SPDX Header Check
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Make spdx-check.sh executable
+        run: chmod +x INFRA/scripts/spdx-check.sh
+
+      - name: Run SPDX header check
+        run: bash INFRA/scripts/spdx-check.sh
+
+      - name: Upload missing-header report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: spdx-missing-headers
+          path: /tmp/spdx-missing.txt
+          if-no-files-found: ignore

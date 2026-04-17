@@ -1,0 +1,59 @@
+---
+# FASO DIGITALISATION — Commitlint configuration
+# Enforces Conventional Commits specification
+# Docs: https://commitlint.js.org/
+
+extends:
+  - "@commitlint/config-conventional"
+
+rules:
+  type-enum:
+    - 2
+    - always
+    - - feat      # New feature
+      - fix       # Bug fix
+      - docs      # Documentation only
+      - style     # Formatting, missing semicolons, etc. (no logic change)
+      - refactor  # Code restructuring (no feature/fix)
+      - perf      # Performance improvement
+      - test      # Adding or correcting tests
+      - build     # Build system or external dependency changes
+      - ci        # CI/CD configuration changes
+      - chore     # Other changes (maintenance, tooling)
+      - revert    # Revert a previous commit
+      - sec       # Security fix or hardening
+
+  type-case:
+    - 2
+    - always
+    - lower-case
+
+  subject-case:
+    - 2
+    - never
+    - - sentence-case
+      - start-case
+      - pascal-case
+      - upper-case
+
+  subject-empty:
+    - 2
+    - never
+
+  subject-full-stop:
+    - 2
+    - never
+    - "."
+
+  header-max-length:
+    - 2
+    - always
+    - 100
+
+  body-leading-blank:
+    - 1
+    - always
+
+  footer-leading-blank:
+    - 1
+    - always

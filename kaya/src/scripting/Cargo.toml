@@ -11,4 +11,9 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 parking_lot = { workspace = true }
 ahash = { workspace = true }
+bytes = { workspace = true }
+dashmap = { workspace = true }
+hmac = { workspace = true }
+sha2 = { workspace = true }
+prometheus = { workspace = true }
 kaya-store = { workspace = true }

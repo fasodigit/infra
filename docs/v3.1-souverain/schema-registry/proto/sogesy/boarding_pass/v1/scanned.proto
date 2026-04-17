@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+// SOGESY — a boarding pass is scanned at boarding.
+// Topic: sogesy.boarding-pass.scanned.v1
+
+package faso.sogesy.boarding_pass.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/faso/schemas/sogesy/boarding_pass/v1;boardingpassv1";
+option java_package = "bf.faso.schemas.sogesy.boarding_pass.v1";
+option java_multiple_files = true;
+
+message BoardingPassScanned {
+  // UUID of the boarding pass.
+  string boarding_pass_id = 1;
+
+  // UUID of the tenant.
+  string tenant_id = 2;
+
+  // UUID of the trip.
+  string trip_id = 3;
+
+  // UUID of the scanning device.
+  string device_id = 4;
+
+  // UUID of the controlling agent.
+  string controller_id = 5;
+
+  // When the scan happened.
+  google.protobuf.Timestamp scanned_at = 6;
+
+  // Outcome: "BOARDED", "REJECTED_ALREADY_USED", "REJECTED_HMAC_INVALID",
+  //          "REJECTED_WRONG_TRIP", "REJECTED_EXPIRED".
+  string outcome = 7;
+
+  // HMAC verification result (true if signature matched).
+  bool hmac_valid = 8;
+
+  // Idempotency key.
+  string idempotency_key = 9;
+
+  reserved 10 to 15;
+}

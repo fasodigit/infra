@@ -1,0 +1,28 @@
+                    GNU AFFERO GENERAL PUBLIC LICENSE
+                       Version 3, 19 November 2007
+
+ Copyright (C) 2026 FASO DIGITALISATION (State of Burkina Faso)
+
+ Everyone is permitted to copy and distribute verbatim copies of this
+ license document, but changing it is not allowed.
+
+ The full text of the GNU AGPL v3 is available at
+ https://www.gnu.org/licenses/agpl-3.0.txt and is incorporated here by
+ reference. The SPDX identifier for this license is:
+
+     SPDX-License-Identifier: AGPL-3.0-or-later
+
+ KEY POINTS (non-binding summary — the full text prevails):
+
+ 1. You MAY use, study, modify, and redistribute this software.
+ 2. If you run a modified version as a network service, you MUST offer
+    the complete corresponding source (including your modifications) to
+    every user of that service.
+ 3. Any derivative work MUST remain licensed under AGPL-3.0-or-later.
+ 4. You MUST preserve all copyright, license, and attribution notices.
+ 5. There is NO warranty, to the extent permitted by applicable law.
+
+ This licensing choice reflects FASO DIGITALISATION's commitment to
+ digital sovereignty: the citizens of Burkina Faso must retain the
+ right to inspect, audit, and extend every line of code that processes
+ their data or operates on behalf of the public administration.

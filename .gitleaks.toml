@@ -1,0 +1,45 @@
+# FASO DIGITALISATION — Gitleaks custom configuration
+# Extends default ruleset with project-specific allowlists
+# Docs: https://github.com/gitleaks/gitleaks
+
+title = "FASO DIGITALISATION gitleaks config"
+
+[extend]
+# Inherit the default gitleaks ruleset
+useDefault = true
+
+[[allowlists]]
+description = "SPDX pre-commit hook definition file — contains no real secrets"
+paths = [
+  '''.pre-commit-spdx\.yaml''',
+]
+
+[[allowlists]]
+description = "Test fixtures — mock/dummy credentials for unit and integration tests"
+paths = [
+  '''tests?/fixtures?/''',
+  '''test-data/''',
+  '''testdata/''',
+  '''__fixtures__/''',
+  '''spec/fixtures?/''',
+]
+
+[[allowlists]]
+description = "Example and template files — placeholder values only"
+paths = [
+  '''.*\.example$''',
+  '''.*\.template$''',
+  '''.*\.example\.(yml|yaml|json|toml|env)$''',
+  '''.*\.template\.(yml|yaml|json|toml|env)$''',
+  '''\.(env|config)\.example$''',
+]
+
+[[allowlists]]
+description = "Documentation references to secret patterns (quoted examples)"
+regexes = [
+  '''REPLACE_ME''',
+  '''<YOUR_.*>''',
+  '''CHANGE_THIS''',
+  '''\$\{.*\}''',   # shell variable placeholders
+  '''{{.*}}''',     # template placeholders
+]

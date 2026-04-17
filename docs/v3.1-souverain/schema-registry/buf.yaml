@@ -1,0 +1,16 @@
+# buf configuration for the FASO DIGITALISATION sovereign proto catalog.
+# Reference: https://buf.build/docs/configuration/v2/buf-yaml
+version: v2
+modules:
+  - path: proto
+lint:
+  use:
+    - STANDARD
+  except:
+    # Comments are in French on the policy document but english on .proto;
+    # we keep the standard rules active.
+  disallow_comment_ignores: true
+breaking:
+  use:
+    - FILE
+  ignore_unstable_packages: false

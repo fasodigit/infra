@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+// GITHUB INTEGRATION — Common types shared by all GitHub webhook event messages.
+// No PII: user identity carried as opaque string IDs; login/name are
+// technical SCM identifiers, not civil-identity data.
+// Kafka key: repository.full_name (deterministic partitioning).
+
+syntax = "proto3";
+
+package faso.github.events.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option java_multiple_files = true;
+option java_package = "bf.gov.faso.github.events.v1";
+option go_package = "github.com/faso/schemas/github/events/v1;eventsv1";
+
+// GithubRepository holds the minimal repository metadata embedded in
+// every GitHub webhook payload. The full_name field is the Kafka partition key.
+message GithubRepository {
+  // GitHub numeric repository ID.
+  int64 id = 1;
+
+  // Fully-qualified name: "owner/repo". Used as Kafka partition key.
+  string full_name = 2;
+
+  // Short repository name (without owner prefix).
+  optional string name = 3;
+
+  // Owner login (organisation or user SCM handle). Not a civil identity.
+  optional string owner = 4;
+
+  // Whether the repository is private.
+  optional bool private = 5;
+
+  // One-line repository description (may be empty).
+  optional string description = 6;
+
+  // Default branch name (e.g. "main", "master").
+  optional string default_branch = 7;
+
+  // HTTPS URL to the repository on GitHub.
+  optional string html_url = 8;
+
+  reserved 9 to 20;
+}
+
+// GithubUser represents a GitHub actor (pusher, author, sender, assignee…).
+// Contains SCM-identity fields only — never civil-registry personal data.
+message GithubUser {
+  // GitHub numeric user ID.
+  int64 id = 1;
+
+  // GitHub login handle (SCM identifier, not a civil name).
+  optional string login = 2;
+
+  // Display name as configured in GitHub profile (SCM-level, not civil PII).
+  optional string name = 3;
+
+  // Committer e-mail as recorded in Git history (SCM metadata).
+  // Note: never used to contact the individual — stored for audit traceability.
+  optional string email = 4;
+
+  // Avatar URL (public CDN URL).
+  optional string avatar_url = 5;
+
+  // HTTPS profile URL.
+  optional string html_url = 6;
+
+  // Actor type: "User", "Bot", "Organization".
+  optional string type = 7;
+
+  reserved 8 to 20;
+  reserved "nip", "cnib", "adresse", "tel";
+}
+
+// GithubCommit represents a single Git commit included in a push event.
+message GithubCommit {
+  // Full 40-character Git SHA.
+  string sha = 1;
+
+  // Commit message subject + optional body (first 1 kB max).
+  optional string message = 2;
+
+  // Commit author (Git author identity — SCM metadata).
+  optional GithubUser author = 3;
+
+  // Commit committer (may differ from author on rebased commits).
+  optional GithubUser committer = 4;
+
+  // Timestamp at which the commit was authored.
+  optional google.protobuf.Timestamp timestamp = 5;
+
+  // Paths added by this commit (relative to repo root).
+  repeated string added = 6;
+
+  // Paths removed by this commit.
+  repeated string removed = 7;
+
+  // Paths modified by this commit.
+  repeated string modified = 8;
+
+  // HTTPS URL to the commit diff view on GitHub.
+  optional string url = 9;
+
+  reserved 10 to 20;
+}
+
+// GithubLabel represents a label applied to a pull request or issue.
+message GithubLabel {
+  // Label display name (e.g. "bug", "enhancement").
+  optional string name = 1;
+
+  // CSS hex color without leading '#' (e.g. "ee0701").
+  optional string color = 2;
+
+  // Optional long description of the label.
+  optional string description = 3;
+
+  reserved 4 to 10;
+}
+
+// GithubPullRequest carries the structural metadata of a pull request.
+// The body text field is kept for audit trace but must not carry PII.
+message GithubPullRequest {
+  // GitHub numeric pull request number within the repository.
+  int64 number = 1;
+
+  // PR title string (technical, not civil PII).
+  optional string title = 2;
+
+  // PR body / description — must not include PII; review enforced by policy.
+  optional string body = 3;
+
+  // Current state: "open", "closed".
+  optional string state = 4;
+
+  // Source branch name (head ref).
+  optional string head_ref = 5;
+
+  // Target branch name (base ref).
+  optional string base_ref = 6;
+
+  // PR author (GitHub identity).
+  optional GithubUser author = 7;
+
+  // Labels attached to this PR.
+  repeated GithubLabel labels = 8;
+
+  // Whether the PR is mergeable (tri-state: true / false / null → not computed yet).
+  optional bool mergeable = 9;
+
+  // SHA of the merge commit (populated only when merged).
+  optional string merge_commit_sha = 10;
+
+  // HTTPS URL to the pull request on GitHub.
+  optional string html_url = 11;
+
+  // PR creation timestamp.
+  optional google.protobuf.Timestamp created_at = 12;
+
+  // Last update timestamp.
+  optional google.protobuf.Timestamp updated_at = 13;
+
+  // Timestamp when the PR was closed (null if still open).
+  optional google.protobuf.Timestamp closed_at = 14;
+
+  // Timestamp when the PR was merged (null if not merged).
+  optional google.protobuf.Timestamp merged_at = 15;
+
+  reserved 16 to 30;
+}
