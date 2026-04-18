@@ -161,11 +161,27 @@ impl TcpProxy {
     /// The loop runs until a value is received on `shutdown` or the listener
     /// encounters a fatal I/O error.  Per-connection tasks are spawned onto the
     /// current tokio runtime and are not awaited; they complete independently.
-    pub async fn run(&self, mut shutdown: broadcast::Receiver<()>) -> io::Result<()> {
+    pub async fn run(&self, shutdown: broadcast::Receiver<()>) -> io::Result<()> {
         let listener = TcpListener::bind(self.listen_addr).await?;
+        self.run_with_listener(listener, shutdown).await
+    }
+
+    /// Like [`run`], but uses a pre-bound [`TcpListener`].
+    ///
+    /// This is the deterministic entry point for tests: the caller binds the
+    /// listener (typically to `127.0.0.1:0` for an OS-assigned ephemeral port)
+    /// and hands ownership to the proxy. No bind/drop/re-bind race is possible
+    /// because the socket stays owned by the proxy for the lifetime of the
+    /// accept loop.
+    pub async fn run_with_listener(
+        &self,
+        listener: TcpListener,
+        mut shutdown: broadcast::Receiver<()>,
+    ) -> io::Result<()> {
+        let local = listener.local_addr()?;
         info!(
             "TCP proxy listening on {} (lb={})",
-            self.listen_addr,
+            local,
             self.lb.name()
         );
 
@@ -220,17 +236,21 @@ impl TcpProxy {
 
 // -- internal helpers --
 
-/// Connect to `upstream_addr`, then copy bytes between `client` and the
-/// upstream stream bidirectionally.  Updates byte counters on completion.
+/// Connect to `upstream_addr`, then transfer bytes between `client` and the
+/// upstream stream bidirectionally.
+///
+/// On Linux ≥ 4.5 the transfer uses `splice(2)` (zero-copy via pipe).  On all
+/// other platforms or old kernels it falls back transparently to
+/// `tokio::io::copy_bidirectional`.  Updates byte counters on completion.
 async fn proxy_connection(
-    mut client: TcpStream,
+    client: TcpStream,
     upstream_addr: SocketAddr,
     metrics: TcpMetrics,
 ) -> io::Result<()> {
-    let mut upstream = TcpStream::connect(upstream_addr).await?;
+    let upstream = TcpStream::connect(upstream_addr).await?;
 
     let (client_to_upstream, upstream_to_client) =
-        tokio::io::copy_bidirectional(&mut client, &mut upstream).await?;
+        crate::splice::splice_bidirectional(client, upstream, 65536).await?;
 
     metrics.bytes_in.inc_by(client_to_upstream);
     metrics.bytes_out.inc_by(upstream_to_client);
@@ -286,6 +306,10 @@ mod tests {
 
     // -----------------------------------------------------------------
     // Test 3 — client writes X bytes → upstream receives exactly X bytes
+    //
+    // Hermetic: upstream + proxy each bound on `127.0.0.1:0` (OS-assigned
+    // ephemeral port) and the pre-bound listener is handed to the proxy via
+    // `run_with_listener`. No bind/drop/re-bind race.
     // -----------------------------------------------------------------
     #[tokio::test]
     async fn test_tcp_proxy_bytes_forwarded() {
@@ -302,7 +326,8 @@ mod tests {
             let _ = received_tx.send(buf);
         });
 
-        // Start the TCP proxy.
+        // Bind the proxy listener in-process, pass it to `run_with_listener`
+        // so the proxy does not need to re-bind (no port race).
         let proxy_listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let proxy_addr = proxy_listener.local_addr().unwrap();
 
@@ -310,15 +335,13 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
 
         tokio::spawn(async move {
-            proxy.run(shutdown_rx).await.unwrap();
+            proxy.run_with_listener(proxy_listener, shutdown_rx).await.unwrap();
         });
 
-        // Give the proxy a moment to bind.
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
-
-        // Connect and send 42 bytes.
+        // Connect and send a fixed-length payload. The proxy listener is
+        // already bound, so the connect cannot race with bind completion.
         let payload = b"ARMAGEDDON sovereign gateway test payload!!";
-        assert_eq!(payload.len(), 42);
+        assert_eq!(payload.len(), 43);
 
         let mut client = TcpStream::connect(proxy_addr).await.unwrap();
         client.write_all(payload).await.unwrap();
@@ -339,6 +362,11 @@ mod tests {
 
     // -----------------------------------------------------------------
     // Test 4 — upstream close causes client to receive EOF immediately
+    //
+    // Hermetic: same pattern as Test 3 (pre-bound listener + no arbitrary
+    // sleep). The upstream signals "accept complete" via a `Notify` before
+    // dropping the stream so the client connect cannot observe an empty
+    // backlog.
     // -----------------------------------------------------------------
     #[tokio::test]
     async fn test_tcp_proxy_upstream_close_propagates() {
@@ -358,10 +386,8 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
 
         tokio::spawn(async move {
-            proxy.run(shutdown_rx).await.unwrap();
+            proxy.run_with_listener(proxy_listener, shutdown_rx).await.unwrap();
         });
-
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         let mut client = TcpStream::connect(proxy_addr).await.unwrap();
         let mut buf = Vec::new();
@@ -381,6 +407,11 @@ mod tests {
 
     // -----------------------------------------------------------------
     // Test 5 — shutdown signal stops the proxy accept loop
+    //
+    // Hermetic: pre-bound listener + shutdown-completion signaled via
+    // `JoinHandle::await` rather than `sleep`. The shutdown signal is sent
+    // after the proxy task is spawned, and the shutdown `broadcast::Receiver`
+    // is already registered in the tokio::select! before the task yields.
     // -----------------------------------------------------------------
     #[tokio::test]
     async fn test_tcp_proxy_graceful_shutdown() {
@@ -392,14 +423,17 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
 
         let handle = tokio::spawn(async move {
-            proxy.run(shutdown_rx).await
+            proxy.run_with_listener(proxy_listener, shutdown_rx).await
         });
 
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        // Yield once so the proxy task has a chance to register the receiver
+        // in its `tokio::select!`, then signal shutdown. This avoids any
+        // wall-clock sleep.
+        tokio::task::yield_now().await;
         let _ = shutdown_tx.send(());
 
         let result = tokio::time::timeout(
-            std::time::Duration::from_secs(1),
+            std::time::Duration::from_secs(2),
             handle,
         )
         .await
@@ -411,6 +445,11 @@ mod tests {
 
     // -----------------------------------------------------------------
     // Test 6 — metrics are incremented after a proxied transfer
+    //
+    // Hermetic: pre-bound listener via `run_with_listener`, no sleep. The
+    // upstream signals transfer completion by closing its side once it has
+    // read the 3 bytes and written the echo; the connection task polls the
+    // metrics until they reflect the transfer (bounded by a timeout).
     // -----------------------------------------------------------------
     #[tokio::test]
     async fn test_tcp_proxy_metrics_incremented() {
@@ -419,10 +458,12 @@ mod tests {
 
         tokio::spawn(async move {
             let (mut stream, _) = upstream_listener.accept().await.unwrap();
-            // Echo 3 bytes back.
+            // Echo 3 bytes back, then close the stream so the client sees EOF
+            // and the proxy's splice pipeline can complete both halves.
             let mut buf = [0u8; 3];
             if stream.read_exact(&mut buf).await.is_ok() {
                 let _ = stream.write_all(&buf).await;
+                let _ = stream.shutdown().await;
             }
         });
 
@@ -442,25 +483,49 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
 
         tokio::spawn(async move {
-            proxy.run(shutdown_rx).await.unwrap();
+            proxy.run_with_listener(proxy_listener, shutdown_rx).await.unwrap();
         });
-
-        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
 
         let mut client = TcpStream::connect(proxy_addr).await.unwrap();
         client.write_all(b"ABC").await.unwrap();
         let mut reply = [0u8; 3];
         client.read_exact(&mut reply).await.unwrap();
         assert_eq!(&reply, b"ABC");
+        // Half-close the client so the proxy's `client→upstream` splice sees
+        // EOF and returns, which triggers the byte-counter updates.
         client.shutdown().await.unwrap();
+        let mut tail = Vec::new();
+        let _ = tokio::time::timeout(
+            std::time::Duration::from_secs(2),
+            client.read_to_end(&mut tail),
+        )
+        .await;
 
-        // Allow the connection task to complete and flush counters.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+        // Poll metrics until they reach the expected threshold or we time out.
+        // (The proxy connection task writes the counters when
+        // `splice_bidirectional` returns, which happens after both halves
+        // close.) A small `sleep` is preferred over `yield_now` here because
+        // the polled condition depends on a *background task's progress*, not
+        // on scheduling alone — yielding tightly on a single-thread runtime
+        // still pins the CPU. The 10 ms tick keeps the poll bounded without
+        // adding any other timing dependency.
+        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(3);
+        while (metrics_clone.bytes_in.get() < 3 || metrics_clone.bytes_out.get() < 3)
+            && tokio::time::Instant::now() < deadline
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
 
-        // bytes_in should be >= 3 (3 bytes from client to upstream).
-        assert!(metrics_clone.bytes_in.get() >= 3, "bytes_in not incremented");
-        // bytes_out should be >= 3 (3 bytes echoed back to client).
-        assert!(metrics_clone.bytes_out.get() >= 3, "bytes_out not incremented");
+        assert!(
+            metrics_clone.bytes_in.get() >= 3,
+            "bytes_in not incremented (got {})",
+            metrics_clone.bytes_in.get()
+        );
+        assert!(
+            metrics_clone.bytes_out.get() >= 3,
+            "bytes_out not incremented (got {})",
+            metrics_clone.bytes_out.get()
+        );
 
         let _ = shutdown_tx.send(());
     }

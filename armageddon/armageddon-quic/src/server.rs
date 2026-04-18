@@ -475,8 +475,23 @@ pub(crate) mod test_helpers {
 mod tests {
     use super::*;
     use std::io::Write;
+    use std::sync::Once;
     use tempfile::NamedTempFile;
     use test_helpers::TempTlsFiles;
+
+    /// Install a process-global `rustls` `CryptoProvider` exactly once.
+    ///
+    /// `rustls` 0.23 requires an explicit provider to be selected at runtime.
+    /// Every test that touches `rustls` / `quinn` / `h3` must call this helper
+    /// as the very first thing; otherwise the provider is only coincidentally
+    /// installed by a lexically-earlier test in the same process and the
+    /// ordering breaks when cargo parallelises crates.
+    fn ensure_crypto_provider() {
+        static INIT: Once = Once::new();
+        INIT.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+    }
 
     // -- helper: build a minimal valid config pointing at temp files --
     fn cfg_from_files(tls: &TempTlsFiles) -> QuicListenerConfig {
@@ -491,9 +506,16 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // Test 1: Http3Server::new succeeds with valid cert+key
+    //
+    // Hermetic: `rcgen` is a pure-Rust self-signed generator (no external
+    // `openssl` binary) and `port: 0` asks the kernel for an OS-assigned
+    // ephemeral UDP port. The server binds on `127.0.0.1` so no external
+    // network capability is required. This makes the test safe in any
+    // containerized CI environment.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn test_new_valid_tls() {
+        ensure_crypto_provider();
         let tls = TempTlsFiles::generate("localhost");
         let cfg = cfg_from_files(&tls);
         let server = Http3Server::new(cfg).await;
@@ -505,6 +527,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn test_new_invalid_cert() {
+        ensure_crypto_provider();
         let tls = TempTlsFiles::generate("localhost");
 
         // Overwrite the cert with garbage.
@@ -528,6 +551,7 @@ mod tests {
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn test_new_missing_cert_file() {
+        ensure_crypto_provider();
         let tls = TempTlsFiles::generate("localhost");
         let cfg = QuicListenerConfig {
             address: "127.0.0.1".to_string(),
@@ -546,16 +570,25 @@ mod tests {
 
     // -----------------------------------------------------------------------
     // Test 4: QUIC round-trip handshake (server + client quinn tasks)
+    //
+    // Hermetic: server binds on `127.0.0.1:<ephemeral UDP>` (kernel-assigned
+    // via `port: 0`), and `server_addr` is read *before* the server task is
+    // spawned — so the client never races against the bind. Client binds on
+    // `127.0.0.1:0`, also ephemeral. Self-signed cert via `rcgen`, and the
+    // client uses a `SkipVerification` verifier confined to `#[cfg(test)]`.
     // -----------------------------------------------------------------------
     #[tokio::test]
     async fn test_quic_handshake_roundtrip() {
+        ensure_crypto_provider();
         use quinn::ClientConfig;
         use std::sync::Arc;
 
         let tls = TempTlsFiles::generate("localhost");
         let cfg = cfg_from_files(&tls);
 
-        // Build server.
+        // Build server — this synchronously binds the UDP endpoint, so the
+        // local address is immediately available and the client cannot race
+        // against bind completion.
         let server = Http3Server::new(cfg).await.expect("server creation");
         let server_addr = server.endpoint.local_addr().unwrap();
 
@@ -571,13 +604,15 @@ mod tests {
             .expect("client crypto");
 
         let client_cfg = ClientConfig::new(Arc::new(client_crypto));
-        let mut client_endpoint = quinn::Endpoint::client("0.0.0.0:0".parse().unwrap())
+        // Bind client on loopback to stay strictly hermetic (no external NIC).
+        let mut client_endpoint = quinn::Endpoint::client("127.0.0.1:0".parse().unwrap())
             .expect("client endpoint");
         client_endpoint.set_default_client_config(client_cfg);
 
         let (shutdown_tx, shutdown_rx) = tokio::sync::broadcast::channel::<()>(1);
 
-        // Spawn server accept loop.
+        // Spawn server accept loop. The endpoint is already bound, so the
+        // client connect below cannot observe a half-open listener.
         let server_handle = tokio::spawn(async move {
             struct NoopHandler;
             #[async_trait::async_trait]
@@ -593,14 +628,19 @@ mod tests {
             server.run(Arc::new(NoopHandler), shutdown_rx).await
         });
 
-        // Give server a moment to start.
-        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
-
-        // Connect client → server.
-        let connect_result = client_endpoint
-            .connect(server_addr, "localhost")
-            .expect("connect call")
-            .await;
+        // Connect client → server. No sleep needed: the server endpoint was
+        // bound before spawn, so the UDP socket is already serviceable.
+        let connect_result = tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            async {
+                client_endpoint
+                    .connect(server_addr, "localhost")
+                    .expect("connect call")
+                    .await
+            },
+        )
+        .await
+        .expect("QUIC handshake timed out");
 
         // Signal shutdown regardless of outcome.
         let _ = shutdown_tx.send(());
