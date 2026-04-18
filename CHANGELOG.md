@@ -12,6 +12,21 @@
 
 ### Features
 
+* **faso-shared,workflow-engine:** mutualised libs + Temporal orchestrator ([d6c0cdd](https://github.com/fasodigit/infra/commit/d6c0cdd5e7e63a1cf2c2ebb3d87356c80c1434c5))
+* **infra:** add podman-compose stacks for impression + Temporal ([72b6483](https://github.com/fasodigit/infra/commit/72b6483d2c59955168f8bae02013d9ceff532dbc))
+* **infra:** sovereign hardening wave — 20 automations + ARMAGEDDON Vague 1 + docs publiques ([ba81af7](https://github.com/fasodigit/infra/commit/ba81af749057008c1094e8cbe297372a67e33710))
+* **poulets-backend:** port ec-certificate-renderer + impression-service ([2770b21](https://github.com/fasodigit/infra/commit/2770b2173fcb11e963da4476e133c4a7b7bd6758))
+* **poulets-bff:** add /api/impression/* + /api/admin/workflows/* proxies ([28053f1](https://github.com/fasodigit/infra/commit/28053f1b75a3908866598385ee9c89b1e0fce3ed))
+* **poulets-frontend:** fix dark-mode contrast + refonte auth + animations ([020f836](https://github.com/fasodigit/infra/commit/020f83652c1407868e0bb59ab9ea09f051fc6dac)), closes [#0F172A](https://github.com/fasodigit/infra/issues/0F172A) [#475569](https://github.com/fasodigit/infra/issues/475569) [#D1D5DB](https://github.com/fasodigit/infra/issues/D1D5DB) [#2E7D32](https://github.com/fasodigit/infra/issues/2E7D32)
+* **vault,podman:** integrate Vault+Consul secret management + rename to podman-compose ([ef1f27f](https://github.com/fasodigit/infra/commit/ef1f27fa116fab50bb353ef27784c31f4fafe2ff))
+
+## 1.0.0 (2026-04-18)
+
+> FASO DIGITALISATION — Licensed under AGPL-3.0
+> Breaking changes require migration — see RELEASE.md
+
+### Features
+
 * **infra:** sovereign hardening wave — 20 automations + ARMAGEDDON Vague 1 + docs publiques ([ba81af7](https://github.com/fasodigit/infra/commit/ba81af749057008c1094e8cbe297372a67e33710))
 * **vault,podman:** integrate Vault+Consul secret management + rename to podman-compose ([ef1f27f](https://github.com/fasodigit/infra/commit/ef1f27fa116fab50bb353ef27784c31f4fafe2ff))
 
