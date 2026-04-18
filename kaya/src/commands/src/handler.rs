@@ -6,6 +6,7 @@ use bytes::Bytes;
 use kaya_protocol::{Command, Frame};
 use kaya_scripting::ScriptResult;
 use kaya_streams::StreamId;
+use tracing::debug;
 
 use crate::{CommandContext, CommandError};
 
@@ -432,6 +433,182 @@ impl CommandHandler {
     }
 
     // -----------------------------------------------------------------------
+    // ZREVRANGE key start stop [WITHSCORES]
+    //
+    // Legacy command (Redis 6.2+ deprecated). Delegates to the REV path of
+    // the underlying sorted-set store — zero extra allocation.
+    // -----------------------------------------------------------------------
+
+    /// ZREVRANGE key start stop [WITHSCORES]
+    ///
+    /// Returns the members in descending score order for the index range
+    /// [start, stop]. Equivalent to `ZRANGE key start stop REV BYINDEX`.
+    pub fn zrevrange(&self, cmd: &Command) -> Result<Frame, CommandError> {
+        self.require_args(cmd, 3)?;
+        let key = cmd.arg_bytes(0)?;
+        let start = cmd.arg_i64(1)?;
+        let stop = cmd.arg_i64(2)?;
+
+        let withscores = cmd.arg_count() > 3
+            && cmd
+                .arg_str(3)
+                .map(|s| s.eq_ignore_ascii_case("WITHSCORES"))
+                .unwrap_or(false);
+
+        debug!(key = ?key, start, stop, withscores, "ZREVRANGE");
+
+        let results = self.ctx.store.zrevrange(key, start, stop);
+
+        if withscores {
+            let frames: Vec<Frame> = results
+                .into_iter()
+                .flat_map(|(score, member)| {
+                    [
+                        Frame::BulkString(member),
+                        Frame::BulkString(Bytes::from(score.to_string())),
+                    ]
+                })
+                .collect();
+            Ok(Frame::Array(frames))
+        } else {
+            let frames: Vec<Frame> = results
+                .into_iter()
+                .map(|(_, member)| Frame::BulkString(member))
+                .collect();
+            Ok(Frame::Array(frames))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
+    //
+    // Legacy command (Redis 6.2+ deprecated). Note: argument order is max THEN
+    // min (opposite of ZRANGEBYSCORE). Delegates REV path — zero extra alloc.
+    // -----------------------------------------------------------------------
+
+    /// ZREVRANGEBYSCORE key max min [WITHSCORES] [LIMIT offset count]
+    ///
+    /// Returns members in descending score order where score is in [min, max].
+    /// Equivalent to `ZRANGE key max min BYSCORE REV [LIMIT offset count]`.
+    pub fn zrevrangebyscore(&self, cmd: &Command) -> Result<Frame, CommandError> {
+        self.require_args(cmd, 3)?;
+        let key = cmd.arg_bytes(0)?;
+        // NOTE: legacy ZREVRANGEBYSCORE has max before min.
+        let max_str = cmd.arg_str(1)?;
+        let min_str = cmd.arg_str(2)?;
+
+        let max: f64 = if max_str.eq_ignore_ascii_case("+inf") {
+            f64::INFINITY
+        } else if max_str.eq_ignore_ascii_case("-inf") {
+            f64::NEG_INFINITY
+        } else {
+            max_str
+                .parse()
+                .map_err(|_| CommandError::Syntax("invalid max score".into()))?
+        };
+        let min: f64 = if min_str.eq_ignore_ascii_case("-inf") {
+            f64::NEG_INFINITY
+        } else if min_str.eq_ignore_ascii_case("+inf") {
+            f64::INFINITY
+        } else {
+            min_str
+                .parse()
+                .map_err(|_| CommandError::Syntax("invalid min score".into()))?
+        };
+
+        let mut withscores = false;
+        let mut offset: usize = 0;
+        let mut limit: Option<usize> = None;
+        let mut i = 3;
+        while i < cmd.arg_count() {
+            let arg = cmd.arg_str(i)?.to_ascii_uppercase();
+            match arg.as_str() {
+                "WITHSCORES" => withscores = true,
+                "LIMIT" => {
+                    i += 1;
+                    offset = cmd.arg_i64(i)? as usize;
+                    i += 1;
+                    limit = Some(cmd.arg_i64(i)? as usize);
+                }
+                _ => {}
+            }
+            i += 1;
+        }
+
+        debug!(key = ?key, min, max, offset, ?limit, withscores, "ZREVRANGEBYSCORE");
+
+        let results = self.ctx.store.zrevrangebyscore(key, min, max, offset, limit);
+
+        if withscores {
+            let frames: Vec<Frame> = results
+                .into_iter()
+                .flat_map(|(score, member)| {
+                    [
+                        Frame::BulkString(member),
+                        Frame::BulkString(Bytes::from(score.to_string())),
+                    ]
+                })
+                .collect();
+            Ok(Frame::Array(frames))
+        } else {
+            let frames: Vec<Frame> = results
+                .into_iter()
+                .map(|(_, member)| Frame::BulkString(member))
+                .collect();
+            Ok(Frame::Array(frames))
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // ZREVRANGEBYLEX key max min [LIMIT offset count]
+    //
+    // Legacy command (Redis 6.2+ deprecated). Arguments: max lex THEN min lex
+    // (opposite of ZRANGEBYLEX). Delegates REV lex path — zero extra alloc.
+    // -----------------------------------------------------------------------
+
+    /// ZREVRANGEBYLEX key max min [LIMIT offset count]
+    ///
+    /// Returns members lexicographically in the range [min, max], descending.
+    /// Equivalent to `ZRANGE key max min BYLEX REV [LIMIT offset count]`.
+    pub fn zrevrangebylex(&self, cmd: &Command) -> Result<Frame, CommandError> {
+        self.require_args(cmd, 3)?;
+        let key = cmd.arg_bytes(0)?;
+        // NOTE: legacy ZREVRANGEBYLEX has max before min.
+        let max_lex = cmd.arg_bytes(1)?;
+        let min_lex = cmd.arg_bytes(2)?;
+
+        let mut offset: usize = 0;
+        let mut limit: Option<usize> = None;
+        let mut i = 3;
+        while i < cmd.arg_count() {
+            let arg = cmd.arg_str(i)?.to_ascii_uppercase();
+            if arg == "LIMIT" {
+                i += 1;
+                offset = cmd.arg_i64(i)? as usize;
+                i += 1;
+                limit = Some(cmd.arg_i64(i)? as usize);
+            }
+            i += 1;
+        }
+
+        debug!(key = ?key, offset, ?limit, "ZREVRANGEBYLEX");
+
+        let results = self.ctx.store.zrevrangebylex(
+            key,
+            max_lex.as_ref(),
+            min_lex.as_ref(),
+            offset,
+            limit,
+        );
+
+        let frames: Vec<Frame> = results
+            .into_iter()
+            .map(Frame::BulkString)
+            .collect();
+        Ok(Frame::Array(frames))
+    }
+
+    // -----------------------------------------------------------------------
     // AUTH command
     // -----------------------------------------------------------------------
 
@@ -531,31 +708,76 @@ impl CommandHandler {
     }
 
     // -----------------------------------------------------------------------
-    // HELLO command (RESP3 protocol negotiation — we always reply RESP2)
+    // HELLO command (RESP3 protocol negotiation)
+    //
+    // NOTE: In production the HELLO command is intercepted at the network
+    // layer (Connection::handle_hello) so it can mutate per-connection state.
+    // This handler exists as a fallback for unit tests / the synchronous
+    // execute path. It honours the requested protocol version.
     // -----------------------------------------------------------------------
 
-    pub fn hello(&self, _cmd: &Command) -> Result<Frame, CommandError> {
-        // Lettuce sends HELLO 3 to negotiate RESP3. KAYA speaks RESP2,
-        // so we reply with a map-like array indicating server info and proto=2.
-        // If the client requests proto 3, we still respond with proto 2
-        // (the client will gracefully fall back to RESP2).
-        let resp = vec![
-            Frame::BulkString(Bytes::from("server")),
-            Frame::BulkString(Bytes::from("kaya")),
-            Frame::BulkString(Bytes::from("version")),
-            Frame::BulkString(Bytes::from("0.1.0")),
-            Frame::BulkString(Bytes::from("proto")),
-            Frame::Integer(2),
-            Frame::BulkString(Bytes::from("id")),
-            Frame::Integer(1),
-            Frame::BulkString(Bytes::from("mode")),
-            Frame::BulkString(Bytes::from("standalone")),
-            Frame::BulkString(Bytes::from("role")),
-            Frame::BulkString(Bytes::from("master")),
-            Frame::BulkString(Bytes::from("modules")),
-            Frame::Array(vec![]),
-        ];
-        Ok(Frame::Array(resp))
+    pub fn hello(&self, cmd: &Command) -> Result<Frame, CommandError> {
+        // Determine requested protocol version from first arg.
+        let proto_version = match cmd.args.first().map(|b| b.as_ref()) {
+            Some(b"3") => 3i64,
+            Some(b"2") | None => 2i64,
+            Some(other) => {
+                let s = String::from_utf8_lossy(other);
+                return Ok(Frame::err(format!(
+                    "NOPROTO sorry, this protocol version is not supported: {s}"
+                )));
+            }
+        };
+
+        if proto_version == 3 {
+            Ok(Frame::Map(vec![
+                (
+                    Frame::BulkString(Bytes::from_static(b"server")),
+                    Frame::BulkString(Bytes::from_static(b"kaya")),
+                ),
+                (
+                    Frame::BulkString(Bytes::from_static(b"version")),
+                    Frame::BulkString(Bytes::from_static(b"0.1.0")),
+                ),
+                (
+                    Frame::BulkString(Bytes::from_static(b"proto")),
+                    Frame::Integer(3),
+                ),
+                (
+                    Frame::BulkString(Bytes::from_static(b"id")),
+                    Frame::Integer(1),
+                ),
+                (
+                    Frame::BulkString(Bytes::from_static(b"mode")),
+                    Frame::BulkString(Bytes::from_static(b"standalone")),
+                ),
+                (
+                    Frame::BulkString(Bytes::from_static(b"role")),
+                    Frame::BulkString(Bytes::from_static(b"master")),
+                ),
+                (
+                    Frame::BulkString(Bytes::from_static(b"modules")),
+                    Frame::Array(vec![]),
+                ),
+            ]))
+        } else {
+            Ok(Frame::Array(vec![
+                Frame::BulkString(Bytes::from_static(b"server")),
+                Frame::BulkString(Bytes::from_static(b"kaya")),
+                Frame::BulkString(Bytes::from_static(b"version")),
+                Frame::BulkString(Bytes::from_static(b"0.1.0")),
+                Frame::BulkString(Bytes::from_static(b"proto")),
+                Frame::Integer(2),
+                Frame::BulkString(Bytes::from_static(b"id")),
+                Frame::Integer(1),
+                Frame::BulkString(Bytes::from_static(b"mode")),
+                Frame::BulkString(Bytes::from_static(b"standalone")),
+                Frame::BulkString(Bytes::from_static(b"role")),
+                Frame::BulkString(Bytes::from_static(b"master")),
+                Frame::BulkString(Bytes::from_static(b"modules")),
+                Frame::Array(vec![]),
+            ]))
+        }
     }
 
     // -----------------------------------------------------------------------

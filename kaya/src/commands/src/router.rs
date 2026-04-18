@@ -481,6 +481,13 @@ impl CommandRouter {
             "ZCARD" => handler.zcard(cmd),
             "ZRANGE" => handler.zrange(cmd),
             "ZRANGEBYSCORE" => handler.zrangebyscore(cmd),
+            // Legacy compatibility: ZREVRANGE / ZREVRANGEBYSCORE / ZREVRANGEBYLEX
+            // are deprecated since Redis 6.2 but still emitted by Spring Data Redis
+            // (Lettuce/Jedis). They delegate to the REV-flag code path with zero
+            // extra allocation — no format conversion, no string copies.
+            "ZREVRANGE" => handler.zrevrange(cmd),
+            "ZREVRANGEBYSCORE" => handler.zrevrangebyscore(cmd),
+            "ZREVRANGEBYLEX" => handler.zrevrangebylex(cmd),
 
             // -- bloom filter commands -----------------------------------------
             "BF.ADD" => handler.bf_add(cmd),
@@ -951,6 +958,215 @@ mod tests {
             get_result,
             Frame::BulkString(Bytes::from("myval")),
             "GET must return the stored value"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Sorted-set ZREVRANGE / ZREVRANGEBYSCORE / ZREVRANGEBYLEX tests
+    // These cover Bug A: Spring Data Redis sends ZREVRANGE but KAYA only had
+    // ZRANGE. Regression guard for the 7 134 errors / hour production issue.
+    // -----------------------------------------------------------------------
+
+    fn sorted_router() -> CommandRouter {
+        let (router, _, _) = make_router();
+        router
+    }
+
+    /// Seed key `foo` with members a(1), b(2), c(3) and return the router.
+    fn router_with_foo() -> CommandRouter {
+        let router = sorted_router();
+        let zadd = make_cmd("ZADD", &["foo", "1", "a", "2", "b", "3", "c"]);
+        let result = router.execute(&zadd);
+        assert_eq!(result, Frame::Integer(3), "ZADD must add 3 members");
+        router
+    }
+
+    // -- Test 8: ZREVRANGE basic descending order ----------------------------
+
+    #[tokio::test]
+    async fn test_zrevrange_basic() {
+        let router = router_with_foo();
+        // ZREVRANGE foo 0 -1 → [c, b, a] (highest score first)
+        let cmd = make_cmd("ZREVRANGE", &["foo", "0", "-1"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("c")),
+                Frame::BulkString(Bytes::from("b")),
+                Frame::BulkString(Bytes::from("a")),
+            ]),
+            "ZREVRANGE must return members in descending score order"
+        );
+    }
+
+    // -- Test 9: ZREVRANGE WITHSCORES ----------------------------------------
+
+    #[tokio::test]
+    async fn test_zrevrange_withscores() {
+        let router = router_with_foo();
+        // ZREVRANGE foo 0 -1 WITHSCORES → [c 3 b 2 a 1]
+        let cmd = make_cmd("ZREVRANGE", &["foo", "0", "-1", "WITHSCORES"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("c")),
+                Frame::BulkString(Bytes::from("3")),
+                Frame::BulkString(Bytes::from("b")),
+                Frame::BulkString(Bytes::from("2")),
+                Frame::BulkString(Bytes::from("a")),
+                Frame::BulkString(Bytes::from("1")),
+            ]),
+            "ZREVRANGE WITHSCORES must interleave member/score descending"
+        );
+    }
+
+    // -- Test 10: ZREVRANGE partial range ------------------------------------
+
+    #[tokio::test]
+    async fn test_zrevrange_partial_range() {
+        let router = router_with_foo();
+        // ZREVRANGE foo 0 1 → [c, b] (top-2)
+        let cmd = make_cmd("ZREVRANGE", &["foo", "0", "1"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("c")),
+                Frame::BulkString(Bytes::from("b")),
+            ]),
+            "ZREVRANGE 0 1 must return top-2 members"
+        );
+    }
+
+    // -- Test 11: ZREVRANGEBYSCORE basic -------------------------------------
+
+    #[tokio::test]
+    async fn test_zrevrangebyscore_basic() {
+        let router = router_with_foo();
+        // ZREVRANGEBYSCORE foo +inf -inf → [c, b, a]
+        let cmd = make_cmd("ZREVRANGEBYSCORE", &["foo", "+inf", "-inf"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("c")),
+                Frame::BulkString(Bytes::from("b")),
+                Frame::BulkString(Bytes::from("a")),
+            ]),
+            "ZREVRANGEBYSCORE +inf -inf must return all members descending"
+        );
+    }
+
+    // -- Test 12: ZREVRANGEBYSCORE LIMIT -------------------------------------
+
+    #[tokio::test]
+    async fn test_zrevrangebyscore_limit() {
+        let router = router_with_foo();
+        // ZREVRANGEBYSCORE foo +inf -inf LIMIT 0 2 → [c, b]
+        let cmd = make_cmd("ZREVRANGEBYSCORE", &["foo", "+inf", "-inf", "LIMIT", "0", "2"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("c")),
+                Frame::BulkString(Bytes::from("b")),
+            ]),
+            "ZREVRANGEBYSCORE LIMIT 0 2 must return top-2 members"
+        );
+    }
+
+    // -- Test 13: ZREVRANGEBYSCORE score bound filter ------------------------
+
+    #[tokio::test]
+    async fn test_zrevrangebyscore_score_filter() {
+        let router = router_with_foo();
+        // ZREVRANGEBYSCORE foo 2 1 → [b, a]  (scores between 1 and 2, descending)
+        let cmd = make_cmd("ZREVRANGEBYSCORE", &["foo", "2", "1"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("b")),
+                Frame::BulkString(Bytes::from("a")),
+            ]),
+            "ZREVRANGEBYSCORE 2 1 must return members with scores in [1,2] descending"
+        );
+    }
+
+    // -- Test 14: ZREVRANGEBYSCORE WITHSCORES --------------------------------
+
+    #[tokio::test]
+    async fn test_zrevrangebyscore_withscores() {
+        let router = router_with_foo();
+        // ZREVRANGEBYSCORE foo +inf -inf WITHSCORES → [c 3 b 2 a 1]
+        let cmd = make_cmd("ZREVRANGEBYSCORE", &["foo", "+inf", "-inf", "WITHSCORES"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("c")),
+                Frame::BulkString(Bytes::from("3")),
+                Frame::BulkString(Bytes::from("b")),
+                Frame::BulkString(Bytes::from("2")),
+                Frame::BulkString(Bytes::from("a")),
+                Frame::BulkString(Bytes::from("1")),
+            ]),
+            "ZREVRANGEBYSCORE WITHSCORES must interleave member/score descending"
+        );
+    }
+
+    // -- Test 15: ZREVRANGE on empty key returns empty array -----------------
+
+    #[tokio::test]
+    async fn test_zrevrange_missing_key() {
+        let router = sorted_router();
+        let cmd = make_cmd("ZREVRANGE", &["nonexistent", "0", "-1"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![]),
+            "ZREVRANGE on missing key must return empty array"
+        );
+    }
+
+    // -- Test 16: ZREVRANGEBYSCORE empty range -------------------------------
+
+    #[tokio::test]
+    async fn test_zrevrangebyscore_empty_range() {
+        let router = router_with_foo();
+        // Request range with inverted bounds that produce no results
+        let cmd = make_cmd("ZREVRANGEBYSCORE", &["foo", "0", "10"]);
+        let result = router.execute(&cmd);
+        // min=10 > max=0 → no member has score in [10, 0]
+        assert_eq!(
+            result,
+            Frame::Array(vec![]),
+            "ZREVRANGEBYSCORE with empty range must return empty array"
+        );
+    }
+
+    // -- Test 17: ZREVRANGEBYLEX basic --------------------------------------
+
+    #[tokio::test]
+    async fn test_zrevrangebylex_basic() {
+        // All members with score=0 for lex ordering test.
+        let router = sorted_router();
+        let zadd = make_cmd("ZADD", &["lexkey", "0", "a", "0", "b", "0", "c", "0", "d"]);
+        router.execute(&zadd);
+        // ZREVRANGEBYLEX lexkey + - → [d, c, b, a]
+        let cmd = make_cmd("ZREVRANGEBYLEX", &["lexkey", "+", "-"]);
+        let result = router.execute(&cmd);
+        assert_eq!(
+            result,
+            Frame::Array(vec![
+                Frame::BulkString(Bytes::from("d")),
+                Frame::BulkString(Bytes::from("c")),
+                Frame::BulkString(Bytes::from("b")),
+                Frame::BulkString(Bytes::from("a")),
+            ]),
+            "ZREVRANGEBYLEX + - must return all members in descending lex order"
         );
     }
 }

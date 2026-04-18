@@ -915,3 +915,92 @@ fn test_ts_del_range_integration() {
     let pts = s.range(b"del2", 0, 99999, None, None).unwrap();
     assert_eq!(pts.len(), 5);
 }
+
+// ---------------------------------------------------------------------------
+// Test 36: HELLO command — CommandRouter fallback path
+//
+// NOTE: In production HELLO is intercepted at Connection level (kaya-network)
+// so per-connection state is mutated correctly. The router's execute() path
+// is still tested here so the unit-test harness continues to work.
+// ---------------------------------------------------------------------------
+
+/// Helper: extract a string value from a flat RESP2 array (key, val, …).
+fn get_flat_value<'a>(items: &'a [Frame], key: &str) -> Option<&'a Frame> {
+    let pos = items.iter().position(|f| f.as_str() == Some(key))?;
+    items.get(pos + 1)
+}
+
+/// Helper: extract a value from a RESP3 Map frame.
+fn get_map_value<'a>(pairs: &'a [(Frame, Frame)], key: &str) -> Option<&'a Frame> {
+    pairs
+        .iter()
+        .find(|(k, _)| k.as_str() == Some(key))
+        .map(|(_, v)| v)
+}
+
+#[test]
+fn hello_2_via_router_returns_resp2_flat_array() {
+    let ctx = test_ctx();
+    let router = CommandRouter::new(ctx);
+
+    let resp = router.execute(&cmd("HELLO", &["2"]));
+    let items = match &resp {
+        Frame::Array(v) => v,
+        other => panic!("HELLO 2 must return Array, got: {other:?}"),
+    };
+    assert_eq!(
+        get_flat_value(items, "proto"),
+        Some(&Frame::Integer(2)),
+        "proto field must be 2 for HELLO 2"
+    );
+    assert_eq!(
+        get_flat_value(items, "server").and_then(|f| f.as_str()),
+        Some("kaya"),
+    );
+}
+
+#[test]
+fn hello_3_via_router_returns_resp3_map_with_proto_3() {
+    let ctx = test_ctx();
+    let router = CommandRouter::new(ctx);
+
+    let resp = router.execute(&cmd("HELLO", &["3"]));
+    let pairs = match &resp {
+        Frame::Map(p) => p,
+        other => panic!("HELLO 3 must return Map, got: {other:?}"),
+    };
+    assert_eq!(
+        get_map_value(pairs, "proto"),
+        Some(&Frame::Integer(3)),
+        "proto field must be 3 for HELLO 3"
+    );
+    assert_eq!(
+        get_map_value(pairs, "server").and_then(|f| f.as_str()),
+        Some("kaya"),
+    );
+}
+
+#[test]
+fn hello_without_arg_via_router_returns_resp2_array() {
+    let ctx = test_ctx();
+    let router = CommandRouter::new(ctx);
+
+    // HELLO with no arg defaults to RESP2.
+    let resp = router.execute(&cmd("HELLO", &[]));
+    assert!(
+        matches!(resp, Frame::Array(_)),
+        "HELLO without arg must return Array, got: {resp:?}"
+    );
+}
+
+#[test]
+fn hello_unsupported_proto_returns_noproto_error() {
+    let ctx = test_ctx();
+    let router = CommandRouter::new(ctx);
+
+    let resp = router.execute(&cmd("HELLO", &["99"]));
+    assert!(
+        matches!(&resp, Frame::Error(msg) if msg.starts_with("NOPROTO")),
+        "unknown proto version must return NOPROTO error, got: {resp:?}"
+    );
+}

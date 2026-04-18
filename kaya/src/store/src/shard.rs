@@ -342,6 +342,110 @@ impl Shard {
             .unwrap_or_default()
     }
 
+    /// ZREVRANGE: return members in index range, descending by score.
+    ///
+    /// Equivalent to `ZRANGE key start stop` with `REV` flag. The `start` /
+    /// `stop` indices are applied to the reversed ordering (highest score first).
+    pub fn zrevrange(&self, key: &[u8], start: i64, stop: i64) -> Vec<(f64, Bytes)> {
+        self.sorted_sets
+            .get(key)
+            .map(|zset| {
+                let len = zset.by_score.len() as i64;
+                let s = normalize_index(start, len);
+                let e = normalize_index(stop, len);
+                if s > e || s >= len as usize {
+                    return Vec::new();
+                }
+                let e = e.min(len as usize - 1);
+                // Iterate in reverse (highest score first) and apply window.
+                zset.by_score
+                    .iter()
+                    .rev()
+                    .skip(s)
+                    .take(e - s + 1)
+                    .map(|sm| (sm.score, sm.member.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
+    }
+
+    /// ZREVRANGEBYSCORE: return members with scores in [min, max], descending.
+    ///
+    /// `max` >= score >= `min`. Results are returned highest-score-first.
+    /// Mirrors `ZRANGE key max min BYSCORE REV [LIMIT offset count]`.
+    pub fn zrevrangebyscore(
+        &self,
+        key: &[u8],
+        min: f64,
+        max: f64,
+        offset: usize,
+        limit: Option<usize>,
+    ) -> Vec<(f64, Bytes)> {
+        self.sorted_sets
+            .get(key)
+            .map(|zset| {
+                // Iterate descending: members with score in [min, max].
+                let iter = zset
+                    .by_score
+                    .iter()
+                    .rev()
+                    .filter(|sm| sm.score >= min && sm.score <= max)
+                    .skip(offset);
+                match limit {
+                    Some(n) => iter.take(n).map(|sm| (sm.score, sm.member.clone())).collect(),
+                    None => iter.map(|sm| (sm.score, sm.member.clone())).collect(),
+                }
+            })
+            .unwrap_or_default()
+    }
+
+    /// ZREVRANGEBYLEX: return members lexicographically in (max, min] range,
+    /// descending (highest lex first), where scores are equal.
+    ///
+    /// `max` and `min` use the RESP3 bracket syntax:
+    /// - `[foo` = inclusive, `-` = lowest, `+` = highest.
+    /// Mirrors `ZRANGE key max min BYLEX REV [LIMIT offset count]`.
+    pub fn zrevrangebylex(
+        &self,
+        key: &[u8],
+        max_lex: &[u8],
+        min_lex: &[u8],
+        offset: usize,
+        limit: Option<usize>,
+    ) -> Vec<Bytes> {
+        self.sorted_sets
+            .get(key)
+            .map(|zset| {
+                // Parse lex bounds following RESP3 convention.
+                let lo = parse_lex_bound(min_lex);
+                let hi = parse_lex_bound(max_lex);
+
+                // Iterate descending (reverse lex order within equal scores).
+                let iter = zset
+                    .members
+                    .iter()
+                    .filter(|(member, _)| {
+                        lex_ge(member, &lo) && lex_le(member, &hi)
+                    })
+                    // Collect and sort descending by member bytes.
+                    ;
+
+                let mut collected: Vec<Bytes> = iter
+                    .map(|(m, _)| m.clone())
+                    .collect();
+                collected.sort_by(|a, b| b.cmp(a)); // descending lex order
+                let sliced: Vec<Bytes> = collected
+                    .into_iter()
+                    .skip(offset)
+                    .collect();
+                match limit {
+                    Some(n) => sliced.into_iter().take(n).collect(),
+                    None => sliced,
+                }
+            })
+            .unwrap_or_default()
+    }
+
     // -- geo operations -------------------------------------------------------
 
     /// GEOADD: add (point, member) pairs to a geo index. Returns the count of
@@ -482,5 +586,63 @@ fn normalize_index(idx: i64, len: i64) -> usize {
         if adjusted < 0 { 0 } else { adjusted as usize }
     } else {
         idx as usize
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Lex bound helpers for ZRANGEBYLEX / ZREVRANGEBYLEX
+// ---------------------------------------------------------------------------
+
+/// A lexicographic bound: open/closed on a byte string, or unbounded.
+#[derive(Clone)]
+enum LexBound {
+    /// `-` — no lower bound (negative infinity).
+    NegInf,
+    /// `+` — no upper bound (positive infinity).
+    PosInf,
+    /// `[foo` — inclusive bound.
+    Inclusive(Bytes),
+    /// `(foo` — exclusive bound.
+    Exclusive(Bytes),
+}
+
+/// Parse a lex bound token as used by ZRANGEBYLEX / ZREVRANGEBYLEX.
+///
+/// - `-`  → `NegInf`
+/// - `+`  → `PosInf`
+/// - `[x` → `Inclusive(x)`
+/// - `(x` → `Exclusive(x)`
+fn parse_lex_bound(raw: &[u8]) -> LexBound {
+    match raw {
+        b"-" => LexBound::NegInf,
+        b"+" => LexBound::PosInf,
+        _ if raw.first() == Some(&b'[') => {
+            LexBound::Inclusive(Bytes::copy_from_slice(&raw[1..]))
+        }
+        _ if raw.first() == Some(&b'(') => {
+            LexBound::Exclusive(Bytes::copy_from_slice(&raw[1..]))
+        }
+        // Treat unrecognised input as inclusive (graceful degradation).
+        _ => LexBound::Inclusive(Bytes::copy_from_slice(raw)),
+    }
+}
+
+/// Returns `true` if `member` is >= the lower lex bound.
+fn lex_ge(member: &Bytes, lo: &LexBound) -> bool {
+    match lo {
+        LexBound::NegInf => true,
+        LexBound::PosInf => false,
+        LexBound::Inclusive(b) => member.as_ref() >= b.as_ref(),
+        LexBound::Exclusive(b) => member.as_ref() > b.as_ref(),
+    }
+}
+
+/// Returns `true` if `member` is <= the upper lex bound.
+fn lex_le(member: &Bytes, hi: &LexBound) -> bool {
+    match hi {
+        LexBound::NegInf => false,
+        LexBound::PosInf => true,
+        LexBound::Inclusive(b) => member.as_ref() <= b.as_ref(),
+        LexBound::Exclusive(b) => member.as_ref() < b.as_ref(),
     }
 }

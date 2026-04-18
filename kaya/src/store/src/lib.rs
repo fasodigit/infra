@@ -335,6 +335,41 @@ impl Store {
         self.shard(key).zrangebyscore(key, min, max, limit)
     }
 
+    /// ZREVRANGE: return members by index range, descending by score.
+    ///
+    /// Equivalent to `ZRANGE key start stop REV BYINDEX`.
+    pub fn zrevrange(&self, key: &[u8], start: i64, stop: i64) -> Vec<(f64, Bytes)> {
+        self.shard(key).zrevrange(key, start, stop)
+    }
+
+    /// ZREVRANGEBYSCORE: return members with score in [min, max], descending.
+    ///
+    /// Equivalent to `ZRANGE key max min BYSCORE REV [LIMIT offset count]`.
+    pub fn zrevrangebyscore(
+        &self,
+        key: &[u8],
+        min: f64,
+        max: f64,
+        offset: usize,
+        limit: Option<usize>,
+    ) -> Vec<(f64, Bytes)> {
+        self.shard(key).zrevrangebyscore(key, min, max, offset, limit)
+    }
+
+    /// ZREVRANGEBYLEX: return members lexicographically in (max, min], descending.
+    ///
+    /// Equivalent to `ZRANGE key max min BYLEX REV [LIMIT offset count]`.
+    pub fn zrevrangebylex(
+        &self,
+        key: &[u8],
+        max_lex: &[u8],
+        min_lex: &[u8],
+        offset: usize,
+        limit: Option<usize>,
+    ) -> Vec<Bytes> {
+        self.shard(key).zrevrangebylex(key, max_lex, min_lex, offset, limit)
+    }
+
     /// FLUSHDB: remove all keys from all shards.
     pub fn flush(&self) {
         for shard in &self.shards {
