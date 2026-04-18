@@ -1,0 +1,101 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# © 2026 FASO DIGITALISATION — Burkina Faso
+#
+# Impression stack : ec-certificate-renderer + impression-service
+# Usage :
+#   podman-compose -f podman-compose.yml -f podman-compose.impression.yml up -d faso-ec-renderer faso-impression
+#
+# Dépendances : postgres, kaya (cache), redpanda (event-bus), vault (secrets)
+
+version: "3.9"
+
+services:
+  # --------------------------------------------------------------------------
+  # ec-certificate-renderer : moteur PDF Playwright + Handlebars
+  # --------------------------------------------------------------------------
+  faso-ec-renderer:
+    container_name: faso-ec-renderer
+    build:
+      context: ../../poulets-platform/backend/services/ec-certificate-renderer
+      dockerfile: Containerfile
+    image: faso/ec-certificate-renderer:1.0.0
+    ports:
+      - "8920:8920"
+    environment:
+      # Port
+      SERVER_PORT: "8920"
+      # HMAC shared-secret avec impression-service (via Vault en prod)
+      INTERNAL_AUTH_SECRET: "${INTERNAL_AUTH_SECRET:-dev-renderer-secret-change-me}"
+      # Playwright
+      PLAYWRIGHT_BROWSERS_PATH: "/ms-playwright"
+      # JVM : ZGC + Virtual Threads
+      JAVA_TOOL_OPTIONS: >-
+        -XX:+UseZGC -XX:+ZGenerational
+        -Xmx1024m -Xms512m
+        --enable-preview
+      # Observability
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics"
+      SPRING_PROFILES_ACTIVE: "dev"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8920/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    restart: unless-stopped
+    networks:
+      - faso-net
+
+  # --------------------------------------------------------------------------
+  # impression-service : orchestrateur métier (queue + WORM + QR)
+  # --------------------------------------------------------------------------
+  faso-impression:
+    container_name: faso-impression
+    build:
+      context: ../../poulets-platform/backend/services/impression-service
+      dockerfile: Containerfile
+    image: faso/impression-service:1.0.0
+    ports:
+      - "8921:8921"
+    depends_on:
+      faso-ec-renderer:
+        condition: service_healthy
+    environment:
+      # Port
+      SERVER_PORT: "8921"
+      # Renderer HMAC
+      RENDERER_URL: "http://faso-ec-renderer:8920"
+      INTERNAL_AUTH_SECRET: "${INTERNAL_AUTH_SECRET:-dev-renderer-secret-change-me}"
+      # DB (reuse postgres stack principal)
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://faso-postgres:5432/impression_db"
+      SPRING_DATASOURCE_USERNAME: "impression_user"
+      SPRING_DATASOURCE_PASSWORD: "${IMPRESSION_DB_PASSWORD:-impression_dev_pwd}"
+      # Cache Redis/KAYA
+      SPRING_DATA_REDIS_HOST: "faso-kaya"
+      SPRING_DATA_REDIS_PORT: "6379"
+      # Event bus (Redpanda)
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "faso-redpanda:9092"
+      # OAuth2 (Kratos)
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: "http://faso-kratos:4433"
+      # JVM
+      JAVA_TOOL_OPTIONS: >-
+        -XX:+UseZGC -XX:+ZGenerational
+        -Xmx768m -Xms256m
+        --enable-preview
+      # Observability
+      MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics"
+      SPRING_PROFILES_ACTIVE: "dev"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8921/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
+    restart: unless-stopped
+    networks:
+      - faso-net
+
+networks:
+  faso-net:
+    external: true
+    name: faso-net

@@ -1,0 +1,95 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# © 2026 FASO DIGITALISATION — Burkina Faso
+#
+# Temporal.io stack : orchestrateur souverain (remplace Netflix Conductor)
+# Référence : INFRA/docs/v3.1-souverain/GUIDE-ARCHITECTURAL-v3.1-SOUVERAIN.md §4
+#
+# Usage :
+#   podman-compose -f podman-compose.yml -f podman-compose.temporal.yml up -d temporal-server temporal-ui
+#
+# UI native : http://localhost:8088
+# gRPC Frontend : localhost:7233
+
+version: "3.9"
+
+services:
+  # --------------------------------------------------------------------------
+  # Temporal Server (all-in-one avec auto-setup)
+  # Inclut : Frontend (gRPC), History, Matching, Worker services
+  # --------------------------------------------------------------------------
+  temporal-server:
+    container_name: faso-temporal-server
+    image: temporalio/auto-setup:1.24.0
+    ports:
+      - "7233:7233"   # gRPC frontend
+    environment:
+      # Persistence : Postgres existant de la stack FASO
+      DB: "postgres12"
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: "faso-postgres"
+      POSTGRES_USER: "temporal"
+      POSTGRES_PWD: "${TEMPORAL_DB_PASSWORD:-temporal_dev_pwd}"
+      # Base de données pour les données Temporal
+      POSTGRES_DB: "temporal"
+      POSTGRES_VISIBILITY_DB: "temporal_visibility"
+      # Multi-tenancy : 1 namespace par projet FASO
+      NAMESPACES: "poulets,etat-civil,sogesy,hospital,default"
+      DEFAULT_NAMESPACE: "poulets"
+      DEFAULT_NAMESPACE_RETENTION: "7"  # jours
+      # Pas d'ElasticSearch pour l'instant (simplification)
+      ENABLE_ES: "false"
+      # Log level
+      LOG_LEVEL: "info"
+    depends_on:
+      - faso-postgres
+    healthcheck:
+      test: ["CMD", "tctl", "--ad", "temporal-server:7233", "cluster", "health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 90s
+    restart: unless-stopped
+    networks:
+      - faso-net
+
+  # --------------------------------------------------------------------------
+  # Temporal UI (dashboard natif)
+  # --------------------------------------------------------------------------
+  temporal-ui:
+    container_name: faso-temporal-ui
+    image: temporalio/ui:2.25.0
+    ports:
+      - "8088:8080"
+    environment:
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      TEMPORAL_CORS_ORIGINS: "http://localhost:4801,http://localhost:3000"
+      TEMPORAL_AUTH_ENABLED: "false"  # TODO prod : activer OIDC via Kratos
+    depends_on:
+      temporal-server:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - faso-net
+
+  # --------------------------------------------------------------------------
+  # Admin tools (tctl CLI) — container temporaire pour ops
+  # --------------------------------------------------------------------------
+  temporal-admin-tools:
+    container_name: faso-temporal-admin
+    image: temporalio/admin-tools:1.24.0
+    environment:
+      TEMPORAL_ADDRESS: "temporal-server:7233"
+      TEMPORAL_CLI_ADDRESS: "temporal-server:7233"
+    depends_on:
+      temporal-server:
+        condition: service_healthy
+    stdin_open: true
+    tty: true
+    networks:
+      - faso-net
+    profiles: ["tools"]  # ne démarre que si invoqué explicitement
+
+networks:
+  faso-net:
+    external: true
+    name: faso-net
