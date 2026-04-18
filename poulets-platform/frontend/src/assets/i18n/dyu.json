@@ -1,0 +1,100 @@
+{
+  "_meta": {
+    "language": "Dioula",
+    "iso": "dyu",
+    "script": "Latn",
+    "coverage": "pilot",
+    "status": "partial — TODO: Académie nationale des langues du BF (contact: INSS Ouaga)",
+    "fallback": "fr"
+  },
+  "COMMON": {
+    "LOGIN": "Sεbε don",
+    "LOGOUT": "Bɔ",
+    "SUBMIT": "Ci lajɛ",
+    "CANCEL": "A to",
+    "LANGUAGE": "[DYU] Langue",
+    "MOORE": "Mooré",
+    "DIOULA": "Dioula",
+    "FULFULDE": "Fulfulde",
+    "FRENCH": "Faransi",
+    "ENGLISH": "[DYU] English"
+  },
+  "AUTH": {
+    "EMAIL": "[DYU] E-mail",
+    "PASSWORD": "[DYU] Gundo kuma",
+    "SIGNIN": "Sεbε don",
+    "SIGNUP": "[DYU] S'inscrire",
+    "LOGOUT": "Bɔ"
+  },
+  "NAV": {
+    "CATALOGUE": "[DYU] Catalogue",
+    "ORDERS": "[DYU] Commandes",
+    "PROFILE": "[DYU] Mon profil",
+    "DASHBOARD": "[DYU] Tableau de bord"
+  },
+  "POULETS": {
+    "STOCK": "[DYU] Stock",
+    "RACE": "[DYU] Race",
+    "PRICE": "[DYU] Prix",
+    "ORDER": "[DYU] Commander"
+  },
+  "ERRORS": {
+    "NETWORK": "[DYU] Erreur réseau, veuillez réessayer",
+    "UNAUTHORIZED": "[DYU] Accès non autorisé, veuillez vous connecter"
+  },
+  "landing": {
+    "nav": {
+      "accueil": "[DYU] Accueil",
+      "presentation": "[DYU] Présentation",
+      "fonctionnalites": "[DYU] Fonctionnalités",
+      "securites": "[DYU] Sécurités",
+      "apropos": "[DYU] À propos",
+      "connexion": "Sεbε don"
+    },
+    "hero": {
+      "title": "[DYU] La plateforme qui connecte éleveurs et acheteurs de volailles au Burkina Faso",
+      "subtitle": "[DYU] Trouvez le bon poulet, au bon poids, au bon moment.",
+      "cta_eleveur": "[DYU] Je suis éleveur",
+      "cta_acheteur": "[DYU] Je suis acheteur",
+      "stat_eleveurs": "[DYU] Éleveurs",
+      "stat_clients": "[DYU] Clients",
+      "stat_transactions": "[DYU] Transactions",
+      "stat_regions": "[DYU] Régions"
+    }
+  },
+  "app": {
+    "title": "Poulets BF",
+    "subtitle": "FASO DIGITALISATION",
+    "version": "v0.1.0",
+    "footer": "FASO DIGITALISATION - Poulets Platform v0.1.0"
+  },
+  "auth": {
+    "login": "Sεbε don",
+    "logout": "Bɔ",
+    "email": "[DYU] Adresse e-mail",
+    "password": "[DYU] Gundo kuma",
+    "sign_in": "Sεbε don",
+    "sign_up": "[DYU] S'inscrire",
+    "login_error": "[DYU] E-mail ou mot de passe incorrect",
+    "session_expired": "[DYU] Session expirée, veuillez vous reconnecter"
+  },
+  "common": {
+    "save": "[DYU] Enregistrer",
+    "cancel": "A to",
+    "delete": "[DYU] Supprimer",
+    "edit": "[DYU] Modifier",
+    "confirm": "[DYU] Confirmer",
+    "loading": "[DYU] Chargement...",
+    "error": "[DYU] Une erreur est survenue",
+    "success": "[DYU] Opération réussie",
+    "language": "[DYU] Langue",
+    "french": "Faransi",
+    "notifications": "[DYU] Notifications"
+  },
+  "menu": {
+    "dashboard": "[DYU] Tableau de bord",
+    "profile": "[DYU] Mon profil",
+    "messaging": "[DYU] Messagerie",
+    "marketplace": "[DYU] Catalogue"
+  }
+}

@@ -25,4 +25,10 @@ export default [
       import('./fiche-detail.component').then(m => m.FicheDetailComponent),
     title: 'Fiche sanitaire - Poulets Platform',
   },
+  {
+    path: ':lotId/record',
+    loadComponent: () =>
+      import('./components/health-record.component').then(m => m.HealthRecordComponent),
+    title: 'Dossier sanitaire - Poulets BF',
+  },
 ] as Routes;

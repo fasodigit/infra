@@ -1322,6 +1322,137 @@ import { PublicDashboardComponent } from './public-dashboard.component';
         transition-delay: 0s !important;
       }
     }
+
+    /* =================================================================
+       ANIMATIONS HERO & MICRO-INTERACTIONS (ajoutées 2026-04)
+       ================================================================= */
+
+    @keyframes faso-hero-rise {
+      from { opacity: 0; transform: translateY(32px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes faso-hero-pop {
+      0%   { opacity: 0; transform: scale(0.88); }
+      60%  { opacity: 1; transform: scale(1.03); }
+      100% { transform: scale(1); }
+    }
+    @keyframes faso-float-subtle {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50%      { transform: translateY(-6px) rotate(1deg); }
+    }
+    @keyframes faso-float-bigger {
+      0%, 100% { transform: translateY(0) rotate(0deg); }
+      50%      { transform: translateY(-10px) rotate(-1.5deg); }
+    }
+    @keyframes faso-shine {
+      0%, 100% { opacity: 0.9; }
+      50%      { opacity: 1; filter: brightness(1.15); }
+    }
+    @keyframes faso-shape-drift {
+      0%, 100% { transform: translate(0, 0) scale(1); }
+      33%      { transform: translate(20px, -30px) scale(1.05); }
+      66%      { transform: translate(-15px, 20px) scale(0.95); }
+    }
+    @keyframes faso-fade-in-basic {
+      from { opacity: 0; }
+      to   { opacity: 1; }
+    }
+
+    /* Hero : cascade d'entrée */
+    .hero-section .hero-title {
+      animation: faso-hero-rise 900ms cubic-bezier(0.2, 0.0, 0.2, 1) both;
+      animation-delay: 80ms;
+    }
+    .hero-section .hero-subtitle {
+      animation: faso-hero-rise 900ms cubic-bezier(0.2, 0.0, 0.2, 1) both;
+      animation-delay: 240ms;
+    }
+    .hero-section .hero-ctas {
+      animation: faso-hero-rise 900ms cubic-bezier(0.2, 0.0, 0.2, 1) both;
+      animation-delay: 400ms;
+    }
+    .hero-section .hero-illustration {
+      animation: faso-hero-pop 1000ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+      animation-delay: 560ms;
+    }
+    .hero-section .hero-ctas a {
+      transition: transform 240ms cubic-bezier(0, 0, 0.2, 1),
+                  box-shadow 240ms cubic-bezier(0, 0, 0.2, 1);
+    }
+    .hero-section .hero-ctas a:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.18);
+    }
+
+    /* Formes de fond qui flottent en continu */
+    .hero-bg-shapes .shape {
+      animation: faso-shape-drift 16s ease-in-out infinite;
+      will-change: transform;
+    }
+    .hero-bg-shapes .shape-1 { animation-duration: 18s; animation-delay: 0s; }
+    .hero-bg-shapes .shape-2 { animation-duration: 22s; animation-delay: -5s; }
+    .hero-bg-shapes .shape-3 { animation-duration: 20s; animation-delay: -10s; }
+
+    /* Hero SVG : les poulets et grains flottent */
+    .hero-svg g[transform^="translate(180"] {
+      animation: faso-float-subtle 3.6s ease-in-out infinite;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    .hero-svg g[transform^="translate(260"] {
+      animation: faso-float-subtle 4.2s ease-in-out infinite;
+      animation-delay: -1.2s;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    .hero-svg g[transform^="translate(320"] {
+      animation: faso-float-bigger 3.1s ease-in-out infinite;
+      animation-delay: -0.5s;
+      transform-origin: center;
+      transform-box: fill-box;
+    }
+    .hero-svg circle[fill="#FCD116"] {
+      animation: faso-shine 4s ease-in-out infinite;
+    }
+
+    /* Stats bar : le comptage est géré par JS, on boost l'entrée visuelle */
+    .hero-stats {
+      animation: faso-fade-in-basic 1200ms ease-out both;
+      animation-delay: 800ms;
+    }
+
+    /* Navbar : entrée top-down */
+    .landing-nav {
+      animation: faso-hero-rise 600ms cubic-bezier(0.2, 0.0, 0.2, 1) both;
+      animation-direction: reverse;
+      animation-duration: 0ms;
+    }
+
+    /* Boost hover sur les fade-in-cards une fois visibles */
+    .fade-in-card.visible {
+      will-change: transform, box-shadow;
+    }
+    .fade-in-card.visible:hover {
+      transform: translateY(-6px) scale(1.02);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
+    }
+
+    /* Respect des préférences utilisateur */
+    @media (prefers-reduced-motion: reduce) {
+      .hero-section .hero-title,
+      .hero-section .hero-subtitle,
+      .hero-section .hero-ctas,
+      .hero-section .hero-illustration,
+      .hero-bg-shapes .shape,
+      .hero-svg g,
+      .hero-svg circle,
+      .hero-stats {
+        animation: none !important;
+      }
+      .fade-in-card.visible:hover {
+        transform: none !important;
+      }
+    }
   `],
 })
 export class LandingComponent implements OnInit, AfterViewInit, OnDestroy {

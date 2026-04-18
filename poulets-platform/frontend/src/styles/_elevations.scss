@@ -1,0 +1,14 @@
+// =============================================================================
+// FASO DIGITALISATION — Élévations sémantiques
+// Mappe les ombres brutes (--faso-shadow-*) sur des usages fonctionnels.
+// =============================================================================
+
+:root {
+  --faso-elevation-flat:    none;
+  --faso-elevation-card:    var(--faso-shadow-sm);
+  --faso-elevation-raised:  var(--faso-shadow-md);
+  --faso-elevation-hover:   var(--faso-shadow-lg);
+  --faso-elevation-overlay: var(--faso-shadow-lg);
+  --faso-elevation-modal:   var(--faso-shadow-xl);
+  --faso-elevation-sticky:  var(--faso-shadow-xs);
+}

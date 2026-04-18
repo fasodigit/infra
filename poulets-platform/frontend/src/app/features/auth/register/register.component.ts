@@ -1,8 +1,10 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// © 2026 FASO DIGITALISATION — Burkina Faso
+
 import { Component, inject, signal, ChangeDetectionStrategy } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { RouterLink, Router } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, Validators, AbstractControl, ValidationErrors } from '@angular/forms';
-import { MatCardModule } from '@angular/material/card';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatInputModule } from '@angular/material/input';
 import { MatButtonModule } from '@angular/material/button';
@@ -10,7 +12,6 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatSelectModule } from '@angular/material/select';
 import { MatStepperModule } from '@angular/material/stepper';
 import { MatRadioModule } from '@angular/material/radio';
-import { MatChipsModule } from '@angular/material/chips';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { TranslateModule } from '@ngx-translate/core';
 
@@ -25,7 +26,6 @@ import { Role } from '@app/shared/models/user.model';
     CommonModule,
     RouterLink,
     ReactiveFormsModule,
-    MatCardModule,
     MatFormFieldModule,
     MatInputModule,
     MatButtonModule,
@@ -33,215 +33,224 @@ import { Role } from '@app/shared/models/user.model';
     MatSelectModule,
     MatStepperModule,
     MatRadioModule,
-    MatChipsModule,
     MatProgressSpinnerModule,
     TranslateModule,
   ],
   template: `
     <div class="register-page">
-      <mat-card class="register-card">
-        <mat-card-header>
-          <mat-card-title class="register-title">
-            <span class="brand">Poulets BF</span>
-            <span class="subtitle">{{ 'auth.register' | translate }}</span>
-          </mat-card-title>
-        </mat-card-header>
+      <!-- Panneau gauche : hero -->
+      <aside class="hero-panel" aria-hidden="true">
+        <img class="hero-bg" src="assets/img/hero-farm-illustration.svg" alt="">
+        <div class="hero-overlay"></div>
+        <div class="hero-content">
+          <a routerLink="/" class="hero-brand">
+            <img src="assets/img/logo-poulets-bf.svg" alt="" width="44" height="44">
+            <span>Poulets <strong>BF</strong></span>
+          </a>
+          <h2>Rejoignez la marketplace souveraine.</h2>
+          <p>Éleveur, client, producteur ou admin — chaque compte est vérifié et sécurisé.</p>
+          <ul class="hero-points">
+            <li><span class="dot"></span> Création de compte gratuite</li>
+            <li><span class="dot"></span> Vérification par email</li>
+            <li><span class="dot"></span> Sécurité MFA optionnelle</li>
+          </ul>
+        </div>
+      </aside>
 
-        <mat-card-content>
+      <!-- Panneau droit : formulaire -->
+      <main class="form-panel">
+        <div class="form-inner">
+          <a routerLink="/" class="form-brand-mobile">
+            <img src="assets/img/logo-poulets-bf.svg" alt="" width="36" height="36">
+            <span>Poulets <strong>BF</strong></span>
+          </a>
+
+          <header class="form-head">
+            <h1>Créer un compte</h1>
+            <p>4 étapes rapides — vous recevrez un email de vérification.</p>
+          </header>
+
           @if (errorMessage()) {
-            <div class="error-banner">
+            <div class="error" role="alert">
               <mat-icon>error_outline</mat-icon>
               <span>{{ errorMessage() | translate }}</span>
             </div>
           }
 
           <mat-stepper [linear]="true" #stepper>
-            <!-- Step 1: Account info -->
-            <mat-step [stepControl]="accountForm" [label]="'auth.step_account' | translate">
+            <!-- Étape 1 : Compte -->
+            <mat-step [stepControl]="accountForm" label="Compte">
               <form [formGroup]="accountForm" class="step-form">
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>{{ 'auth.name' | translate }}</mat-label>
-                  <input matInput formControlName="nom" autocomplete="name">
-                  <mat-icon matPrefix>person</mat-icon>
-                  @if (accountForm.get('nom')?.hasError('required') && accountForm.get('nom')?.touched) {
-                    <mat-error>{{ 'common.required_field' | translate }}</mat-error>
-                  }
-                </mat-form-field>
+                <label class="field">
+                  <span class="lbl">Nom complet</span>
+                  <div class="input-wrap">
+                    <mat-icon aria-hidden="true">person</mat-icon>
+                    <input type="text" formControlName="nom" autocomplete="name" placeholder="Prénom Nom" required>
+                  </div>
+                </label>
 
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>{{ 'auth.email' | translate }}</mat-label>
-                  <input matInput type="email" formControlName="email" autocomplete="email">
-                  <mat-icon matPrefix>email</mat-icon>
-                  @if (accountForm.get('email')?.hasError('required') && accountForm.get('email')?.touched) {
-                    <mat-error>{{ 'common.required_field' | translate }}</mat-error>
-                  }
-                  @if (accountForm.get('email')?.hasError('email') && accountForm.get('email')?.touched) {
-                    <mat-error>{{ 'common.invalid_email' | translate }}</mat-error>
-                  }
-                </mat-form-field>
+                <label class="field">
+                  <span class="lbl">Email</span>
+                  <div class="input-wrap">
+                    <mat-icon aria-hidden="true">mail</mat-icon>
+                    <input type="email" formControlName="email" autocomplete="email" inputmode="email" placeholder="vous&#64;exemple.bf" required>
+                  </div>
+                </label>
 
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>{{ 'auth.phone' | translate }}</mat-label>
-                  <input matInput formControlName="phone" autocomplete="tel">
-                  <mat-icon matPrefix>phone</mat-icon>
-                </mat-form-field>
+                <label class="field">
+                  <span class="lbl">Téléphone <small>(facultatif)</small></span>
+                  <div class="input-wrap">
+                    <mat-icon aria-hidden="true">phone</mat-icon>
+                    <input type="tel" formControlName="phone" autocomplete="tel" placeholder="+226 70 12 34 56">
+                  </div>
+                </label>
 
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>{{ 'auth.password' | translate }}</mat-label>
-                  <input matInput type="password" formControlName="password" autocomplete="new-password">
-                  <mat-icon matPrefix>lock</mat-icon>
-                  @if (accountForm.get('password')?.hasError('required') && accountForm.get('password')?.touched) {
-                    <mat-error>{{ 'common.required_field' | translate }}</mat-error>
-                  }
-                  @if (accountForm.get('password')?.hasError('minlength') && accountForm.get('password')?.touched) {
-                    <mat-error>{{ 'common.password_min_length' | translate }}</mat-error>
-                  }
-                </mat-form-field>
+                <label class="field">
+                  <span class="lbl">Mot de passe</span>
+                  <div class="input-wrap">
+                    <mat-icon aria-hidden="true">lock</mat-icon>
+                    <input [type]="hidePassword() ? 'password' : 'text'" formControlName="password" autocomplete="new-password" placeholder="8 caractères minimum" required>
+                    <button type="button" class="toggle-pw" (click)="hidePassword.set(!hidePassword())" aria-label="Afficher/masquer">
+                      <mat-icon>{{ hidePassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
+                    </button>
+                  </div>
+                </label>
 
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>{{ 'auth.confirm_password' | translate }}</mat-label>
-                  <input matInput type="password" formControlName="confirmPassword" autocomplete="new-password">
-                  <mat-icon matPrefix>lock_outline</mat-icon>
+                <label class="field">
+                  <span class="lbl">Confirmer le mot de passe</span>
+                  <div class="input-wrap">
+                    <mat-icon aria-hidden="true">lock</mat-icon>
+                    <input [type]="hidePassword() ? 'password' : 'text'" formControlName="confirmPassword" autocomplete="new-password" placeholder="Retapez le mot de passe" required>
+                  </div>
                   @if (accountForm.get('confirmPassword')?.hasError('passwordMismatch') && accountForm.get('confirmPassword')?.touched) {
-                    <mat-error>{{ 'common.passwords_mismatch' | translate }}</mat-error>
+                    <small class="err-msg">Les mots de passe ne correspondent pas</small>
                   }
-                </mat-form-field>
+                </label>
 
                 <div class="step-actions">
                   <span></span>
-                  <button mat-raised-button color="primary" matStepperNext
-                          [disabled]="accountForm.invalid">
-                    {{ 'auth.next' | translate }}
+                  <button
+                    mat-flat-button
+                    color="primary"
+                    matStepperNext
+                    type="button"
+                    class="cta"
+                    [disabled]="accountForm.invalid"
+                  >
+                    Continuer <mat-icon>arrow_forward</mat-icon>
                   </button>
                 </div>
               </form>
             </mat-step>
 
-            <!-- Step 2: Role selection -->
-            <mat-step [stepControl]="roleForm" [label]="'auth.step_role' | translate">
+            <!-- Étape 2 : Rôle -->
+            <mat-step [stepControl]="roleForm" label="Rôle">
               <form [formGroup]="roleForm" class="step-form">
-                <p class="step-instruction">{{ 'auth.role_selection' | translate }}</p>
-                <mat-radio-group formControlName="role" class="role-group">
-                  <div class="role-option" (click)="roleForm.get('role')?.setValue('eleveur')">
-                    <mat-radio-button value="eleveur">
-                      <div class="role-content">
-                        <mat-icon>agriculture</mat-icon>
-                        <div>
-                          <strong>{{ 'auth.role_eleveur' | translate }}</strong>
-                          <p>{{ 'auth.role_eleveur_desc' | translate }}</p>
-                        </div>
-                      </div>
-                    </mat-radio-button>
-                  </div>
-                  <div class="role-option" (click)="roleForm.get('role')?.setValue('client')">
-                    <mat-radio-button value="client">
-                      <div class="role-content">
-                        <mat-icon>shopping_bag</mat-icon>
-                        <div>
-                          <strong>{{ 'auth.role_client' | translate }}</strong>
-                          <p>{{ 'auth.role_client_desc' | translate }}</p>
-                        </div>
-                      </div>
-                    </mat-radio-button>
-                  </div>
-                  <div class="role-option" (click)="roleForm.get('role')?.setValue('producteur_aliment')">
-                    <mat-radio-button value="producteur_aliment">
-                      <div class="role-content">
-                        <mat-icon>factory</mat-icon>
-                        <div>
-                          <strong>{{ 'auth.role_producteur' | translate }}</strong>
-                          <p>{{ 'auth.role_producteur_desc' | translate }}</p>
-                        </div>
-                      </div>
-                    </mat-radio-button>
-                  </div>
-                </mat-radio-group>
+                <p class="step-hint">Choisissez le profil qui correspond à votre activité.</p>
+                <div class="role-grid">
+                  <label class="role-card" [class.selected]="roleForm.value.role === 'eleveur'">
+                    <input type="radio" formControlName="role" value="eleveur">
+                    <mat-icon>agriculture</mat-icon>
+                    <strong>Éleveur</strong>
+                    <small>Vends tes poulets, gère tes lots et certifications halal</small>
+                  </label>
+                  <label class="role-card" [class.selected]="roleForm.value.role === 'client'">
+                    <input type="radio" formControlName="role" value="client">
+                    <mat-icon>shopping_cart</mat-icon>
+                    <strong>Client</strong>
+                    <small>Achète des poulets, suis tes commandes, évalue les éleveurs</small>
+                  </label>
+                  <label class="role-card" [class.selected]="roleForm.value.role === 'producteur_aliment'">
+                    <input type="radio" formControlName="role" value="producteur_aliment">
+                    <mat-icon>factory</mat-icon>
+                    <strong>Producteur</strong>
+                    <small>Aliments, poussins, produits vétérinaires pour éleveurs</small>
+                  </label>
+                </div>
 
                 <div class="step-actions">
-                  <button mat-button matStepperPrevious>
-                    {{ 'auth.previous' | translate }}
-                  </button>
-                  <button mat-raised-button color="primary" matStepperNext
-                          [disabled]="roleForm.invalid">
-                    {{ 'auth.next' | translate }}
+                  <button mat-button matStepperPrevious type="button">← Précédent</button>
+                  <button mat-flat-button color="primary" matStepperNext type="button" class="cta">
+                    Continuer <mat-icon>arrow_forward</mat-icon>
                   </button>
                 </div>
               </form>
             </mat-step>
 
-            <!-- Step 3: Role-specific details -->
-            <mat-step [label]="'auth.step_details' | translate" [optional]="true">
+            <!-- Étape 3 : Détails spécifiques au rôle -->
+            <mat-step label="Détails" [optional]="true">
               <form [formGroup]="detailsForm" class="step-form">
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>{{ 'auth.location' | translate }}</mat-label>
-                  <input matInput formControlName="localisation">
-                  <mat-icon matPrefix>location_on</mat-icon>
-                </mat-form-field>
+                <label class="field">
+                  <span class="lbl">Localisation</span>
+                  <div class="input-wrap">
+                    <mat-icon aria-hidden="true">location_on</mat-icon>
+                    <input type="text" formControlName="localisation" placeholder="Ville, région">
+                  </div>
+                </label>
 
                 @if (selectedRole() === 'eleveur') {
-                  <mat-form-field appearance="outline" class="full-width">
-                    <mat-label>{{ 'auth.capacity' | translate }}</mat-label>
-                    <input matInput type="number" formControlName="capacite">
-                    <mat-icon matPrefix>inventory_2</mat-icon>
-                  </mat-form-field>
+                  <label class="field">
+                    <span class="lbl">Capacité d'élevage (nb poulets)</span>
+                    <div class="input-wrap">
+                      <mat-icon aria-hidden="true">pets</mat-icon>
+                      <input type="number" formControlName="capacite" placeholder="100" min="1">
+                    </div>
+                  </label>
                 }
 
                 @if (selectedRole() === 'client') {
-                  <mat-form-field appearance="outline" class="full-width">
-                    <mat-label>{{ 'auth.client_type' | translate }}</mat-label>
-                    <mat-select formControlName="clientType">
-                      <mat-option value="restaurant">{{ 'auth.client_restaurant' | translate }}</mat-option>
-                      <mat-option value="menage">{{ 'auth.client_household' | translate }}</mat-option>
-                      <mat-option value="revendeur">{{ 'auth.client_reseller' | translate }}</mat-option>
-                      <mat-option value="evenement">{{ 'auth.client_event' | translate }}</mat-option>
-                    </mat-select>
-                  </mat-form-field>
+                  <label class="field">
+                    <span class="lbl">Type de client</span>
+                    <div class="input-wrap">
+                      <mat-icon aria-hidden="true">groups</mat-icon>
+                      <select formControlName="clientType">
+                        <option value="">Sélectionner</option>
+                        <option value="PARTICULIER">Particulier</option>
+                        <option value="RESTAURANT">Restaurant / hôtel</option>
+                        <option value="REVENDEUR">Revendeur / grossiste</option>
+                      </select>
+                    </div>
+                  </label>
                 }
 
                 @if (selectedRole() === 'producteur_aliment') {
-                  <mat-form-field appearance="outline" class="full-width">
-                    <mat-label>{{ 'auth.distribution_zone' | translate }}</mat-label>
-                    <input matInput formControlName="zoneDistribution">
-                    <mat-icon matPrefix>map</mat-icon>
-                  </mat-form-field>
+                  <label class="field">
+                    <span class="lbl">Zone de distribution</span>
+                    <div class="input-wrap">
+                      <mat-icon aria-hidden="true">map</mat-icon>
+                      <input type="text" formControlName="zoneDistribution" placeholder="Régions livrées">
+                    </div>
+                  </label>
                 }
 
                 <div class="step-actions">
-                  <button mat-button matStepperPrevious>
-                    {{ 'auth.previous' | translate }}
-                  </button>
-                  <button mat-raised-button color="primary" matStepperNext>
-                    {{ 'auth.next' | translate }}
+                  <button mat-button matStepperPrevious type="button">← Précédent</button>
+                  <button mat-flat-button color="primary" matStepperNext type="button" class="cta">
+                    Continuer <mat-icon>arrow_forward</mat-icon>
                   </button>
                 </div>
               </form>
             </mat-step>
 
-            <!-- Step 4: Groupement (optional) -->
-            <mat-step [label]="'auth.step_groupement' | translate" [optional]="true">
+            <!-- Étape 4 : Groupement -->
+            <mat-step label="Groupement" [optional]="true">
               <form [formGroup]="groupementForm" class="step-form">
-                <p class="step-instruction">{{ 'auth.groupement_optional' | translate }}</p>
-
-                <mat-form-field appearance="outline" class="full-width">
-                  <mat-label>{{ 'auth.groupement_name' | translate }}</mat-label>
-                  <input matInput formControlName="groupementNom">
-                  <mat-icon matPrefix>groups</mat-icon>
-                </mat-form-field>
+                <p class="step-hint">Si vous appartenez à un groupement ou coopérative, indiquez-le ici.</p>
+                <label class="field">
+                  <span class="lbl">Nom du groupement <small>(facultatif)</small></span>
+                  <div class="input-wrap">
+                    <mat-icon aria-hidden="true">groups</mat-icon>
+                    <input type="text" formControlName="groupementNom" placeholder="Coopérative des éleveurs du Kadiogo">
+                  </div>
+                </label>
 
                 <div class="step-actions">
-                  <button mat-button matStepperPrevious>
-                    {{ 'auth.previous' | translate }}
-                  </button>
-                  <button
-                    mat-raised-button
-                    color="primary"
-                    [disabled]="loading()"
-                    (click)="onSubmit()"
-                  >
+                  <button mat-button matStepperPrevious type="button">← Précédent</button>
+                  <button mat-flat-button color="primary" type="button" (click)="onSubmit()" [disabled]="loading()" class="cta">
                     @if (loading()) {
-                      <mat-spinner diameter="20"></mat-spinner>
+                      <mat-spinner diameter="20"></mat-spinner> Création…
                     } @else {
-                      {{ 'auth.finish' | translate }}
+                      Créer mon compte <mat-icon>check</mat-icon>
                     }
                   </button>
                 </div>
@@ -249,137 +258,278 @@ import { Role } from '@app/shared/models/user.model';
             </mat-step>
           </mat-stepper>
 
-          <div class="login-link">
-            {{ 'auth.have_account' | translate }}
-            <a routerLink="/auth/login">{{ 'auth.sign_in' | translate }}</a>
-          </div>
-        </mat-card-content>
-      </mat-card>
+          <footer class="form-foot">
+            <p>Déjà inscrit ? <a routerLink="/auth/login">Se connecter</a></p>
+            <p class="copy">© 2026 FASO DIGITALISATION — AGPL-3.0</p>
+          </footer>
+        </div>
+      </main>
     </div>
   `,
   styles: [`
+    :host { display: block; }
+
+    /* Animations entrée */
+    @keyframes reg-rise {
+      from { opacity: 0; transform: translateY(24px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes reg-slide-in {
+      from { opacity: 0; transform: translateX(24px); }
+      to   { opacity: 1; transform: translateX(0); }
+    }
+    @keyframes reg-bg-zoom {
+      from { transform: scale(1.08); }
+      to   { transform: scale(1); }
+    }
+    .hero-bg { animation: reg-bg-zoom 1800ms cubic-bezier(0, 0, 0.2, 1) both; }
+    .hero-content > * {
+      opacity: 0;
+      animation: reg-rise 700ms cubic-bezier(0.2, 0, 0.2, 1) forwards;
+    }
+    .hero-content .hero-brand  { animation-delay: 100ms; }
+    .hero-content h2           { animation-delay: 250ms; }
+    .hero-content p            { animation-delay: 400ms; }
+    .hero-content .hero-points { animation-delay: 550ms; }
+    .form-inner {
+      animation: reg-slide-in 700ms cubic-bezier(0.2, 0, 0.2, 1) both;
+      animation-delay: 200ms;
+    }
+    .role-card {
+      transition: transform 240ms cubic-bezier(0, 0, 0.2, 1),
+                  border-color 240ms, background 240ms, box-shadow 240ms;
+    }
+    .role-card:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 8px 20px rgba(46, 125, 50, 0.15);
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .hero-bg, .hero-content > *, .form-inner, .role-card { animation: none !important; opacity: 1 !important; transform: none !important; }
+    }
+
     .register-page {
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: grid;
+      grid-template-columns: 1.1fr 1fr;
       min-height: 100vh;
-      background: linear-gradient(135deg, #1b5e20 0%, #2e7d32 50%, #43a047 100%);
-      padding: 24px;
+      background: #FFFFFF;
     }
 
-    .register-card {
-      width: 100%;
-      max-width: 640px;
-      padding: 24px;
-    }
-
-    .register-title {
-      text-align: center;
-      width: 100%;
+    /* ============== Hero panneau gauche ============== */
+    .hero-panel {
+      position: relative;
+      overflow: hidden;
+      color: #FFFFFF;
       display: flex;
-      flex-direction: column;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 16px;
+      align-items: flex-end;
+      padding: var(--faso-space-10);
+    }
+    .hero-bg {
+      position: absolute; inset: 0;
+      width: 100%; height: 100%; object-fit: cover; z-index: 0;
+    }
+    .hero-overlay {
+      position: absolute; inset: 0; z-index: 1;
+      background: linear-gradient(180deg, rgba(15, 62, 30, 0.25) 0%, rgba(15, 62, 30, 0.70) 70%, rgba(15, 62, 30, 0.85) 100%);
+    }
+    .hero-content { position: relative; z-index: 2; max-width: 500px; }
+    .hero-brand {
+      display: inline-flex; align-items: center; gap: 10px;
+      color: #FFFFFF; text-decoration: none;
+      font-size: 1.5rem; font-weight: 600;
+      margin-bottom: var(--faso-space-10);
+      text-shadow: 0 2px 8px rgba(0, 0, 0, 0.35);
+    }
+    .hero-brand strong { color: #FFB300; }
+    .hero-content h2 {
+      color: #FFFFFF;
+      font-size: clamp(1.75rem, 3vw, 2.5rem);
+      font-weight: 700; line-height: 1.15; letter-spacing: -0.015em;
+      margin: 0 0 var(--faso-space-3);
+      text-shadow: 0 2px 12px rgba(0, 0, 0, 0.35);
+    }
+    .hero-content p {
+      margin: 0 0 var(--faso-space-6);
+      font-size: 1.125rem; opacity: 0.95;
+    }
+    .hero-points { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 10px; }
+    .hero-points li { display: inline-flex; align-items: center; gap: 10px; opacity: 0.95; }
+    .hero-points .dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: #FFB300; box-shadow: 0 0 0 4px rgba(255, 179, 0, 0.25);
     }
 
-    .brand {
-      font-size: 1.6rem;
-      font-weight: 700;
-      color: #2e7d32;
+    /* ============== Form panneau droit ============== */
+    .form-panel {
+      display: flex; align-items: center; justify-content: center;
+      padding: var(--faso-space-8) var(--faso-space-6);
+      background: #FFFFFF; color: #0F172A;
     }
+    .form-inner { width: 100%; max-width: 520px; color: #0F172A; }
 
-    .subtitle {
-      font-size: 1.1rem;
-      font-weight: 400;
-      color: #666;
+    .form-brand-mobile {
+      display: none;
+      align-items: center; gap: 8px;
+      color: #0F172A; text-decoration: none;
+      font-size: 1.25rem; font-weight: 600;
+      margin-bottom: var(--faso-space-6);
     }
+    .form-brand-mobile strong { color: #2E7D32; }
 
-    .full-width {
-      width: 100%;
+    .form-head { margin-bottom: var(--faso-space-6); }
+    .form-head h1 {
+      margin: 0 0 var(--faso-space-2);
+      font-size: 1.875rem; font-weight: 700;
+      color: #0F172A; letter-spacing: -0.015em;
     }
+    .form-head p { margin: 0; color: #475569; font-size: 1rem; line-height: 1.55; }
+
+    .error {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 14px;
+      background: #FDECEC; color: #D32F2F; border: 1px solid #D32F2F;
+      border-radius: 8px; margin-bottom: var(--faso-space-4);
+      font-size: 0.9rem; font-weight: 500;
+    }
+    .error mat-icon { font-size: 20px; width: 20px; height: 20px; }
 
     .step-form {
-      padding: 16px 0;
+      display: flex; flex-direction: column; gap: var(--faso-space-4);
+      padding: var(--faso-space-4) 0 0;
     }
+    .step-hint { color: #475569; margin: 0; }
 
-    .step-instruction {
-      color: #666;
-      margin-bottom: 16px;
+    /* ── Champs personnalisés (pas Material mat-form-field) ── */
+    .field { display: flex; flex-direction: column; gap: 6px; }
+    .lbl { font-size: 0.875rem; font-weight: 600; color: #0F172A; }
+    .lbl small { color: #94A3B8; font-weight: 400; }
+    .err-msg { color: #D32F2F; font-size: 0.75rem; font-weight: 500; }
+
+    .input-wrap {
+      display: flex; align-items: center;
+      background: #FFFFFF;
+      border: 1.5px solid #D1D5DB;
+      border-radius: 8px;
+      padding: 0 12px; gap: 10px;
+      transition: border-color 160ms ease, box-shadow 160ms ease;
     }
+    .input-wrap:hover { border-color: #66BB6A; }
+    .input-wrap:focus-within {
+      border-color: #2E7D32;
+      box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.14);
+    }
+    .input-wrap > mat-icon {
+      font-size: 20px; width: 20px; height: 20px;
+      color: #64748B; flex-shrink: 0;
+    }
+    .input-wrap input,
+    .input-wrap select {
+      flex: 1; border: none; outline: none;
+      background: transparent;
+      padding: 12px 0;
+      font-family: inherit; font-size: 1rem;
+      color: #0F172A; min-width: 0;
+    }
+    .input-wrap input::placeholder { color: #94A3B8; }
 
-    .error-banner {
-      display: flex;
+    .toggle-pw {
+      background: transparent; border: none; cursor: pointer;
+      padding: 4px; border-radius: 50%; color: #64748B;
+      display: inline-flex;
+    }
+    .toggle-pw:hover { background: #F3F4F6; color: #1B5E20; }
+    .toggle-pw mat-icon { font-size: 20px; width: 20px; height: 20px; }
+
+    /* ── Cards de rôle ── */
+    .role-grid {
+      display: grid; gap: var(--faso-space-2);
+    }
+    .role-card {
+      display: grid;
+      grid-template-columns: auto auto 1fr;
+      grid-template-rows: auto auto;
+      gap: 4px 12px;
       align-items: center;
-      gap: 8px;
-      background: #fce4ec;
-      color: #c62828;
-      padding: 12px 16px;
-      border-radius: 8px;
-      margin-bottom: 16px;
-      font-size: 0.9rem;
-    }
-
-    .role-group {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-
-    .role-option {
-      border: 1px solid #e0e0e0;
-      border-radius: 8px;
-      padding: 16px;
+      padding: var(--faso-space-4);
+      background: #FFFFFF;
+      border: 1.5px solid #D1D5DB;
+      border-radius: 12px;
       cursor: pointer;
-      transition: border-color 0.2s;
+      transition: border-color 160ms, background 160ms;
+    }
+    .role-card:hover { border-color: #66BB6A; }
+    .role-card.selected {
+      border-color: #2E7D32;
+      background: #E8F5E9;
+    }
+    .role-card input[type="radio"] {
+      grid-row: 1 / 3;
+      width: 18px; height: 18px; margin: 0;
+      accent-color: #2E7D32;
+    }
+    .role-card mat-icon {
+      grid-row: 1 / 3; grid-column: 2;
+      font-size: 28px; width: 28px; height: 28px;
+      color: #2E7D32;
+    }
+    .role-card strong {
+      grid-row: 1; grid-column: 3;
+      font-size: 1rem; color: #0F172A;
+    }
+    .role-card small {
+      grid-row: 2; grid-column: 3;
+      color: #475569; font-size: 0.875rem;
     }
 
-    .role-option:hover {
-      border-color: #2e7d32;
-    }
-
-    .role-content {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-left: 8px;
-    }
-
-    .role-content mat-icon {
-      font-size: 32px;
-      width: 32px;
-      height: 32px;
-      color: #2e7d32;
-    }
-
-    .role-content p {
-      margin: 4px 0 0;
-      font-size: 0.85rem;
-      color: #666;
-      font-weight: 400;
-    }
-
+    /* ── Actions stepper ── */
     .step-actions {
-      display: flex;
-      justify-content: space-between;
-      margin-top: 24px;
+      display: flex; justify-content: space-between; align-items: center;
+      margin-top: var(--faso-space-2);
+    }
+    .cta {
+      height: 44px;
+      border-radius: 8px !important;
+      font-weight: 600 !important;
+      display: inline-flex !important;
+      align-items: center; justify-content: center;
+      gap: 6px;
     }
 
-    .login-link {
-      margin-top: 24px;
-      text-align: center;
-      font-size: 0.9rem;
-      color: #666;
+    /* ── Material stepper overrides (contraste) ── */
+    ::ng-deep .mat-step-header .mat-step-label {
+      color: #475569 !important;
+    }
+    ::ng-deep .mat-step-header .mat-step-label-selected,
+    ::ng-deep .mat-step-header .mat-step-label-active {
+      color: #0F172A !important;
+      font-weight: 600 !important;
+    }
+    ::ng-deep .mat-stepper-horizontal {
+      background: transparent !important;
     }
 
-    .login-link a {
-      color: #2e7d32;
-      font-weight: 500;
-      text-decoration: none;
+    .form-foot {
+      margin-top: var(--faso-space-6);
+      padding-top: var(--faso-space-4);
+      border-top: 1px solid #E5E7EB;
+      color: #475569; font-size: 0.875rem; text-align: center;
     }
+    .form-foot p { margin: 0 0 4px; }
+    .form-foot a { color: #2E7D32; font-weight: 500; text-decoration: none; }
+    .form-foot a:hover { text-decoration: underline; }
+    .form-foot .copy { color: #94A3B8; font-size: 0.75rem; }
 
-    .login-link a:hover {
-      text-decoration: underline;
+    /* ============== Responsive ============== */
+    @media (max-width: 899px) {
+      .register-page { grid-template-columns: 1fr; }
+      .hero-panel { min-height: 220px; padding: var(--faso-space-6); }
+      .hero-content h2 { font-size: 1.5rem; }
+      .hero-content p { font-size: 1rem; }
+      .hero-points { display: none; }
+    }
+    @media (max-width: 639px) {
+      .hero-panel { display: none; }
+      .form-panel { padding: var(--faso-space-6) var(--faso-space-4); }
+      .form-brand-mobile { display: inline-flex; }
     }
   `],
 })
@@ -391,8 +541,8 @@ export class RegisterComponent {
   readonly loading = signal(false);
   readonly errorMessage = signal('');
   readonly selectedRole = signal<Role>('client');
+  readonly hidePassword = signal(true);
 
-  // Step 1: Account
   readonly accountForm = this.fb.nonNullable.group({
     nom: ['', Validators.required],
     email: ['', [Validators.required, Validators.email]],
@@ -401,12 +551,10 @@ export class RegisterComponent {
     confirmPassword: ['', [Validators.required]],
   }, { validators: [this.passwordMatchValidator] });
 
-  // Step 2: Role
   readonly roleForm = this.fb.nonNullable.group({
     role: ['client' as Role, Validators.required],
   });
 
-  // Step 3: Details
   readonly detailsForm = this.fb.group({
     localisation: [''],
     capacite: [null as number | null],
@@ -414,7 +562,6 @@ export class RegisterComponent {
     zoneDistribution: [''],
   });
 
-  // Step 4: Groupement
   readonly groupementForm = this.fb.group({
     groupementNom: [''],
   });

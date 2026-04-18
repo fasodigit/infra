@@ -1,0 +1,118 @@
+// =============================================================================
+// FASO DIGITALISATION — Animations globales
+// Déclenchées via la directive [appAnimateOnScroll] qui ajoute `.is-visible`.
+// =============================================================================
+
+// --------------------------------------------------------- Keyframes
+
+@keyframes faso-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes faso-fade-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes faso-fade-down {
+  from { opacity: 0; transform: translateY(-24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes faso-fade-left {
+  from { opacity: 0; transform: translateX(32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes faso-fade-right {
+  from { opacity: 0; transform: translateX(-32px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes faso-scale-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+@keyframes faso-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-6px); }
+}
+
+@keyframes faso-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.04); }
+}
+
+@keyframes faso-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+@keyframes faso-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes faso-bounce-in {
+  0%   { opacity: 0; transform: scale(0.3); }
+  50%  { opacity: 1; transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+// --------------------------------------------------------- Utility classes
+
+[appAnimateOnScroll] {
+  opacity: 0;
+  transition: opacity 600ms cubic-bezier(0.4, 0, 0.2, 1),
+              transform 600ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[appAnimateOnScroll].anim-fade-up     { transform: translateY(24px); }
+[appAnimateOnScroll].anim-fade-down   { transform: translateY(-24px); }
+[appAnimateOnScroll].anim-fade-left   { transform: translateX(32px); }
+[appAnimateOnScroll].anim-fade-right  { transform: translateX(-32px); }
+[appAnimateOnScroll].anim-scale       { transform: scale(0.94); }
+
+[appAnimateOnScroll].is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+// --------------------------------------------------------- Hover micro-interactions
+
+.hover-lift {
+  transition: transform 240ms cubic-bezier(0, 0, 0.2, 1),
+              box-shadow 240ms cubic-bezier(0, 0, 0.2, 1);
+}
+.hover-lift:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.10), 0 4px 8px rgba(15, 23, 42, 0.05);
+}
+
+.hover-glow {
+  transition: box-shadow 240ms cubic-bezier(0, 0, 0.2, 1);
+}
+.hover-glow:hover {
+  box-shadow: 0 0 0 4px rgba(46, 125, 50, 0.15);
+}
+
+.hover-pulse:hover {
+  animation: faso-pulse 600ms ease-in-out;
+}
+
+// --------------------------------------------------------- Reduced motion
+
+@media (prefers-reduced-motion: reduce) {
+  [appAnimateOnScroll],
+  .hover-lift,
+  .hover-glow,
+  .hover-pulse {
+    transition: none !important;
+    animation: none !important;
+  }
+  [appAnimateOnScroll] {
+    opacity: 1 !important;
+    transform: none !important;
+  }
+}

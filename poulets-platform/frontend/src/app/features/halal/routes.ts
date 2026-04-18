@@ -19,4 +19,10 @@ export default [
       import('./certification-detail.component').then(m => m.CertificationDetailComponent),
     title: 'Detail certification - Poulets Platform',
   },
+  {
+    path: ':id/checklist',
+    loadComponent: () =>
+      import('./components/halal-checklist.component').then(m => m.HalalChecklistComponent),
+    title: 'Certification halal - Poulets BF',
+  },
 ] as Routes;

@@ -19,4 +19,22 @@ export default [
       import('./groupement.component').then(m => m.GroupementComponent),
     title: 'Mon groupement - Poulets Platform',
   },
+  {
+    path: 'eleveur/:id',
+    loadComponent: () =>
+      import('./components/breeder-profile.component').then(m => m.BreederProfileComponent),
+    title: 'Profil éleveur - Poulets Platform',
+  },
+  {
+    path: 'mfa',
+    loadComponent: () =>
+      import('./components/mfa-settings.component').then(m => m.MfaSettingsComponent),
+    title: 'Sécurité - Poulets BF',
+  },
+  {
+    path: 'security',
+    loadComponent: () =>
+      import('./components/security-sessions.component').then(m => m.SecuritySessionsComponent),
+    title: 'Sessions actives - Poulets BF',
+  },
 ] as Routes;

@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 250" role="img" aria-label="Photo non disponible">
+  <defs>
+    <linearGradient id="ph-bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#E8F5E9"/>
+      <stop offset="100%" stop-color="#FFF8E1"/>
+    </linearGradient>
+  </defs>
+  <rect width="400" height="250" fill="url(#ph-bg)"/>
+  <g transform="translate(200 125)" fill="#81C784" opacity="0.55">
+    <ellipse cx="0" cy="0" rx="70" ry="52"/>
+    <circle cx="38" cy="-28" r="24"/>
+    <circle cx="48" cy="-34" r="3" fill="#0F172A"/>
+    <path d="M58 -30 L78 -36 L72 -24 Z" fill="#FF8F00"/>
+    <path d="M-10 42 L-14 58 L-2 52 Z"/>
+    <path d="M20 45 L16 62 L28 54 Z"/>
+  </g>
+  <text x="200" y="220" text-anchor="middle" font-family="Inter, sans-serif" font-size="13" fill="#64748B">Photo à venir</text>
+</svg>

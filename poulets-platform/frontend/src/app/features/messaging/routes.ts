@@ -10,7 +10,13 @@ export default [
   {
     path: ':conversationId',
     loadComponent: () =>
+      import('./components/chat-window.component').then(m => m.ChatWindowComponent),
+    title: 'Conversation - Poulets BF',
+  },
+  {
+    path: ':conversationId/legacy',
+    loadComponent: () =>
       import('./chat.component').then(m => m.ChatComponent),
-    title: 'Conversation - Poulets Platform',
+    title: 'Conversation (legacy) - Poulets Platform',
   },
 ] as Routes;

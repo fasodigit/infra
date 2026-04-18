@@ -20,6 +20,12 @@ export default [
     title: 'Mot de passe oublie - Poulets Platform',
   },
   {
+    path: 'mfa',
+    loadComponent: () =>
+      import('./components/mfa-challenge.component').then(m => m.MfaChallengeComponent),
+    title: 'Vérification 2 étapes - Poulets BF',
+  },
+  {
     path: '',
     redirectTo: 'login',
     pathMatch: 'full' as const,

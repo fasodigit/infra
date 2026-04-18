@@ -1,0 +1,104 @@
+{
+  "_meta": {
+    "language": "Mooré",
+    "iso": "mos",
+    "script": "Latn",
+    "coverage": "pilot",
+    "status": "partial — TODO: Académie nationale des langues du BF (contact: INSS Ouaga)",
+    "fallback": "fr"
+  },
+  "COMMON": {
+    "LOGIN": "Loog-y tõnd",
+    "LOGOUT": "Yit tõnd",
+    "SUBMIT": "Kõnd",
+    "CANCEL": "Bas",
+    "LANGUAGE": "[MOS] Langue",
+    "MOORE": "Mooré",
+    "DIOULA": "Dioula",
+    "FULFULDE": "Fulfulde",
+    "FRENCH": "Faranse",
+    "ENGLISH": "[MOS] English"
+  },
+  "AUTH": {
+    "EMAIL": "[MOS] E-mail",
+    "PASSWORD": "[MOS] Mot de passe",
+    "SIGNIN": "Loog-y tõnd",
+    "SIGNUP": "[MOS] S'inscrire",
+    "LOGOUT": "Yit tõnd"
+  },
+  "NAV": {
+    "CATALOGUE": "[MOS] Catalogue",
+    "ORDERS": "[MOS] Commandes",
+    "PROFILE": "[MOS] Mon profil",
+    "DASHBOARD": "[MOS] Tableau de bord"
+  },
+  "POULETS": {
+    "STOCK": "[MOS] Stock",
+    "RACE": "[MOS] Race",
+    "PRICE": "[MOS] Prix",
+    "ORDER": "[MOS] Commander"
+  },
+  "ERRORS": {
+    "NETWORK": "[MOS] Erreur réseau, veuillez réessayer",
+    "UNAUTHORIZED": "[MOS] Accès non autorisé, veuillez vous connecter"
+  },
+  "landing": {
+    "nav": {
+      "accueil": "[MOS] Accueil",
+      "presentation": "[MOS] Présentation",
+      "fonctionnalites": "[MOS] Fonctionnalités",
+      "securites": "[MOS] Sécurités",
+      "apropos": "[MOS] À propos",
+      "connexion": "Loog-y tõnd"
+    },
+    "hero": {
+      "title": "[MOS] La plateforme qui connecte éleveurs et acheteurs de volailles au Burkina Faso",
+      "subtitle": "[MOS] Trouvez le bon poulet, au bon poids, au bon moment.",
+      "cta_eleveur": "[MOS] Je suis éleveur",
+      "cta_acheteur": "[MOS] Je suis acheteur",
+      "stat_eleveurs": "[MOS] Éleveurs",
+      "stat_clients": "[MOS] Clients",
+      "stat_transactions": "[MOS] Transactions",
+      "stat_regions": "[MOS] Régions"
+    }
+  },
+  "app": {
+    "title": "Poulets BF",
+    "subtitle": "FASO DIGITALISATION",
+    "version": "v0.1.0",
+    "footer": "FASO DIGITALISATION - Poulets Platform v0.1.0"
+  },
+  "auth": {
+    "login": "Loog-y tõnd",
+    "logout": "Yit tõnd",
+    "email": "[MOS] Adresse e-mail",
+    "password": "[MOS] Mot de passe",
+    "sign_in": "Loog-y tõnd",
+    "sign_up": "[MOS] S'inscrire",
+    "login_error": "[MOS] E-mail ou mot de passe incorrect",
+    "session_expired": "[MOS] Session expirée, veuillez vous reconnecter"
+  },
+  "common": {
+    "save": "[MOS] Enregistrer",
+    "cancel": "Bas",
+    "delete": "[MOS] Supprimer",
+    "edit": "[MOS] Modifier",
+    "confirm": "[MOS] Confirmer",
+    "loading": "[MOS] Chargement...",
+    "error": "[MOS] Une erreur est survenue",
+    "success": "[MOS] Opération réussie",
+    "language": "[MOS] Langue",
+    "french": "Faranse",
+    "notifications": "[MOS] Notifications"
+  },
+  "menu": {
+    "dashboard": "[MOS] Tableau de bord",
+    "profile": "[MOS] Mon profil",
+    "messaging": "[MOS] Messagerie",
+    "marketplace": "[MOS] Catalogue"
+  },
+  "POULETS_PLATFORM": {
+    "eleveur_space": "[MOS] Espace Éleveur",
+    "client_space": "[MOS] Espace Client"
+  }
+}

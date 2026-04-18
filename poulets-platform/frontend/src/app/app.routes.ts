@@ -89,12 +89,42 @@ export const routes: Routes = [
         path: 'profile',
         loadChildren: () => import('./features/profile/routes'),
       },
+      // Cart
+      {
+        path: 'cart',
+        loadChildren: () => import('./features/cart/routes'),
+      },
+      // Notifications (user)
+      {
+        path: 'notifications',
+        loadChildren: () => import('./features/notifications/routes'),
+      },
+      // Checkout
+      {
+        path: 'checkout',
+        loadChildren: () => import('./features/checkout/routes'),
+      },
+      // Admin
+      {
+        path: 'admin',
+        loadChildren: () => import('./features/admin/routes'),
+      },
     ],
   },
 
-  // Wildcard redirect to landing
+  // 404 (explicit)
+  {
+    path: '404',
+    loadComponent: () =>
+      import('./shared/components/error-page/error-page.component').then(m => m.ErrorPageComponent),
+    title: 'Page introuvable - Poulets BF',
+  },
+
+  // Wildcard → 404
   {
     path: '**',
-    redirectTo: '',
+    loadComponent: () =>
+      import('./shared/components/error-page/error-page.component').then(m => m.ErrorPageComponent),
+    title: 'Page introuvable - Poulets BF',
   },
 ];

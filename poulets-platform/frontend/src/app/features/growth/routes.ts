@@ -19,4 +19,10 @@ export default [
       import('./add-weight.component').then(m => m.AddWeightComponent),
     title: 'Ajouter Pesee - Poulets Platform',
   },
+  {
+    path: ':lotId/chart',
+    loadComponent: () =>
+      import('./components/growth-chart-page.component').then(m => m.GrowthChartPageComponent),
+    title: 'Courbe de croissance - Poulets BF',
+  },
 ] as Routes;

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 80 80" role="img" aria-label="Avatar éleveur">
+  <circle cx="40" cy="40" r="40" fill="#E8F5E9"/>
+  <circle cx="40" cy="32" r="14" fill="#81C784"/>
+  <path d="M12 72c3-15 14-22 28-22s25 7 28 22z" fill="#81C784"/>
+</svg>
