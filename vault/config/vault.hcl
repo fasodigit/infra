@@ -18,6 +18,7 @@ listener "tcp" {
 storage "consul" {
   address = "consul:8500"
   path    = "vault/"
+  scheme  = "http"
   # token = "<consul-acl-token>"   # for production with ACLs enabled
 }
 
@@ -27,7 +28,7 @@ cluster_addr = "http://vault:8201"
 
 # Telemetry — Prometheus-compatible.
 telemetry {
-  prometheus_retention_time = "24h"
+  prometheus_retention_time = "30s"
   disable_hostname          = true
 }
 

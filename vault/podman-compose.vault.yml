@@ -24,15 +24,17 @@ services:
       - "-bootstrap-expect=1"
       - "-ui"
       - "-client=0.0.0.0"
+      - '-bind={{ GetInterfaceIP "eth0" }}'
       - "-data-dir=/consul/data"
       - "-config-dir=/consul/config"
     networks:
       - faso-network
     healthcheck:
-      test: ["CMD", "consul", "members"]
+      test: ["CMD", "sh", "-c", "consul members | grep -q alive"]
       interval: 10s
       timeout: 3s
       retries: 10
+      start_period: 10s
 
   # ---------------------------------------------------------------------------
   # Vault — secrets engine backed by Consul
