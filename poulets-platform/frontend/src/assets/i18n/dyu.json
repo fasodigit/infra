@@ -12,54 +12,54 @@
     "LOGOUT": "Bɔ",
     "SUBMIT": "Ci lajɛ",
     "CANCEL": "A to",
-    "LANGUAGE": "[DYU] Langue",
+    "LANGUAGE": "Kan",
     "MOORE": "Mooré",
-    "DIOULA": "Dioula",
+    "DIOULA": "Jula",
     "FULFULDE": "Fulfulde",
     "FRENCH": "Faransi",
-    "ENGLISH": "[DYU] English"
+    "ENGLISH": "Angilε"
   },
   "AUTH": {
-    "EMAIL": "[DYU] E-mail",
-    "PASSWORD": "[DYU] Gundo kuma",
+    "EMAIL": "E-mail",
+    "PASSWORD": "Gundo kuma",
     "SIGNIN": "Sεbε don",
-    "SIGNUP": "[DYU] S'inscrire",
+    "SIGNUP": "I tɔgɔ sεbεn",
     "LOGOUT": "Bɔ"
   },
   "NAV": {
-    "CATALOGUE": "[DYU] Catalogue",
-    "ORDERS": "[DYU] Commandes",
-    "PROFILE": "[DYU] Mon profil",
-    "DASHBOARD": "[DYU] Tableau de bord"
+    "CATALOGUE": "[TODO:DYU] Catalogue",
+    "ORDERS": "[TODO:DYU] Commandes",
+    "PROFILE": "[TODO:DYU] Mon profil",
+    "DASHBOARD": "[TODO:DYU] Tableau de bord"
   },
   "POULETS": {
-    "STOCK": "[DYU] Stock",
-    "RACE": "[DYU] Race",
-    "PRICE": "[DYU] Prix",
-    "ORDER": "[DYU] Commander"
+    "STOCK": "[TODO:DYU] Stock",
+    "RACE": "[TODO:DYU] Race",
+    "PRICE": "Sɔngɔ",
+    "ORDER": "[TODO:DYU] Commander"
   },
   "ERRORS": {
-    "NETWORK": "[DYU] Erreur réseau, veuillez réessayer",
-    "UNAUTHORIZED": "[DYU] Accès non autorisé, veuillez vous connecter"
+    "NETWORK": "[TODO:DYU] Erreur réseau, veuillez réessayer",
+    "UNAUTHORIZED": "[TODO:DYU] Accès non autorisé, veuillez vous connecter"
   },
   "landing": {
     "nav": {
-      "accueil": "[DYU] Accueil",
-      "presentation": "[DYU] Présentation",
-      "fonctionnalites": "[DYU] Fonctionnalités",
-      "securites": "[DYU] Sécurités",
-      "apropos": "[DYU] À propos",
+      "accueil": "[TODO:DYU] Accueil",
+      "presentation": "[TODO:DYU] Présentation",
+      "fonctionnalites": "[TODO:DYU] Fonctionnalités",
+      "securites": "[TODO:DYU] Sécurités",
+      "apropos": "[TODO:DYU] À propos",
       "connexion": "Sεbε don"
     },
     "hero": {
-      "title": "[DYU] La plateforme qui connecte éleveurs et acheteurs de volailles au Burkina Faso",
-      "subtitle": "[DYU] Trouvez le bon poulet, au bon poids, au bon moment.",
-      "cta_eleveur": "[DYU] Je suis éleveur",
-      "cta_acheteur": "[DYU] Je suis acheteur",
-      "stat_eleveurs": "[DYU] Éleveurs",
-      "stat_clients": "[DYU] Clients",
-      "stat_transactions": "[DYU] Transactions",
-      "stat_regions": "[DYU] Régions"
+      "title": "[TODO:DYU] La plateforme qui connecte éleveurs et acheteurs de volailles au Burkina Faso",
+      "subtitle": "[TODO:DYU] Trouvez le bon poulet, au bon poids, au bon moment.",
+      "cta_eleveur": "[TODO:DYU] Je suis éleveur",
+      "cta_acheteur": "[TODO:DYU] Je suis acheteur",
+      "stat_eleveurs": "[TODO:DYU] Éleveurs",
+      "stat_clients": "[TODO:DYU] Clients",
+      "stat_transactions": "[TODO:DYU] Transactions",
+      "stat_regions": "[TODO:DYU] Régions"
     }
   },
   "app": {
@@ -71,30 +71,92 @@
   "auth": {
     "login": "Sεbε don",
     "logout": "Bɔ",
-    "email": "[DYU] Adresse e-mail",
-    "password": "[DYU] Gundo kuma",
+    "email": "E-mail",
+    "password": "Gundo kuma",
     "sign_in": "Sεbε don",
-    "sign_up": "[DYU] S'inscrire",
-    "login_error": "[DYU] E-mail ou mot de passe incorrect",
-    "session_expired": "[DYU] Session expirée, veuillez vous reconnecter"
+    "sign_up": "I tɔgɔ sεbεn",
+    "login_error": "[TODO:DYU] E-mail ou mot de passe incorrect",
+    "session_expired": "[TODO:DYU] Session expirée, veuillez vous reconnecter"
   },
   "common": {
-    "save": "[DYU] Enregistrer",
+    "save": "[TODO:DYU] Enregistrer",
     "cancel": "A to",
-    "delete": "[DYU] Supprimer",
-    "edit": "[DYU] Modifier",
-    "confirm": "[DYU] Confirmer",
-    "loading": "[DYU] Chargement...",
-    "error": "[DYU] Une erreur est survenue",
-    "success": "[DYU] Opération réussie",
-    "language": "[DYU] Langue",
+    "delete": "[TODO:DYU] Supprimer",
+    "edit": "[TODO:DYU] Modifier",
+    "confirm": "Tiɲɛ",
+    "loading": "[TODO:DYU] Chargement...",
+    "error": "[TODO:DYU] Une erreur est survenue",
+    "success": "[TODO:DYU] Opération réussie",
+    "language": "Kan",
     "french": "Faransi",
-    "notifications": "[DYU] Notifications"
+    "english": "Angilε",
+    "moore": "Mooré",
+    "dioula": "Jula",
+    "notifications": "[TODO:DYU] Notifications",
+    "publish": "[TODO:DYU] Publier",
+    "sign_in": "Sεbε don",
+    "sign_up": "I tɔgɔ sεbεn",
+    "logout": "Bɔ",
+    "checkout": "[TODO:DYU] Paiement",
+    "dashboard": "[TODO:DYU] Tableau de bord",
+    "marketplace": "[TODO:DYU] Marketplace",
+    "messaging": "[TODO:DYU] Messagerie",
+    "profile": "[TODO:DYU] Mon profil"
   },
   "menu": {
-    "dashboard": "[DYU] Tableau de bord",
-    "profile": "[DYU] Mon profil",
-    "messaging": "[DYU] Messagerie",
-    "marketplace": "[DYU] Catalogue"
+    "dashboard": "[TODO:DYU] Tableau de bord",
+    "profile": "[TODO:DYU] Mon profil",
+    "messaging": "[TODO:DYU] Messagerie",
+    "marketplace": "[TODO:DYU] Marketplace"
+  },
+  "header": {
+    "dashboard": "[TODO:DYU] Tableau de bord",
+    "marketplace": "[TODO:DYU] Marketplace",
+    "profile": "[TODO:DYU] Mon profil",
+    "messaging": "[TODO:DYU] Messagerie",
+    "checkout": "[TODO:DYU] Paiement",
+    "logout": "Bɔ"
+  },
+  "cta": {
+    "sign_up": "I tɔgɔ sεbεn",
+    "sign_in": "Sεbε don",
+    "publish": "[TODO:DYU] Publier",
+    "cancel": "A to"
+  },
+  "toast": {
+    "announcement_published": "[TODO:DYU] Annonce publiée",
+    "need_published": "[TODO:DYU] Besoin publié",
+    "payment_initiated": "[TODO:DYU] Paiement initié",
+    "sms_sent": "[TODO:DYU] Code SMS envoyé"
+  },
+  "signup": {
+    "name": "[TODO:DYU] Nom complet",
+    "email": "E-mail",
+    "password": "Gundo kuma",
+    "confirm_password": "[TODO:DYU] Confirmer le mot de passe",
+    "phone": "[TODO:DYU] Téléphone",
+    "role": "[TODO:DYU] Rôle",
+    "location": "[TODO:DYU] Localisation",
+    "submit": "I tɔgɔ sεbεn"
+  },
+  "payments": {
+    "title": "[TODO:DYU] Paiement Mobile Money",
+    "provider": "[TODO:DYU] Fournisseur",
+    "provider_orange": "Orange Money",
+    "provider_moov": "Moov Africa",
+    "provider_wave": "Wave",
+    "phone": "[TODO:DYU] Téléphone",
+    "amount": "Sɔngɔ (FCFA)",
+    "initiate": "[TODO:DYU] Initier paiement",
+    "status_pending": "[TODO:DYU] En cours",
+    "status_success": "[TODO:DYU] Confirmé",
+    "status_failed": "[TODO:DYU] Échec"
+  },
+  "sms_otp": {
+    "toggle": "[TODO:DYU] Recevoir OTP par SMS",
+    "hint": "[TODO:DYU] Utile si vous n'avez pas accès à votre e-mail depuis votre téléphone.",
+    "send": "[TODO:DYU] Envoyer le code SMS",
+    "sent": "[TODO:DYU] Code envoyé — vérifiez vos SMS.",
+    "error": "[TODO:DYU] Erreur lors de l'envoi du SMS."
   }
 }

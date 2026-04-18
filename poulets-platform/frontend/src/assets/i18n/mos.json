@@ -12,54 +12,54 @@
     "LOGOUT": "Yit tõnd",
     "SUBMIT": "Kõnd",
     "CANCEL": "Bas",
-    "LANGUAGE": "[MOS] Langue",
+    "LANGUAGE": "Buud-gomde",
     "MOORE": "Mooré",
-    "DIOULA": "Dioula",
+    "DIOULA": "Jula",
     "FULFULDE": "Fulfulde",
     "FRENCH": "Faranse",
-    "ENGLISH": "[MOS] English"
+    "ENGLISH": "Angilẽ"
   },
   "AUTH": {
-    "EMAIL": "[MOS] E-mail",
-    "PASSWORD": "[MOS] Mot de passe",
+    "EMAIL": "E-mail",
+    "PASSWORD": "Solgr-gomde",
     "SIGNIN": "Loog-y tõnd",
-    "SIGNUP": "[MOS] S'inscrire",
+    "SIGNUP": "Tõnd paalg",
     "LOGOUT": "Yit tõnd"
   },
   "NAV": {
-    "CATALOGUE": "[MOS] Catalogue",
-    "ORDERS": "[MOS] Commandes",
-    "PROFILE": "[MOS] Mon profil",
-    "DASHBOARD": "[MOS] Tableau de bord"
+    "CATALOGUE": "[TODO:MOS] Catalogue",
+    "ORDERS": "[TODO:MOS] Commandes",
+    "PROFILE": "[TODO:MOS] Mon profil",
+    "DASHBOARD": "[TODO:MOS] Tableau de bord"
   },
   "POULETS": {
-    "STOCK": "[MOS] Stock",
-    "RACE": "[MOS] Race",
-    "PRICE": "[MOS] Prix",
-    "ORDER": "[MOS] Commander"
+    "STOCK": "[TODO:MOS] Stock",
+    "RACE": "[TODO:MOS] Race",
+    "PRICE": "Ligdi",
+    "ORDER": "[TODO:MOS] Commander"
   },
   "ERRORS": {
-    "NETWORK": "[MOS] Erreur réseau, veuillez réessayer",
-    "UNAUTHORIZED": "[MOS] Accès non autorisé, veuillez vous connecter"
+    "NETWORK": "[TODO:MOS] Erreur réseau, veuillez réessayer",
+    "UNAUTHORIZED": "[TODO:MOS] Accès non autorisé, veuillez vous connecter"
   },
   "landing": {
     "nav": {
-      "accueil": "[MOS] Accueil",
-      "presentation": "[MOS] Présentation",
-      "fonctionnalites": "[MOS] Fonctionnalités",
-      "securites": "[MOS] Sécurités",
-      "apropos": "[MOS] À propos",
+      "accueil": "[TODO:MOS] Accueil",
+      "presentation": "[TODO:MOS] Présentation",
+      "fonctionnalites": "[TODO:MOS] Fonctionnalités",
+      "securites": "[TODO:MOS] Sécurités",
+      "apropos": "[TODO:MOS] À propos",
       "connexion": "Loog-y tõnd"
     },
     "hero": {
-      "title": "[MOS] La plateforme qui connecte éleveurs et acheteurs de volailles au Burkina Faso",
-      "subtitle": "[MOS] Trouvez le bon poulet, au bon poids, au bon moment.",
-      "cta_eleveur": "[MOS] Je suis éleveur",
-      "cta_acheteur": "[MOS] Je suis acheteur",
-      "stat_eleveurs": "[MOS] Éleveurs",
-      "stat_clients": "[MOS] Clients",
-      "stat_transactions": "[MOS] Transactions",
-      "stat_regions": "[MOS] Régions"
+      "title": "[TODO:MOS] La plateforme qui connecte éleveurs et acheteurs de volailles au Burkina Faso",
+      "subtitle": "[TODO:MOS] Trouvez le bon poulet, au bon poids, au bon moment.",
+      "cta_eleveur": "[TODO:MOS] Je suis éleveur",
+      "cta_acheteur": "[TODO:MOS] Je suis acheteur",
+      "stat_eleveurs": "[TODO:MOS] Éleveurs",
+      "stat_clients": "[TODO:MOS] Clients",
+      "stat_transactions": "[TODO:MOS] Transactions",
+      "stat_regions": "[TODO:MOS] Régions"
     }
   },
   "app": {
@@ -71,34 +71,96 @@
   "auth": {
     "login": "Loog-y tõnd",
     "logout": "Yit tõnd",
-    "email": "[MOS] Adresse e-mail",
-    "password": "[MOS] Mot de passe",
+    "email": "E-mail",
+    "password": "Solgr-gomde",
     "sign_in": "Loog-y tõnd",
-    "sign_up": "[MOS] S'inscrire",
-    "login_error": "[MOS] E-mail ou mot de passe incorrect",
-    "session_expired": "[MOS] Session expirée, veuillez vous reconnecter"
+    "sign_up": "Tõnd paalg",
+    "login_error": "[TODO:MOS] E-mail ou mot de passe incorrect",
+    "session_expired": "[TODO:MOS] Session expirée, veuillez vous reconnecter"
   },
   "common": {
-    "save": "[MOS] Enregistrer",
+    "save": "[TODO:MOS] Enregistrer",
     "cancel": "Bas",
-    "delete": "[MOS] Supprimer",
-    "edit": "[MOS] Modifier",
-    "confirm": "[MOS] Confirmer",
-    "loading": "[MOS] Chargement...",
-    "error": "[MOS] Une erreur est survenue",
-    "success": "[MOS] Opération réussie",
-    "language": "[MOS] Langue",
+    "delete": "[TODO:MOS] Supprimer",
+    "edit": "[TODO:MOS] Modifier",
+    "confirm": "Sɩɩ",
+    "loading": "[TODO:MOS] Chargement...",
+    "error": "[TODO:MOS] Une erreur est survenue",
+    "success": "[TODO:MOS] Opération réussie",
+    "language": "Buud-gomde",
     "french": "Faranse",
-    "notifications": "[MOS] Notifications"
+    "english": "Angilẽ",
+    "moore": "Mooré",
+    "dioula": "Jula",
+    "notifications": "[TODO:MOS] Notifications",
+    "publish": "[TODO:MOS] Publier",
+    "sign_in": "Loog-y tõnd",
+    "sign_up": "Tõnd paalg",
+    "logout": "Yit tõnd",
+    "checkout": "[TODO:MOS] Paiement",
+    "dashboard": "[TODO:MOS] Tableau de bord",
+    "marketplace": "[TODO:MOS] Marketplace",
+    "messaging": "[TODO:MOS] Messagerie",
+    "profile": "[TODO:MOS] Mon profil"
   },
   "menu": {
-    "dashboard": "[MOS] Tableau de bord",
-    "profile": "[MOS] Mon profil",
-    "messaging": "[MOS] Messagerie",
-    "marketplace": "[MOS] Catalogue"
+    "dashboard": "[TODO:MOS] Tableau de bord",
+    "profile": "[TODO:MOS] Mon profil",
+    "messaging": "[TODO:MOS] Messagerie",
+    "marketplace": "[TODO:MOS] Marketplace"
+  },
+  "header": {
+    "dashboard": "[TODO:MOS] Tableau de bord",
+    "marketplace": "[TODO:MOS] Marketplace",
+    "profile": "[TODO:MOS] Mon profil",
+    "messaging": "[TODO:MOS] Messagerie",
+    "checkout": "[TODO:MOS] Paiement",
+    "logout": "Yit tõnd"
+  },
+  "cta": {
+    "sign_up": "Tõnd paalg",
+    "sign_in": "Loog-y tõnd",
+    "publish": "[TODO:MOS] Publier",
+    "cancel": "Bas"
+  },
+  "toast": {
+    "announcement_published": "[TODO:MOS] Annonce publiée",
+    "need_published": "[TODO:MOS] Besoin publié",
+    "payment_initiated": "[TODO:MOS] Paiement initié",
+    "sms_sent": "[TODO:MOS] Code SMS envoyé"
+  },
+  "signup": {
+    "name": "[TODO:MOS] Nom complet",
+    "email": "E-mail",
+    "password": "Solgr-gomde",
+    "confirm_password": "[TODO:MOS] Confirmer le mot de passe",
+    "phone": "[TODO:MOS] Téléphone",
+    "role": "[TODO:MOS] Rôle",
+    "location": "[TODO:MOS] Localisation",
+    "submit": "Tõnd paalg"
+  },
+  "payments": {
+    "title": "[TODO:MOS] Paiement Mobile Money",
+    "provider": "[TODO:MOS] Fournisseur",
+    "provider_orange": "Orange Money",
+    "provider_moov": "Moov Africa",
+    "provider_wave": "Wave",
+    "phone": "[TODO:MOS] Téléphone",
+    "amount": "Ligdi (FCFA)",
+    "initiate": "[TODO:MOS] Initier paiement",
+    "status_pending": "[TODO:MOS] En cours",
+    "status_success": "[TODO:MOS] Confirmé",
+    "status_failed": "[TODO:MOS] Échec"
+  },
+  "sms_otp": {
+    "toggle": "[TODO:MOS] Recevoir OTP par SMS",
+    "hint": "[TODO:MOS] Utile si vous n'avez pas accès à votre e-mail depuis votre téléphone.",
+    "send": "[TODO:MOS] Envoyer le code SMS",
+    "sent": "[TODO:MOS] Code envoyé — vérifiez vos SMS.",
+    "error": "[TODO:MOS] Erreur lors de l'envoi du SMS."
   },
   "POULETS_PLATFORM": {
-    "eleveur_space": "[MOS] Espace Éleveur",
-    "client_space": "[MOS] Espace Client"
+    "eleveur_space": "[TODO:MOS] Espace Éleveur",
+    "client_space": "[TODO:MOS] Espace Client"
   }
 }

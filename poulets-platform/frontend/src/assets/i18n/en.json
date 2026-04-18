@@ -448,8 +448,19 @@
     "language": "Language",
     "french": "Français",
     "english": "English",
+    "moore": "Mooré",
+    "dioula": "Dioula",
     "notifications": "Notifications",
     "settings": "Settings",
+    "publish": "Publish",
+    "sign_in": "Sign in",
+    "sign_up": "Sign up",
+    "logout": "Sign out",
+    "checkout": "Checkout",
+    "dashboard": "Dashboard",
+    "marketplace": "Marketplace",
+    "messaging": "Messaging",
+    "profile": "My profile",
     "status": {
       "available": "Available",
       "reserved": "Reserved",
@@ -479,5 +490,55 @@
     "currency": "FCFA",
     "per_page": "per page",
     "total_items": "{{count}} item(s)"
+  },
+  "header": {
+    "dashboard": "Dashboard",
+    "marketplace": "Marketplace",
+    "profile": "My profile",
+    "messaging": "Messaging",
+    "checkout": "Checkout",
+    "logout": "Sign out"
+  },
+  "cta": {
+    "sign_up": "Sign up",
+    "sign_in": "Sign in",
+    "publish": "Publish",
+    "cancel": "Cancel"
+  },
+  "toast": {
+    "announcement_published": "Listing published",
+    "need_published": "Need published",
+    "payment_initiated": "Payment initiated",
+    "sms_sent": "SMS code sent"
+  },
+  "signup": {
+    "name": "Full name",
+    "email": "E-mail address",
+    "password": "Password",
+    "confirm_password": "Confirm password",
+    "phone": "Phone",
+    "role": "Role",
+    "location": "Location",
+    "submit": "Create my account"
+  },
+  "payments": {
+    "title": "Mobile Money payment",
+    "provider": "Provider",
+    "provider_orange": "Orange Money",
+    "provider_moov": "Moov Africa",
+    "provider_wave": "Wave",
+    "phone": "Phone",
+    "amount": "Amount (FCFA)",
+    "initiate": "Initiate payment",
+    "status_pending": "Pending",
+    "status_success": "Confirmed",
+    "status_failed": "Failed"
+  },
+  "sms_otp": {
+    "toggle": "Receive OTP by SMS",
+    "hint": "Useful if you cannot access your e-mail on your phone.",
+    "send": "Send SMS code",
+    "sent": "Code sent — check your SMS.",
+    "error": "Failed to send SMS."
   }
 }

@@ -480,8 +480,19 @@
     "language": "Langue",
     "french": "Français",
     "english": "English",
+    "moore": "Mooré",
+    "dioula": "Dioula",
     "notifications": "Notifications",
     "settings": "Paramètres",
+    "publish": "Publier",
+    "sign_in": "Se connecter",
+    "sign_up": "S'inscrire",
+    "logout": "Déconnexion",
+    "checkout": "Paiement",
+    "dashboard": "Tableau de bord",
+    "marketplace": "Marketplace",
+    "messaging": "Messagerie",
+    "profile": "Mon profil",
     "status": {
       "available": "Disponible",
       "reserved": "Réservé",
@@ -511,5 +522,55 @@
     "currency": "FCFA",
     "per_page": "par page",
     "total_items": "{{count}} élément(s)"
+  },
+  "header": {
+    "dashboard": "Tableau de bord",
+    "marketplace": "Marketplace",
+    "profile": "Mon profil",
+    "messaging": "Messagerie",
+    "checkout": "Paiement",
+    "logout": "Déconnexion"
+  },
+  "cta": {
+    "sign_up": "S'inscrire",
+    "sign_in": "Se connecter",
+    "publish": "Publier",
+    "cancel": "Annuler"
+  },
+  "toast": {
+    "announcement_published": "Annonce publiée",
+    "need_published": "Besoin publié",
+    "payment_initiated": "Paiement initié",
+    "sms_sent": "Code SMS envoyé"
+  },
+  "signup": {
+    "name": "Nom complet",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe",
+    "confirm_password": "Confirmer le mot de passe",
+    "phone": "Téléphone",
+    "role": "Rôle",
+    "location": "Localisation",
+    "submit": "Créer mon compte"
+  },
+  "payments": {
+    "title": "Paiement Mobile Money",
+    "provider": "Fournisseur",
+    "provider_orange": "Orange Money",
+    "provider_moov": "Moov Africa",
+    "provider_wave": "Wave",
+    "phone": "Téléphone",
+    "amount": "Montant (FCFA)",
+    "initiate": "Initier paiement",
+    "status_pending": "En cours",
+    "status_success": "Confirmé",
+    "status_failed": "Échec"
+  },
+  "sms_otp": {
+    "toggle": "Recevoir OTP par SMS",
+    "hint": "Utile si vous n'avez pas accès à votre e-mail depuis votre téléphone.",
+    "send": "Envoyer le code SMS",
+    "sent": "Code envoyé — vérifiez vos SMS.",
+    "error": "Erreur lors de l'envoi du SMS."
   }
 }
