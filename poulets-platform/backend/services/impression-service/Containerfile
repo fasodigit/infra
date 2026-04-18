@@ -1,0 +1,38 @@
+# Multi-stage Containerfile for impression-service - ETAT-CIVIL Platform
+FROM docker.io/library/eclipse-temurin:21-jdk-alpine AS builder
+RUN addgroup -g 1000 builder && adduser -u 1000 -G builder -s /bin/sh -D builder
+WORKDIR /build
+RUN apk add --no-cache curl
+COPY --chown=builder:builder .mvn/ .mvn/
+COPY --chown=builder:builder mvnw pom.xml ./
+RUN chmod +x mvnw
+USER builder
+RUN ./mvnw dependency:go-offline -B -q || true
+COPY --chown=builder:builder src ./src
+RUN ./mvnw clean package -DskipTests -B -q
+RUN mkdir -p /build/extracted && \
+    java -Djarmode=layertools -jar target/*.jar extract --destination /build/extracted
+
+FROM docker.io/library/eclipse-temurin:21-jre-alpine AS runtime
+LABEL maintainer="ETAT-CIVIL DevOps <devops@actes-bf.gov>" \
+      org.opencontainers.image.title="impression-service" \
+      org.opencontainers.image.description="ETAT-CIVIL Certificate Printing Service" \
+      org.opencontainers.image.vendor="Gouvernement du Burkina Faso" \
+      security.privileged="false" security.capabilities.drop="ALL"
+RUN apk update && apk upgrade --no-cache && \
+    apk add --no-cache curl ca-certificates tzdata && \
+    cp /usr/share/zoneinfo/Africa/Ouagadougou /etc/localtime && \
+    echo "Africa/Ouagadougou" > /etc/timezone && rm -rf /var/cache/apk/* /tmp/*
+RUN addgroup -g 10001 appgroup && adduser -u 10001 -G appgroup -s /sbin/nologin -D -H appuser
+WORKDIR /app
+RUN mkdir -p /app/logs /app/tmp && chown -R appuser:appgroup /app && chmod 750 /app /app/logs /app/tmp
+COPY --from=builder --chown=appuser:appgroup /build/extracted/dependencies/ ./
+COPY --from=builder --chown=appuser:appgroup /build/extracted/spring-boot-loader/ ./
+COPY --from=builder --chown=appuser:appgroup /build/extracted/snapshot-dependencies/ ./
+COPY --from=builder --chown=appuser:appgroup /build/extracted/application/ ./
+USER 10001:10001
+ENV JAVA_OPTS="-XX:+UseZGC -XX:+ZGenerational -XX:+AlwaysPreTouch -XX:MaxGCPauseMillis=10 -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError -Djava.security.egd=file:/dev/./urandom -Dfile.encoding=UTF-8 -Duser.timezone=Africa/Ouagadougou"
+EXPOSE 8108
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -sf http://localhost:8108/actuator/health/liveness || exit 1
+ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS} org.springframework.boot.loader.launch.JarLauncher"]

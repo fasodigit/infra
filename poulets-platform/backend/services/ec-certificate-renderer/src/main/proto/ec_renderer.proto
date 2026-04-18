@@ -1,0 +1,20 @@
+syntax = "proto3";
+package bf.gov.actes;
+option java_multiple_files = true;
+option java_package = "bf.gov.actes.grpc.renderer";
+
+service EcRendererService {
+    rpc RenderPdf(RenderPdfRequest) returns (RenderPdfResponse);
+}
+
+message RenderPdfRequest {
+    string template_name = 1;
+    map<string, string> data = 2;
+}
+
+message RenderPdfResponse {
+    bytes pdf_content = 1;
+    bool success = 2;
+    string error_message = 3;
+    int32 size_bytes = 4;
+}

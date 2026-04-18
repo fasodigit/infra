@@ -1,0 +1,263 @@
+server:
+  port: ${SERVER_PORT:8108}
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: impression-service
+
+  # Virtual threads for high concurrency
+  threads:
+    virtual:
+      enabled: true
+
+  # Database (PostgreSQL 17)
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5501}/${DB_NAME:ec_impression_db}
+    username: ${DB_USER:actes}
+    password: ${DB_PASSWORD:actes}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 20
+      minimum-idle: 5
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+      pool-name: impression-hikari-pool
+
+  flyway:
+    schemas: impression
+    default-schema: impression
+    create-schemas: true
+    table: flyway_schema_history_impression
+    baseline-on-migrate: false
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        format_sql: true
+        default_schema: impression
+        jdbc:
+          time_zone: UTC
+    show-sql: false
+    open-in-view: false
+
+  # Redis/DragonflyDB for queue
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 5000ms
+
+  # Kafka/Redpanda
+    consumer:
+      group-id: impression-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+    producer:
+      acks: all
+      retries: 3
+
+  # OAuth2 Resource Server
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${OAUTH2_ISSUER_URI:http://localhost:4433}
+          jwk-set-uri: ${OAUTH2_JWK_URI:http://localhost:4433/.well-known/jwks.json}
+
+  # Freemarker templates
+  freemarker:
+    template-loader-path: classpath:/templates/
+    suffix: .ftl
+    check-template-location: false
+
+# MinIO WORM Storage
+minio:
+  endpoint: ${MINIO_ENDPOINT:http://localhost:19100}
+  access-key: ${MINIO_ACCESS_KEY:minioadmin}
+  secret-key: ${MINIO_SECRET_KEY:minioadmin_secret}
+  enabled: ${MINIO_ENABLED:true}
+
+# gRPC Configuration
+grpc:
+  server:
+    port: 9108
+  client:
+    document-security:
+      host: ${DOCUMENT_SECURITY_HOST:localhost}
+      port: ${DOCUMENT_SECURITY_PORT:9081}
+      enabled: ${GRPC_ENABLED:true}
+    audit-log:
+      host: ${AUDIT_LOG_HOST:localhost}
+      port: ${AUDIT_LOG_PORT:9082}
+      enabled: ${GRPC_ENABLED:true}
+    ec-verification-ms:
+      address: static://${EC_VERIFICATION_HOST:localhost}:${EC_VERIFICATION_GRPC_PORT:9116}
+      negotiation-type: PLAINTEXT
+
+# DragonflyDB Streams (ec-cache-lib)
+ec:
+  cache:
+    stream:
+      enabled: true
+      consumer-group: impression-cg
+      workflow-retention-days: 7
+      block-timeout-ms: 2000
+      batch-size: 100
+
+# Kafka toggle
+kafka:
+  enabled: ${KAFKA_ENABLED:true}
+
+# QR Code Verification (HMAC-SHA256)
+# Le secret doit etre identique a celui de validation-acte-service
+verification:
+  hmac-secret: ${QR_HMAC_SECRET:change-me-in-production}
+  base-url: ${QR_VERIFICATION_URL:https://actes.gov.bf/verify/}
+
+# File encryption (AES-256-GCM) — same key as demande-service
+encryption:
+  key: ${EC_AES_GCM_KEY:}
+
+# Impression storage & verification
+impression:
+  storage:
+    base-path: ${IMPRESSION_STORAGE_PATH:/Users/oz/Documents/PROJECTS/ETAT-CIVIL/DOCS-ETAT-CIVIL-SOUMIS/generated}
+  verification:
+    base-url: ${IMPRESSION_VERIFICATION_URL:http://localhost:8108/api/v1/verification/verify}
+  archive:
+    enabled: ${PDF_ARCHIVE_ENABLED:true}
+    base-path: ${PDF_ARCHIVE_PATH:/Users/oz/Documents/PROJECTS/ETAT-CIVIL/DOCS-ETAT-CIVIL}
+
+# Blockchain sync interval (ms)
+blockchain:
+  sync:
+    interval: ${BLOCKCHAIN_SYNC_INTERVAL:60000}
+
+# Actuator endpoints
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics,prometheus
+  endpoint:
+    health:
+      show-details: when_authorized
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    export:
+      prometheus:
+        enabled: true
+
+# OpenAPI/Swagger
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    operations-sorter: method
+
+# Logging
+logging:
+  level:
+    root: INFO
+    bf.gov.faso.impression: DEBUG
+    org.springframework.security: INFO
+    org.hibernate.SQL: WARN
+    io.minio: INFO
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n"
+
+---
+# Development profile
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:4433
+
+minio:
+  enabled: true
+  endpoint: http://localhost:19100
+
+grpc:
+  client:
+    document-security:
+      enabled: false
+    audit-log:
+      enabled: false
+
+logging:
+  level:
+    bf.gov.faso.impression: DEBUG
+    org.hibernate.SQL: DEBUG
+
+---
+# Test profile
+spring:
+  config:
+    activate:
+      on-profile: test
+
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:4433
+
+minio:
+  enabled: false
+
+grpc:
+  client:
+    document-security:
+      enabled: false
+    audit-log:
+      enabled: false
+
+---
+# Production profile
+spring:
+  config:
+    activate:
+      on-profile: prod
+
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: false
+
+  datasource:
+    hikari:
+      maximum-pool-size: 50
+
+logging:
+  level:
+    root: WARN
+    bf.gov.faso.impression: INFO

@@ -1,0 +1,207 @@
+{{#> base_etatcivil}}
+
+<!-- Document Title -->
+<div class="doc-title-section">
+  <div class="doc-type">Acte de Naissance</div>
+  <div class="doc-subtitle">Extrait d'Acte de Naissance &mdash; Document Officiel</div>
+</div>
+
+<!-- Reference Bar -->
+<div class="reference-bar">
+  <div class="ref-item">
+    <div class="ref-label">R&eacute;f&eacute;rence</div>
+    <div class="ref-value">{{reference}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">N&deg; Acte</div>
+    <div class="ref-value">{{numeroActe}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">Date d'&Eacute;mission</div>
+    <div class="ref-value">{{dateEmission}}</div>
+  </div>
+</div>
+
+<!-- Status Badge -->
+<div class="status-section">
+  <div class="status-badge valide">
+    <span class="status-icon">&#10003;</span>
+    DOCUMENT OFFICIEL
+  </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="content-grid">
+  <!-- Left: Info Cards -->
+  <div>
+    <!-- Child Identity -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128100;</span> Identit&eacute; de l'Enfant
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value highlight">{{nom}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Pr&eacute;noms</span>
+          <span class="info-value highlight">{{prenoms}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date de naissance</span>
+          <span class="info-value">{{dateNaissance}}</span>
+        </div>
+        {{#if heureNaissance}}
+        <div class="info-row">
+          <span class="info-label">Heure de naissance</span>
+          <span class="info-value">{{heureNaissance}}</span>
+        </div>
+        {{/if}}
+        <div class="info-row">
+          <span class="info-label">Lieu de naissance</span>
+          <span class="info-value">{{lieuNaissance}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Sexe</span>
+          <span class="info-value">{{sexe}}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Father -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128104;</span> Informations du P&egrave;re
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom complet</span>
+          <span class="info-value">{{nomPere}}</span>
+        </div>
+        {{#if professionPere}}
+        <div class="info-row">
+          <span class="info-label">Profession</span>
+          <span class="info-value">{{professionPere}}</span>
+        </div>
+        {{/if}}
+        {{#if nationalitePere}}
+        <div class="info-row">
+          <span class="info-label">Nationalit&eacute;</span>
+          <span class="info-value">{{nationalitePere}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Mother -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128105;</span> Informations de la M&egrave;re
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom complet</span>
+          <span class="info-value">{{nomMere}}</span>
+        </div>
+        {{#if professionMere}}
+        <div class="info-row">
+          <span class="info-label">Profession</span>
+          <span class="info-value">{{professionMere}}</span>
+        </div>
+        {{/if}}
+        {{#if nationaliteMere}}
+        <div class="info-row">
+          <span class="info-label">Nationalit&eacute;</span>
+          <span class="info-value">{{nationaliteMere}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Declarant -->
+    {{#if declarantNom}}
+    <div class="info-card">
+      <div class="info-card-header accent-blue">
+        <span>&#128203;</span> D&eacute;clarant
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value">{{declarantNom}}</span>
+        </div>
+        {{#if declarantQualite}}
+        <div class="info-row">
+          <span class="info-label">Qualit&eacute;</span>
+          <span class="info-value">{{declarantQualite}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+    {{/if}}
+
+    <!-- Civil Officer -->
+    <div class="info-card">
+      <div class="info-card-header accent-gold">
+        <span>&#9878;&#65039;</span> Officier d'&Eacute;tat Civil
+      </div>
+      <div class="info-card-body">
+        {{#if officierNom}}
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value">{{officierNom}}</span>
+        </div>
+        {{/if}}
+        <div class="info-row">
+          <span class="info-label">Lieu de d&eacute;livrance</span>
+          <span class="info-value">{{lieuDelivrance}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date de d&eacute;livrance</span>
+          <span class="info-value">{{dateDelivrance}}</span>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: QR Code + Crypto -->
+  <div class="qr-section">
+    <div class="qr-container">
+      <div class="qr-title">Code QR de V&eacute;rification</div>
+      {{#if qrCodeDataUrl}}
+      <img class="qr-code-img" src="{{qrCodeDataUrl}}" alt="QR Code HMAC" />
+      {{/if}}
+      <div class="qr-verified">
+        <span>&#10003;</span> HMAC V&Eacute;RIFI&Eacute;
+      </div>
+      <div class="qr-instructions">
+        Scannez pour v&eacute;rifier sur<br>
+        <strong>verify.etatcivil.bf</strong>
+      </div>
+    </div>
+    <div class="crypto-hash-compact">
+      <div class="crypto-title">Empreinte Cryptographique</div>
+      {{#if hashSha256}}
+      <div class="crypto-item">
+        <div class="crypto-label">SHA-256</div>
+        <div class="crypto-value">{{hashSha256}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationToken}}
+      <div class="crypto-item">
+        <div class="crypto-label">Token</div>
+        <div class="crypto-value">{{verificationToken}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationUrl}}
+      <div class="crypto-item">
+        <div class="crypto-label">V&eacute;rification</div>
+        <div class="crypto-value">{{verificationUrl}}</div>
+      </div>
+      {{/if}}
+    </div>
+  </div>
+</div>
+
+{{/base_etatcivil}}

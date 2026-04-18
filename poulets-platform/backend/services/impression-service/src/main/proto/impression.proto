@@ -1,0 +1,237 @@
+syntax = "proto3";
+
+package impression;
+
+option java_multiple_files = true;
+option java_package = "com.actes.impression.grpc.proto";
+option java_outer_classname = "ImpressionProto";
+
+// Impression Service - gRPC API for internal service communication
+service ImpressionService {
+    // Queue management
+    rpc GetPrintQueue(PaginationRequest) returns (PrintQueueList);
+    rpc AddToQueue(AddToQueueRequest) returns (PrintJobResponse);
+
+    // Print operations
+    rpc PrintDocument(PrintRequest) returns (FinalizedDocument);
+    rpc GetPrintStatus(StatusRequest) returns (PrintStatus);
+
+    // Reprint operations
+    rpc RequestReprint(ReprintRequest) returns (ReprintResponse);
+
+    // Delivery operations
+    rpc DeliverDocument(DeliveryRequest) returns (DeliveryConfirmation);
+
+    // Blockchain verification
+    rpc VerifyBlockchainHash(HashRequest) returns (BlockchainVerification);
+    rpc VerifyChainIntegrity(TenantRequest) returns (ChainIntegrityResponse);
+
+    // PDF retrieval (used by demande-service to download printed PDF)
+    rpc GetPrintedPdf(GetPrintedPdfRequest) returns (GetPrintedPdfResponse);
+}
+
+message GetPrintedPdfRequest {
+    string demande_id = 1;
+    string tenant_id = 2;
+}
+
+message GetPrintedPdfResponse {
+    bool found = 1;
+    bytes pdf_content = 2;
+    string filename = 3;
+    string checksum = 4;
+}
+
+// ============== Common Messages ==============
+
+message PaginationRequest {
+    string tenant_id = 1;
+    int32 page = 2;
+    int32 size = 3;
+}
+
+message TenantRequest {
+    string tenant_id = 1;
+}
+
+// ============== Print Queue Messages ==============
+
+message PrintQueueList {
+    repeated PrintJobResponse jobs = 1;
+    int32 page = 2;
+    int32 size = 3;
+    int64 total_elements = 4;
+    int32 total_pages = 5;
+}
+
+message AddToQueueRequest {
+    string document_id = 1;
+    string demande_id = 2;
+    string client_id = 3;
+    string tenant_id = 4;
+    string document_type = 5;
+    string document_reference = 6;
+    int32 priority = 7;
+    int32 copies_count = 8;
+    string pdf_storage_path = 9;
+    string notes = 10;
+    map<string, string> metadata = 11;
+    string qr_verification_code = 12;   // Code de verification HMAC-signe
+    string verification_url = 13;       // URL complete de verification publique
+}
+
+message PrintJobResponse {
+    string id = 1;
+    string document_id = 2;
+    string demande_id = 3;
+    string tenant_id = 4;
+    string client_id = 5;
+    PrintStatusEnum status = 6;
+    int32 priority = 7;
+    string document_type = 8;
+    string document_reference = 9;
+    string operator_id = 10;
+    int64 printed_at = 11;
+    int64 delivered_at = 12;
+    int32 copies_count = 13;
+    int32 copies_printed = 14;
+    bool worm_locked = 15;
+    string document_hash = 16;
+    string blockchain_hash = 17;
+    int64 created_at = 18;
+    int64 updated_at = 19;
+}
+
+// ============== Print Messages ==============
+
+message PrintRequest {
+    string print_job_id = 1;
+    string operator_id = 2;
+    string tenant_id = 3;
+}
+
+message FinalizedDocument {
+    PrintJobResponse job = 1;
+    string worm_bucket = 2;
+    string worm_object_key = 3;
+    int64 worm_retention_until = 4;
+    string document_hash = 5;
+    string blockchain_hash = 6;
+}
+
+message StatusRequest {
+    string print_job_id = 1;
+    string tenant_id = 2;
+}
+
+message PrintStatus {
+    PrintStatusEnum status = 1;
+    string document_hash = 2;
+    bool worm_locked = 3;
+}
+
+// ============== Reprint Messages ==============
+
+message ReprintRequest {
+    string print_job_id = 1;
+    string operator_id = 2;
+    string tenant_id = 3;
+    string reason = 4;
+    int32 copies_count = 5;
+    string authorized_by = 6;
+}
+
+message ReprintResponse {
+    PrintJobResponse job = 1;
+    bool requires_authorization = 2;
+    string message = 3;
+}
+
+// ============== Delivery Messages ==============
+
+message DeliveryRequest {
+    string print_job_id = 1;
+    string operator_id = 2;
+    string tenant_id = 3;
+    DeliveryMethodEnum delivery_method = 4;
+    string recipient_name = 5;
+    string recipient_id_number = 6;
+    string recipient_id_type = 7;
+    string recipient_phone = 8;
+    string recipient_email = 9;
+    string signature_data = 10;
+    string delivery_location = 11;
+    string tracking_number = 12;
+    string notes = 13;
+}
+
+message DeliveryConfirmation {
+    string delivery_id = 1;
+    string print_job_id = 2;
+    string recipient_name = 3;
+    DeliveryMethodEnum delivery_method = 4;
+    int64 delivered_at = 5;
+    string signature_hash = 6;
+}
+
+// ============== Blockchain Messages ==============
+
+message HashRequest {
+    string block_hash = 1;
+    string tenant_id = 2;
+}
+
+message BlockchainVerification {
+    string block_hash = 1;
+    string document_id = 2;
+    string document_hash = 3;
+    string previous_block_hash = 4;
+    int64 block_number = 5;
+    BlockchainActionEnum action = 6;
+    int64 timestamp = 7;
+    bool integrity_valid = 8;
+    bool chain_valid = 9;
+    string verification_message = 10;
+}
+
+message ChainIntegrityResponse {
+    bool valid = 1;
+    int64 block_count = 2;
+    string last_block_hash = 3;
+    string message = 4;
+}
+
+// ============== Enums ==============
+
+enum PrintStatusEnum {
+    EN_ATTENTE = 0;
+    EN_COURS = 1;
+    IMPRIME = 2;
+    DELIVRE = 3;
+    ANNULE = 4;
+    ERREUR = 5;
+    REPRINT_DEMANDE = 6;
+    VERROUILLE_WORM = 7;
+}
+
+enum DeliveryMethodEnum {
+    GUICHET = 0;
+    COURRIER = 1;
+    COURSIER = 2;
+    ELECTRONIQUE = 3;
+    INTER_ADMINISTRATION = 4;
+}
+
+enum BlockchainActionEnum {
+    GENESIS = 0;
+    PRINT = 1;
+    DELIVER = 2;
+    REPRINT_REQUEST = 3;
+    REPRINT_AUTHORIZED = 4;
+    REPRINT_EXECUTED = 5;
+    WORM_LOCK = 6;
+    CANCEL = 7;
+    VERIFY = 8;
+    VIEW = 9;
+    DOWNLOAD = 10;
+}

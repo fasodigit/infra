@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ec-certificate-renderer v2 — application.yml
+# ═══════════════════════════════════════════════════════════════════════════════
+
+server:
+  port: ${PORT:8800}
+  netty:
+    connection-timeout: 10s
+    idle-timeout: 60s
+
+spring:
+  application:
+    name: ec-certificate-renderer
+  threads:
+    virtual:
+      enabled: true
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.jdbc.DataSourceAutoConfiguration
+      - org.springframework.boot.autoconfigure.orm.jpa.HibernateJpaAutoConfiguration
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Configuration renderer
+# ═══════════════════════════════════════════════════════════════════════════════
+renderer:
+  browser-count: ${RENDERER_BROWSER_COUNT:0}
+  pages-per-browser: ${RENDERER_PAGES_PER_BROWSER:3}
+  page-acquire-timeout-ms: ${RENDERER_PAGE_ACQUIRE_TIMEOUT_MS:8000}
+  max-concurrent: ${RENDERER_MAX_CONCURRENT:0}
+  cache-enabled: ${RENDERER_CACHE_ENABLED:true}
+  cache-ttl-seconds: ${RENDERER_CACHE_TTL_SECONDS:3600}
+  cache-max-size: ${RENDERER_CACHE_MAX_SIZE:500}
+  chromium-path: ${CHROMIUM_PATH:}
+  chromium-args: []
+  hmac-secret: ${INTERNAL_AUTH_SECRET:dev-renderer-secret}
+  hmac-timestamp-drift-ms: ${HMAC_DRIFT_MS:30000}
+  rate-limit-window-seconds: 60
+  rate-limit-max-requests: ${RATE_LIMIT_MAX_REQUESTS:200}
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Actuator — health, readiness, prometheus
+# ═══════════════════════════════════════════════════════════════════════════════
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health, info, prometheus, metrics
+      base-path: /actuator
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+      pod: ${POD_NAME:local}
+    distribution:
+      percentiles-histogram:
+        renderer.pdf.duration: true
+      percentiles:
+        renderer.pdf.duration: 0.50, 0.95, 0.99
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Logging
+# ═══════════════════════════════════════════════════════════════════════════════
+logging:
+  level:
+    root: ${LOG_LEVEL:INFO}
+    bf.gov.faso.renderer: ${LOG_LEVEL_RENDERER:INFO}
+    com.microsoft.playwright: WARN
+  pattern:
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} — %msg%n"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# gRPC server
+# ═══════════════════════════════════════════════════════════════════════════════
+grpc:
+  server:
+    port: ${GRPC_PORT:9800}
+    security:
+      enabled: false

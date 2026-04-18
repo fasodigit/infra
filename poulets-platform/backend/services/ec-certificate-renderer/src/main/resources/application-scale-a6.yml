@@ -1,0 +1,16 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# ec-certificate-renderer — Profile scale-a6
+# OVH Scale A6: AMD EPYC 9004 (Zen 4), 96 cores, 512 GB DDR5
+# Activate: --spring.profiles.active=scale-a6
+# ═══════════════════════════════════════════════════════════════════════════════
+
+renderer:
+  # 16 Chromium processes x 4 pages = 64 concurrent slots
+  # More browsers beyond 16 yields diminishing returns (context-switch overhead)
+  browser-count: 16
+  pages-per-browser: 4
+  max-concurrent: 64
+  page-acquire-timeout-ms: 5000
+  cache-max-size: 2000
+  cache-ttl-seconds: 7200
+  rate-limit-max-requests: 1000

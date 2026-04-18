@@ -1,0 +1,168 @@
+{{#> base_etatcivil}}
+
+<!-- Document Title -->
+<div class="doc-title-section">
+  <div class="doc-type">Acte de D&eacute;c&egrave;s</div>
+  <div class="doc-subtitle">Certificat de D&eacute;c&egrave;s &mdash; Document Officiel</div>
+</div>
+
+<!-- Reference Bar -->
+<div class="reference-bar">
+  <div class="ref-item">
+    <div class="ref-label">R&eacute;f&eacute;rence</div>
+    <div class="ref-value">{{reference}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">N&deg; Acte</div>
+    <div class="ref-value">{{numeroActe}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">Date d'&Eacute;mission</div>
+    <div class="ref-value">{{dateEmission}}</div>
+  </div>
+</div>
+
+<!-- Status Badge -->
+<div class="status-section">
+  <div class="status-badge valide">
+    <span class="status-icon">&#10003;</span>
+    DOCUMENT OFFICIEL
+  </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="content-grid">
+  <!-- Left: Info Cards -->
+  <div>
+    <!-- Deceased Identity -->
+    <div class="info-card">
+      <div class="info-card-header accent-red">
+        <span>&#9904;&#65039;</span> Identit&eacute; du D&eacute;funt
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value highlight">{{nom}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Pr&eacute;noms</span>
+          <span class="info-value highlight">{{prenoms}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date de naissance</span>
+          <span class="info-value">{{dateNaissance}}</span>
+        </div>
+        {{#if lieuNaissance}}
+        <div class="info-row">
+          <span class="info-label">Lieu de naissance</span>
+          <span class="info-value">{{lieuNaissance}}</span>
+        </div>
+        {{/if}}
+        <div class="info-row">
+          <span class="info-label">Date de d&eacute;c&egrave;s</span>
+          <span class="info-value">{{dateDeces}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Lieu de d&eacute;c&egrave;s</span>
+          <span class="info-value">{{lieuDeces}}</span>
+        </div>
+        {{#if causeDeces}}
+        <div class="info-row">
+          <span class="info-label">Cause</span>
+          <span class="info-value">{{causeDeces}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Family -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128104;&#8205;&#128105;&#8205;&#128103;</span> Famille
+      </div>
+      <div class="info-card-body">
+        {{#if conjoint}}
+        <div class="info-row">
+          <span class="info-label">Conjoint(e)</span>
+          <span class="info-value">{{conjoint}}</span>
+        </div>
+        {{/if}}
+        {{#if nomPere}}
+        <div class="info-row">
+          <span class="info-label">P&egrave;re</span>
+          <span class="info-value">{{nomPere}}</span>
+        </div>
+        {{/if}}
+        {{#if nomMere}}
+        <div class="info-row">
+          <span class="info-label">M&egrave;re</span>
+          <span class="info-value">{{nomMere}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Declarant -->
+    {{#if declarantNom}}
+    <div class="info-card">
+      <div class="info-card-header accent-blue">
+        <span>&#128203;</span> D&eacute;clarant
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value">{{declarantNom}}</span>
+        </div>
+        {{#if declarantQualite}}
+        <div class="info-row">
+          <span class="info-label">Qualit&eacute;</span>
+          <span class="info-value">{{declarantQualite}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+    {{/if}}
+
+  </div>
+
+  <!-- Right: QR Code -->
+  <div class="qr-section">
+    <div class="qr-container">
+      <div class="qr-title">Code QR de V&eacute;rification</div>
+      {{#if qrCodeDataUrl}}
+      <img class="qr-code-img" src="{{qrCodeDataUrl}}" alt="QR Code HMAC" />
+      {{/if}}
+      <div class="qr-verified">
+        <span>&#10003;</span> HMAC V&Eacute;RIFI&Eacute;
+      </div>
+      <div class="qr-instructions">
+        Scannez pour v&eacute;rifier sur<br>
+        <strong>verify.etatcivil.bf</strong>
+      </div>
+    </div>
+    <!-- Compact Crypto Hash -->
+    <div class="crypto-hash-compact">
+      <div class="crypto-title">Empreinte Cryptographique</div>
+      {{#if hashSha256}}
+      <div class="crypto-item">
+        <div class="crypto-label">SHA-256</div>
+        <div class="crypto-value">{{hashSha256}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationToken}}
+      <div class="crypto-item">
+        <div class="crypto-label">Token</div>
+        <div class="crypto-value">{{verificationToken}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationUrl}}
+      <div class="crypto-item">
+        <div class="crypto-label">V&eacute;rification</div>
+        <div class="crypto-value">{{verificationUrl}}</div>
+      </div>
+      {{/if}}
+    </div>
+  </div>
+</div>
+
+{{/base_etatcivil}}

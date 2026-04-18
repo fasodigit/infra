@@ -1,0 +1,32 @@
+#!/bin/sh
+# Maven Wrapper script
+# This script downloads and runs Maven if not installed locally
+
+set -e
+
+MAVEN_VERSION="3.9.6"
+WRAPPER_JAR=".mvn/wrapper/maven-wrapper.jar"
+WRAPPER_URL="https://repo.maven.apache.org/maven2/org/apache/maven/wrapper/maven-wrapper/3.2.0/maven-wrapper-3.2.0.jar"
+
+# Determine the Java command to use
+if [ -n "$JAVA_HOME" ] ; then
+    if [ -x "$JAVA_HOME/jre/sh/java" ] ; then
+        JAVACMD="$JAVA_HOME/jre/sh/java"
+    else
+        JAVACMD="$JAVA_HOME/bin/java"
+    fi
+else
+    JAVACMD="java"
+fi
+
+# Download wrapper jar if needed
+if [ ! -f "$WRAPPER_JAR" ]; then
+    mkdir -p "$(dirname "$WRAPPER_JAR")"
+    curl -o "$WRAPPER_JAR" "$WRAPPER_URL"
+fi
+
+# Run Maven via wrapper
+exec "$JAVACMD" \
+    -Dmaven.multiModuleProjectDirectory="$(pwd)" \
+    -classpath "$WRAPPER_JAR" \
+    org.apache.maven.wrapper.MavenWrapperMain "$@"

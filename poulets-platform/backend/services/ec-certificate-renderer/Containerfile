@@ -1,0 +1,87 @@
+# ═══════════════════════════════════════════════════════════════════════════════
+# Stage 1 : Build Maven
+# ═══════════════════════════════════════════════════════════════════════════════
+FROM eclipse-temurin:21-jdk-alpine AS builder
+
+WORKDIR /build
+
+COPY pom.xml .
+RUN apk add --no-cache maven \
+ && mvn dependency:go-offline -q
+
+COPY src ./src
+RUN mvn package -DskipTests -q \
+ && echo "Build done: $(ls -lh target/*.jar)"
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# Stage 2 : Runtime
+# ═══════════════════════════════════════════════════════════════════════════════
+FROM eclipse-temurin:21-jre-alpine
+
+RUN apk add --no-cache \
+      chromium \
+      nss \
+      freetype \
+      freetype-dev \
+      harfbuzz \
+      ca-certificates \
+      ttf-freefont \
+      fontconfig \
+      font-noto \
+      font-noto-arabic \
+      font-noto-latin \
+      dbus \
+      libstdc++ \
+ && fc-cache -f \
+ && echo "Chromium version: $(chromium-browser --version 2>/dev/null || chromium --version)"
+
+RUN addgroup -g 1001 etatcivil \
+ && adduser  -u 1001 -G etatcivil -s /bin/sh -D etatcivil
+
+WORKDIR /app
+
+COPY --from=builder /build/target/ec-certificate-renderer-*.jar app.jar
+
+RUN chown -R etatcivil:etatcivil /app
+
+USER etatcivil
+
+ENV CHROMIUM_PATH=/usr/bin/chromium-browser \
+    DISPLAY=
+
+ENV RENDERER_BROWSER_COUNT=0 \
+    RENDERER_PAGES_PER_BROWSER=3 \
+    RENDERER_MAX_CONCURRENT=0
+
+ENV RENDERER_CACHE_ENABLED=true \
+    RENDERER_CACHE_TTL_SECONDS=3600 \
+    RENDERER_CACHE_MAX_SIZE=500
+
+ENV PORT=8800 \
+    LOG_LEVEL=INFO
+
+ENV JAVA_OPTS="\
+  -XX:+UseZGC \
+  -XX:+ZGenerational \
+  -XX:MaxGCPauseMillis=5 \
+  -XX:+AlwaysPreTouch \
+  -XX:InitialHeapSize=256m \
+  -XX:MaxHeapSize=768m \
+  -Djava.awt.headless=true \
+  -Dfile.encoding=UTF-8 \
+  -XX:+ExitOnOutOfMemoryError"
+
+EXPOSE 8800
+
+HEALTHCHECK \
+  --interval=20s \
+  --timeout=5s \
+  --start-period=40s \
+  --retries=3 \
+  CMD wget -qO- http://localhost:8800/actuator/health/readiness \
+      | grep -q '"status":"UP"' || exit 1
+
+ENTRYPOINT ["sh", "-c", "exec java $JAVA_OPTS \
+  -Djdk.virtualThreadScheduler.parallelism=${RENDERER_BROWSER_COUNT:-4} \
+  -XX:ActiveProcessorCount=${CPU_COUNT:-$(nproc)} \
+  -jar /app/app.jar"]

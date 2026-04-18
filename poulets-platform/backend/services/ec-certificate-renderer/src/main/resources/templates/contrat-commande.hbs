@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>Contrat de commande — Poulets BF</title>
+  <style>
+    :root {
+      --bf-green: #2E7D32;
+      --bf-green-dark: #14532D;
+      --bf-amber: #FF8F00;
+      --ink: #0F172A;
+      --ink-soft: #475569;
+      --ink-muted: #94A3B8;
+      --paper: #FFFFFF;
+      --border-fine: #D1D5DB;
+    }
+    @page { size: A4; margin: 0; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      width: 210mm; min-height: 297mm; margin: 0 auto;
+      background: var(--paper);
+      font-family: 'Noto Sans', 'Inter', sans-serif;
+      color: var(--ink); font-size: 10pt;
+    }
+    .page {
+      position: relative;
+      width: 210mm; min-height: 297mm;
+      padding: 12mm 15mm;
+    }
+
+    .header {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-bottom: 5mm;
+      border-bottom: 2pt solid var(--bf-green);
+      margin-bottom: 8mm;
+    }
+    .brand strong {
+      font-size: 18pt;
+      color: var(--bf-green);
+      font-weight: 700;
+    }
+    .brand span {
+      display: block;
+      font-size: 8pt;
+      color: var(--ink-muted);
+    }
+    .doc-meta {
+      text-align: right;
+      font-size: 9pt;
+      color: var(--ink-soft);
+    }
+    .doc-meta strong { color: var(--ink); font-size: 11pt; display: block; }
+
+    h1 {
+      font-size: 22pt;
+      color: var(--bf-green-dark);
+      font-weight: 700;
+      margin-bottom: 2mm;
+    }
+    .subtitle {
+      font-size: 11pt;
+      color: var(--ink-soft);
+      margin-bottom: 8mm;
+    }
+
+    .parties {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 6mm;
+      margin-bottom: 8mm;
+    }
+    .party {
+      padding: 5mm;
+      background: #F9FAFB;
+      border-left: 3pt solid var(--bf-amber);
+    }
+    .party h3 {
+      font-size: 9pt;
+      color: var(--ink-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5pt;
+      margin-bottom: 2mm;
+    }
+    .party strong { font-size: 13pt; display: block; color: var(--ink); }
+    .party span { display: block; font-size: 9pt; color: var(--ink-soft); margin-top: 1mm; }
+
+    .order-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-bottom: 6mm;
+    }
+    .order-table th {
+      background: var(--bf-green);
+      color: #FFFFFF;
+      padding: 3mm;
+      text-align: left;
+      font-size: 9pt;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.3pt;
+    }
+    .order-table td {
+      padding: 3mm;
+      border-bottom: 1pt solid var(--border-fine);
+      font-size: 10pt;
+    }
+    .order-table tr:last-child td { border-bottom: none; }
+    .order-table .right { text-align: right; }
+    .order-table .total-row {
+      background: #E8F5E9;
+      font-weight: 700;
+      border-top: 2pt solid var(--bf-green);
+    }
+    .order-table .total-row td { color: var(--bf-green-dark); font-size: 12pt; }
+
+    .terms {
+      margin-bottom: 8mm;
+      padding: 4mm;
+      background: #FFF8E1;
+      border-left: 3pt solid var(--bf-amber);
+      font-size: 9pt;
+      line-height: 1.5;
+    }
+    .terms h4 {
+      font-size: 10pt;
+      color: var(--bf-green-dark);
+      margin-bottom: 2mm;
+    }
+
+    .signatures {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8mm;
+      margin-top: 15mm;
+    }
+    .sig-block {
+      text-align: center;
+      padding-top: 15mm;
+      border-top: 1pt solid var(--ink);
+    }
+    .sig-block strong { display: block; font-size: 10pt; }
+    .sig-block span { display: block; font-size: 9pt; color: var(--ink-soft); }
+
+    .footer {
+      position: absolute;
+      bottom: 8mm; left: 15mm; right: 15mm;
+      font-size: 7pt;
+      color: var(--ink-muted);
+      text-align: center;
+      border-top: 1pt solid var(--border-fine);
+      padding-top: 3mm;
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+    <header class="header">
+      <div class="brand">
+        <strong>Poulets BF</strong>
+        <span>FASO DIGITALISATION · Burkina Faso</span>
+      </div>
+      <div class="doc-meta">
+        <strong>Contrat N° {{orderId}}</strong>
+        Émis le {{dateCommande}}
+      </div>
+    </header>
+
+    <h1>Contrat de commande</h1>
+    <p class="subtitle">Accord commercial client — éleveur</p>
+
+    <section class="parties">
+      <div class="party">
+        <h3>Client</h3>
+        <strong>{{clientName}}</strong>
+        <span>{{clientAddress}}</span>
+        <span>{{clientPhone}}</span>
+      </div>
+      <div class="party">
+        <h3>Éleveur</h3>
+        <strong>{{eleveurName}}</strong>
+        <span>{{eleveurRegion}}</span>
+        <span>{{eleveurPhone}}</span>
+      </div>
+    </section>
+
+    <table class="order-table">
+      <thead>
+        <tr>
+          <th>Désignation</th>
+          <th class="right">Quantité</th>
+          <th class="right">Prix unitaire</th>
+          <th class="right">Total</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>
+            <strong>{{race}}</strong><br>
+            <span style="color: var(--ink-muted); font-size: 9pt;">Lot {{lotId}} · Poids moyen {{poidsKg}} kg</span>
+          </td>
+          <td class="right">{{quantity}}</td>
+          <td class="right">{{prixUnitaire}} FCFA</td>
+          <td class="right">{{sousTotal}} FCFA</td>
+        </tr>
+        <tr>
+          <td colspan="3" class="right">Frais de livraison</td>
+          <td class="right">{{fraisLivraison}} FCFA</td>
+        </tr>
+        <tr class="total-row">
+          <td colspan="3" class="right">TOTAL TTC</td>
+          <td class="right">{{amount}} FCFA</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <section class="terms">
+      <h4>Modalités</h4>
+      <ul style="padding-left: 5mm;">
+        <li>Livraison prévue : <strong>{{dateLivraison}}</strong> à l'adresse client ci-dessus.</li>
+        <li>Paiement : <strong>{{paiementMode}}</strong> — confirmé à la livraison ou avant selon entente.</li>
+        <li>Certification halal : lot {{#if halalCertified}}<strong style="color:#2E7D32">CERTIFIÉ</strong>{{else}}non certifié{{/if}}.</li>
+        <li>En cas de litige, les parties saisissent la plateforme de médiation Poulets BF.</li>
+      </ul>
+    </section>
+
+    <section class="signatures">
+      <div class="sig-block">
+        <strong>Le Client</strong>
+        <span>{{clientName}}</span>
+      </div>
+      <div class="sig-block">
+        <strong>L'Éleveur</strong>
+        <span>{{eleveurName}}</span>
+      </div>
+    </section>
+
+    <footer class="footer">
+      Document généré le {{issuedAt}} · Poulets BF · FASO DIGITALISATION<br>
+      Ce document est exécutoire dès signature des deux parties.
+    </footer>
+  </div>
+</body>
+</html>

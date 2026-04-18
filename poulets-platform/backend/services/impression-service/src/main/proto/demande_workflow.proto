@@ -1,0 +1,24 @@
+syntax = "proto3";
+package com.actes.demande.grpc;
+option java_multiple_files = true;
+option java_package = "com.actes.demande.grpc.proto";
+
+service DemandeWorkflowService {
+  rpc UpdateDemandeStatus(UpdateStatusRequest) returns (UpdateStatusResponse);
+}
+
+message UpdateStatusRequest {
+  string demande_id = 1;
+  string tenant_id = 2;
+  string new_status = 3;
+  string operator_id = 4;
+  string comment = 5;
+  map<string, string> metadata = 6;
+}
+
+message UpdateStatusResponse {
+  bool success = 1;
+  string demande_ref = 2;
+  string old_status = 3;
+  string new_status = 4;
+}

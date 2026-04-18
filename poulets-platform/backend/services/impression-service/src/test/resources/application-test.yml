@@ -1,0 +1,59 @@
+spring:
+  application:
+    name: impression-service-test
+
+  datasource:
+    url: jdbc:h2:mem:testdb;MODE=PostgreSQL;DB_CLOSE_DELAY=-1
+    username: sa
+    password: sa
+    driver-class-name: org.h2.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    database-platform: org.hibernate.dialect.H2Dialect
+    show-sql: true
+    properties:
+      hibernate:
+        format_sql: true
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://localhost:4433
+          jwk-set-uri: http://localhost:4433/.well-known/jwks.json
+    consumer:
+      group-id: impression-service-test
+      auto-offset-reset: earliest
+
+  freemarker:
+    check-template-location: false
+
+minio:
+  endpoint: http://localhost:9000
+  access-key: minioadmin
+  secret-key: minioadmin
+  enabled: false
+  enabled: false
+
+grpc:
+  client:
+    document-security:
+      enabled: false
+    audit-log:
+      enabled: false
+
+blockchain:
+  sync:
+    interval: 60000
+
+logging:
+  level:
+    root: INFO
+    bf.gov.faso.impression: DEBUG

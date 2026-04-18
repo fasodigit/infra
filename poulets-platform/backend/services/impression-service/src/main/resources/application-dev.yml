@@ -1,0 +1,196 @@
+# Development profile configuration
+server:
+  port: ${SERVER_PORT:8108}
+  shutdown: graceful
+
+event-bus:
+  enabled: true
+  prefix: ec
+
+spring:
+  # Flyway - create schema and run migrations
+  flyway:
+    enabled: true
+    schemas: impression
+    default-schema: impression
+    create-schemas: true
+    table: flyway_schema_history_impression
+    baseline-on-migrate: false
+    locations: classpath:db/migration
+
+  # PostgreSQL Database
+  datasource:
+    url: jdbc:postgresql://localhost:5501/ec_impression_db?stringtype=unspecified
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 5
+      minimum-idle: 2
+
+  # Ensure schema exists before Flyway runs
+  sql:
+    init:
+      mode: always
+      schema-locations: classpath:schema-init.sql
+
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    show-sql: true
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+        default_schema: impression
+
+  # Local DragonflyDB
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      password: dragonfly_dev_secure_2026
+
+  # Local Kafka/Redpanda (compression: none for KafkaJS E2E compat)
+    producer:
+      compression-type: none
+
+  # Disable JWT validation in dev mode (security handled by SecurityConfig dev profile)
+  autoconfigure:
+    exclude:
+      - org.springframework.boot.autoconfigure.security.oauth2.resource.servlet.OAuth2ResourceServerAutoConfiguration
+
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+
+# Development logging
+logging:
+  level:
+    root: INFO
+    bf.gov.faso.impression: DEBUG
+    org.springframework.security: DEBUG
+    org.springframework.web: DEBUG
+    org.hibernate.SQL: DEBUG
+
+# Resilience4j Circuit Breaker
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 10s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+        register-health-indicator: true
+    instances:
+      verificationService:
+        base-config: default
+      documentSecurityService:
+        base-config: default
+      documentRendererService:
+        base-config: default
+  retry:
+    configs:
+      default:
+        max-attempts: 3
+        wait-duration: 1s
+        retry-exceptions:
+          - io.grpc.StatusRuntimeException
+    instances:
+      verificationService:
+        base-config: default
+      documentSecurityService:
+        base-config: default
+      documentRendererService:
+        base-config: default
+
+# Development gRPC
+grpc:
+  server:
+    port: 9108
+    security:
+      enabled: false
+  client:
+    document-security:
+      address: localhost
+      port: 9090
+    demande-service:
+      address: localhost
+      port: 9105
+
+# Local MinIO for WORM storage
+minio:
+  enabled: true
+  endpoint: http://localhost:19100
+  access-key: minioadmin
+  secret-key: minioadmin_secret
+  bucket: actes-documents
+
+# Demande service for notification enrichment
+demande-service:
+  url: http://localhost:8105
+
+# File encryption (AES-256-GCM)
+encryption:
+  key: ${EC_AES_GCM_KEY:}
+
+# ec-certificate-renderer (Java/Playwright sidecar — legacy fallback)
+ec-certificate-renderer:
+  url: http://localhost:8800
+  auth-secret: dev-renderer-secret
+
+# Typst document-renderer (Rust, gRPC, PDF/A-3a) — preferred path
+renderer:
+  use-typst: ${RENDERER_USE_TYPST:true}
+
+grpc.client.document-renderer:
+  host: ${DOCUMENT_RENDERER_HOST:localhost}
+  port: ${DOCUMENT_RENDERER_PORT:9830}
+  enabled: true
+  deadline-ms: 2000
+
+# PDF Generation with QR Code
+# Tracing / Zipkin
+management:
+  endpoint:
+    health:
+      show-details: always
+      probes:
+        enabled: true
+      group:
+        readiness:
+          include: db, diskSpace, redis
+          show-details: always
+        liveness:
+          include: ping
+          show-details: always
+  health:
+    livenessState:
+      enabled: true
+    readinessState:
+      enabled: true
+  tracing:
+    sampling:
+      probability: 1.0
+  zipkin:
+    tracing:
+      endpoint: http://localhost:9411/api/v2/spans
+  otlp:
+    tracing:
+      endpoint: http://localhost:4611/v1/traces
+ec:
+  cache:
+    write-behind:
+      enabled: true
+      flush-cron: "0 0 21 * * *"
+
+impression:
+  storage:
+    base-path: ${IMPRESSION_STORAGE_PATH:/Users/oz/Documents/PROJECTS/ETAT-CIVIL/DOCS-ETAT-CIVIL-DELIVERIES/generated}
+  verification:
+    base-url: http://localhost:8108/api/v1/verification/verify
+  archive:
+    enabled: true
+    base-path: /Users/oz/Documents/PROJECTS/ETAT-CIVIL/DOCS-ETAT-CIVIL-DELIVERIES

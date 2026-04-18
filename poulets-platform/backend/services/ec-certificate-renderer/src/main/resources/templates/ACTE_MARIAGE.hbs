@@ -1,0 +1,204 @@
+{{#> base_etatcivil}}
+
+<!-- Document Title -->
+<div class="doc-title-section">
+  <div class="doc-type">Acte de Mariage</div>
+  <div class="doc-subtitle">Certificat de Mariage &mdash; Document Officiel</div>
+</div>
+
+<!-- Reference Bar -->
+<div class="reference-bar">
+  <div class="ref-item">
+    <div class="ref-label">R&eacute;f&eacute;rence</div>
+    <div class="ref-value">{{reference}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">N&deg; Acte</div>
+    <div class="ref-value">{{numeroActe}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">Date d'&Eacute;mission</div>
+    <div class="ref-value">{{dateEmission}}</div>
+  </div>
+</div>
+
+<!-- Status Badge -->
+<div class="status-section">
+  <div class="status-badge valide">
+    <span class="status-icon">&#10003;</span>
+    DOCUMENT OFFICIEL
+  </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="content-grid">
+  <!-- Left: Info Cards -->
+  <div>
+    <!-- Husband -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128141;</span> &Eacute;poux
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value highlight">{{epouxNom}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Pr&eacute;noms</span>
+          <span class="info-value highlight">{{epouxPrenoms}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date de naissance</span>
+          <span class="info-value">{{epouxDateNaissance}}</span>
+        </div>
+        {{#if epouxProfession}}
+        <div class="info-row">
+          <span class="info-label">Profession</span>
+          <span class="info-value">{{epouxProfession}}</span>
+        </div>
+        {{/if}}
+        {{#if epouxNationalite}}
+        <div class="info-row">
+          <span class="info-label">Nationalit&eacute;</span>
+          <span class="info-value">{{epouxNationalite}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Wife -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128141;</span> &Eacute;pouse
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value highlight">{{epouseNom}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Pr&eacute;noms</span>
+          <span class="info-value highlight">{{epousePrenoms}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date de naissance</span>
+          <span class="info-value">{{epouseDateNaissance}}</span>
+        </div>
+        {{#if epouseProfession}}
+        <div class="info-row">
+          <span class="info-label">Profession</span>
+          <span class="info-value">{{epouseProfession}}</span>
+        </div>
+        {{/if}}
+        {{#if epouseNationalite}}
+        <div class="info-row">
+          <span class="info-label">Nationalit&eacute;</span>
+          <span class="info-value">{{epouseNationalite}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Witnesses -->
+    <div class="info-card">
+      <div class="info-card-header accent-blue">
+        <span>&#128101;</span> T&eacute;moins
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">T&eacute;moin 1</span>
+          <span class="info-value">{{temoin1Nom}}{{#if temoin1Qualite}} ({{temoin1Qualite}}){{/if}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">T&eacute;moin 2</span>
+          <span class="info-value">{{temoin2Nom}}{{#if temoin2Qualite}} ({{temoin2Qualite}}){{/if}}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Civil Officer -->
+    <div class="info-card">
+      <div class="info-card-header accent-gold">
+        <span>&#9878;&#65039;</span> Officier d'&Eacute;tat Civil
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value">{{officierNom}}</span>
+        </div>
+        {{#if officierFonction}}
+        <div class="info-row">
+          <span class="info-label">Fonction</span>
+          <span class="info-value">{{officierFonction}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Marriage Details -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128197;</span> D&eacute;tails du Mariage
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Date</span>
+          <span class="info-value">{{dateMariage}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Lieu</span>
+          <span class="info-value">{{lieuMariage}}</span>
+        </div>
+        {{#if regimeMatrimonial}}
+        <div class="info-row">
+          <span class="info-label">R&eacute;gime matrimonial</span>
+          <span class="info-value">{{regimeMatrimonial}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: QR Code -->
+  <div class="qr-section">
+    <div class="qr-container">
+      <div class="qr-title">Code QR de V&eacute;rification</div>
+      {{#if qrCodeDataUrl}}
+      <img class="qr-code-img" src="{{qrCodeDataUrl}}" alt="QR Code HMAC" />
+      {{/if}}
+      <div class="qr-verified">
+        <span>&#10003;</span> HMAC V&Eacute;RIFI&Eacute;
+      </div>
+      <div class="qr-instructions">
+        Scannez pour v&eacute;rifier sur<br>
+        <strong>verify.etatcivil.bf</strong>
+      </div>
+    </div>
+    <!-- Compact Crypto Hash -->
+    <div class="crypto-hash-compact">
+      <div class="crypto-title">Empreinte Cryptographique</div>
+      {{#if hashSha256}}
+      <div class="crypto-item">
+        <div class="crypto-label">SHA-256</div>
+        <div class="crypto-value">{{hashSha256}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationToken}}
+      <div class="crypto-item">
+        <div class="crypto-label">Token</div>
+        <div class="crypto-value">{{verificationToken}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationUrl}}
+      <div class="crypto-item">
+        <div class="crypto-label">V&eacute;rification</div>
+        <div class="crypto-value">{{verificationUrl}}</div>
+      </div>
+      {{/if}}
+    </div>
+  </div>
+</div>
+
+{{/base_etatcivil}}

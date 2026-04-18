@@ -1,0 +1,174 @@
+{{#> base_etatcivil ministere="Minist&egrave;re de la S&eacute;curit&eacute;"}}
+
+<!-- Document Title -->
+<div class="doc-title-section">
+  <div class="doc-type">Permis de Port d'Armes</div>
+  <div class="doc-subtitle">Autorisation de Port d'Armes &mdash; Document Officiel</div>
+</div>
+
+<!-- Reference Bar -->
+<div class="reference-bar">
+  <div class="ref-item">
+    <div class="ref-label">R&eacute;f&eacute;rence</div>
+    <div class="ref-value">{{reference}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">N&deg; Permis</div>
+    <div class="ref-value">{{numeroActe}}</div>
+  </div>
+  <div class="ref-item">
+    <div class="ref-label">Date d'&Eacute;mission</div>
+    <div class="ref-value">{{dateEmission}}</div>
+  </div>
+</div>
+
+<!-- Status Badge -->
+<div class="status-section">
+  <div class="status-badge valide">
+    <span class="status-icon">&#10003;</span>
+    DOCUMENT OFFICIEL
+  </div>
+</div>
+
+<!-- Main Content Grid -->
+<div class="content-grid">
+  <!-- Left: Info Cards -->
+  <div>
+    <!-- Firearm Details -->
+    <div class="info-card">
+      <div class="info-card-header accent-red">
+        <span>&#128299;</span> D&eacute;tails du Permis
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Type d'arme</span>
+          <span class="info-value">{{typeArme}}</span>
+        </div>
+        {{#if marqueArme}}
+        <div class="info-row">
+          <span class="info-label">Marque</span>
+          <span class="info-value">{{marqueArme}}</span>
+        </div>
+        {{/if}}
+        {{#if modeleArme}}
+        <div class="info-row">
+          <span class="info-label">Mod&egrave;le</span>
+          <span class="info-value">{{modeleArme}}</span>
+        </div>
+        {{/if}}
+        {{#if numeroSerieArme}}
+        <div class="info-row">
+          <span class="info-label">N&deg; S&eacute;rie</span>
+          <span class="info-value mono">{{numeroSerieArme}}</span>
+        </div>
+        {{/if}}
+        <div class="info-row">
+          <span class="info-label">Calibre</span>
+          <span class="info-value">{{calibreArme}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Cat&eacute;gorie</span>
+          <span class="info-value">{{categorieArme}}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Holder -->
+    <div class="info-card">
+      <div class="info-card-header">
+        <span>&#128100;</span> Titulaire
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Nom</span>
+          <span class="info-value highlight">{{nom}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Pr&eacute;noms</span>
+          <span class="info-value highlight">{{prenoms}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date de naissance</span>
+          <span class="info-value">{{dateNaissance}}</span>
+        </div>
+        {{#if profession}}
+        <div class="info-row">
+          <span class="info-label">Profession</span>
+          <span class="info-value">{{profession}}</span>
+        </div>
+        {{/if}}
+        {{#if numeroCnib}}
+        <div class="info-row">
+          <span class="info-label">N&deg; CNIB</span>
+          <span class="info-value mono">{{numeroCnib}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+    <!-- Validity -->
+    <div class="info-card">
+      <div class="info-card-header accent-gold">
+        <span>&#128197;</span> Validit&eacute;
+      </div>
+      <div class="info-card-body">
+        <div class="info-row">
+          <span class="info-label">Date de d&eacute;livrance</span>
+          <span class="info-value">{{dateDelivrance}}</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">Date d'expiration</span>
+          <span class="info-value">{{dateExpiration}}</span>
+        </div>
+        {{#if dureeValidite}}
+        <div class="info-row">
+          <span class="info-label">Dur&eacute;e</span>
+          <span class="info-value">{{dureeValidite}}</span>
+        </div>
+        {{/if}}
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: QR Code -->
+  <div class="qr-section">
+    <div class="qr-container">
+      <div class="qr-title">Code QR de V&eacute;rification</div>
+      {{#if qrCodeDataUrl}}
+      <img class="qr-code-img" src="{{qrCodeDataUrl}}" alt="QR Code HMAC" />
+      {{/if}}
+      <div class="qr-verified">
+        <span>&#10003;</span> HMAC V&Eacute;RIFI&Eacute;
+      </div>
+      <div class="qr-instructions">
+        Scannez pour v&eacute;rifier sur<br>
+        <strong>verify.etatcivil.bf</strong>
+      </div>
+    </div>
+    <!-- Compact Crypto Hash -->
+    <div class="crypto-hash-compact">
+      <div class="crypto-title">Empreinte Cryptographique</div>
+      {{#if hashSha256}}
+      <div class="crypto-item">
+        <div class="crypto-label">SHA-256</div>
+        <div class="crypto-value">{{hashSha256}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationToken}}
+      <div class="crypto-item">
+        <div class="crypto-label">Token</div>
+        <div class="crypto-value">{{verificationToken}}</div>
+      </div>
+      {{/if}}
+      {{#if verificationUrl}}
+      <div class="crypto-item">
+        <div class="crypto-label">V&eacute;rification</div>
+        <div class="crypto-value">{{verificationUrl}}</div>
+      </div>
+      {{/if}}
+    </div>
+  </div>
+</div>
+
+{{/base_etatcivil}}

@@ -1,0 +1,43 @@
+syntax = "proto3";
+package com.actes.demande.grpc;
+option java_multiple_files = true;
+option java_package = "com.actes.demande.grpc.proto";
+
+/**
+ * Service for retrieving demande form data on-demand.
+ *
+ * Downstream services (traitement, validation, impression) call this
+ * instead of storing full metadata copies in their own databases.
+ * Responses are cacheable (TTL 5 min via DragonflyDB).
+ */
+service DemandeDataService {
+  rpc GetDemandeFormData(GetFormDataRequest) returns (GetFormDataResponse);
+}
+
+message GetFormDataRequest {
+  string demande_id = 1;
+  string tenant_id = 2;
+}
+
+message GetFormDataResponse {
+  bool found = 1;
+  string demande_id = 2;
+  string type_document = 3;
+  string numero_reference = 4;
+  string nom_demandeur = 5;
+  string prenom_demandeur = 6;
+  string email = 7;
+  string telephone = 8;
+  string numero_acte = 9;
+  string motif = 10;
+  string date_naissance = 11;
+  string lieu_naissance_ville = 12;
+  string lieu_naissance_etablissement = 13;
+  string lieu_naissance_pays = 14;
+  string nom_pere = 15;
+  string profession_pere = 16;
+  string nom_mere = 17;
+  string profession_mere = 18;
+  // All type-specific form fields (mariage, deces, permis, divers)
+  map<string, string> metadata = 19;
+}
