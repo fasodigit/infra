@@ -58,8 +58,13 @@ export class KratosSettingsService {
   /**
    * Extrait un snapshot MFA consolidé à partir du flow settings courant.
    * En dev, retourne un stub si Kratos n'est pas joignable.
+   *
+   * IMPORTANT : tant que le BFF ne sait pas routing /self-service/settings avec
+   * la session cookie Kratos, on tombe en fallback immédiatement pour permettre
+   * à l'UX MFA de s'afficher (tests E2E, dev local sans Kratos fully wired).
    */
   getMfaStatus(): Observable<MfaStatus> {
+    if (!this.isBrowser) return of(this.fallbackMfaStatus());
     return this.initFlow().pipe(
       map((flow) => this.parseMfaStatus(flow)),
       catchError(() => of(this.fallbackMfaStatus())),

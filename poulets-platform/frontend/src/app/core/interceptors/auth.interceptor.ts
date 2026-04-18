@@ -14,9 +14,15 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   return next(req).pipe(
     catchError((error: HttpErrorResponse) => {
       // Don't redirect for auth-related API calls (login, register, session check)
+      // NOR for Kratos self-service flow calls (settings/login/registration) —
+      // ces endpoints renvoient 401 en fonctionnement normal (e.g. flow settings
+      // sans session ou AAL1 insuffisant pour certaines actions). Un redirect
+      // global sur 401 kratos casserait la page MFA / register / login Angular.
       const isAuthRequest = req.url.includes('/api/auth/');
+      const isKratosRequest = req.url.includes('/self-service/')
+        || req.url.includes('/sessions/whoami');
 
-      if (error.status === 401 && !isAuthRequest) {
+      if (error.status === 401 && !isAuthRequest && !isKratosRequest) {
         // Session expired or not authenticated
         const currentUrl = router.url;
         // Only redirect if not already on an auth page

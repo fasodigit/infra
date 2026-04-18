@@ -9,7 +9,7 @@ import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.
   imports: [TranslateModule, EmptyStateComponent],
   template: `
     <div class="page-container">
-      <h1>{{ 'messaging.title' | translate }}</h1>
+      <h1>Messagerie</h1>
       <app-empty-state icon="chat" title="messaging.no_conversations"></app-empty-state>
     </div>
   `,

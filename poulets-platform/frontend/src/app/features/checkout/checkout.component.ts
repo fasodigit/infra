@@ -41,6 +41,10 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
     @if (panier.items().length === 0 && !submitted()) {
       <div class="page">
         <div class="container">
+          <header class="head">
+            <h1>Validation de votre commande</h1>
+            <p>Votre panier est vide pour le moment.</p>
+          </header>
           <app-empty-state icon="shopping_basket" title="Panier vide">
             <a mat-raised-button color="primary" routerLink="/marketplace/annonces">
               Parcourir les annonces

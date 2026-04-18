@@ -342,21 +342,30 @@ export class MfaSettingsComponent implements OnInit {
   async addPasskey() {
     if (!this.kratos.isBrowser) return;
     try {
-      const { startRegistration } = await import('@simplewebauthn/browser');
-      // Stub : en prod, on récupère les options de Kratos via un `initFlow()` et un node webauthn_register_trigger
-      const options: any = {
-        challenge: btoa(crypto.getRandomValues(new Uint8Array(32)).reduce((s, b) => s + String.fromCharCode(b), '')),
+      // Stub : en prod, récupérer les options via Kratos initFlow() / webauthn_register_trigger.
+      // Ici on appelle directement navigator.credentials.create() pour compatibilité
+      // avec le CDP virtual authenticator Playwright (CTAP2 résident).
+      const publicKey: PublicKeyCredentialCreationOptions = {
+        challenge: crypto.getRandomValues(new Uint8Array(32)),
         rp: { name: this.config.appName, id: window.location.hostname },
         user: {
-          id: btoa('user-' + Math.random()),
+          id: crypto.getRandomValues(new Uint8Array(16)),
           name: (this.status()?.email.address ?? 'user@example.bf'),
           displayName: (this.status()?.email.address ?? 'user'),
         },
-        pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
-        authenticatorSelection: { userVerification: 'preferred' },
+        pubKeyCredParams: [
+          { type: 'public-key', alg: -7 },   // ES256
+          { type: 'public-key', alg: -257 }, // RS256
+        ],
+        authenticatorSelection: {
+          userVerification: 'preferred',
+          residentKey: 'preferred',
+        },
         timeout: 60000,
+        attestation: 'none',
       };
-      await startRegistration({ optionsJSON: options });
+      const cred = await navigator.credentials.create({ publicKey });
+      if (!cred) throw new Error('no-credential');
       // Mock success : add a device to the local status.
       this.status.update((cur) => cur ? {
         ...cur,

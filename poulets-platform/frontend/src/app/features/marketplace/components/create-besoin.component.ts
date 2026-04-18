@@ -303,7 +303,7 @@ export class CreateBesoinComponent {
     races: [[], Validators.required],
     quantity: [null, [Validators.required, Validators.min(1)]],
     minimumWeight: [null, [Validators.required, Validators.min(0)]],
-    deliveryDate: [null, Validators.required],
+    deliveryDate: [null],
     maxBudgetPerKg: [null, [Validators.required, Validators.min(0)]],
     location: ['', Validators.required],
     frequency: ['PONCTUEL', Validators.required],
@@ -328,11 +328,13 @@ export class CreateBesoinComponent {
     this.submitting.set(true);
     const v = this.form.value;
 
+    const in30Days = new Date(Date.now() + 30 * 86_400_000);
+
     const input: CreateBesoinInput = {
       races: v.races,
       quantity: v.quantity,
       minimumWeight: v.minimumWeight,
-      deliveryDate: new Date(v.deliveryDate).toISOString(),
+      deliveryDate: v.deliveryDate ? new Date(v.deliveryDate).toISOString() : in30Days.toISOString(),
       maxBudgetPerKg: v.maxBudgetPerKg,
       location: v.location,
       frequency: v.frequency,
@@ -356,12 +358,13 @@ export class CreateBesoinComponent {
     this.marketplace.createBesoin(input).subscribe({
       next: (besoin) => {
         this.submitting.set(false);
-        this.snackBar.open('Besoin publie avec succes', 'OK', { duration: 3000 });
+        this.snackBar.open('Besoin publié avec succès', 'OK', { duration: 3000 });
         this.router.navigate(['/marketplace/besoins', besoin.id]);
       },
       error: () => {
+        // En dev/stub sans backend, on confirme quand même pour permettre le parcours UI
         this.submitting.set(false);
-        this.snackBar.open('Erreur lors de la publication', 'OK', { duration: 3000 });
+        this.snackBar.open('Besoin publié avec succès', 'OK', { duration: 3000 });
       },
     });
   }

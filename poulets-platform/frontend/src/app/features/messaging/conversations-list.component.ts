@@ -39,7 +39,7 @@ interface Conversation {
   template: `
     <div class="conversations-container">
       <div class="page-header">
-        <h1>{{ 'messaging.list.title' | translate }}</h1>
+        <h1>Messagerie</h1>
       </div>
 
       <!-- Search -->

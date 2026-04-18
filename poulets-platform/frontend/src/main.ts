@@ -13,9 +13,12 @@ import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
 import { authInterceptor } from './app/core/interceptors/auth.interceptor';
 import { environment } from './environments/environment';
+import { PROJECT_CONFIG } from './app/core/config/project-config.token';
+import { POULETS_PROJECT_CONFIG } from './app/core/config/poulets-project.config';
 
 bootstrapApplication(AppComponent, {
   providers: [
+    { provide: PROJECT_CONFIG, useValue: POULETS_PROJECT_CONFIG },
     provideRouter(routes, withComponentInputBinding()),
     provideAnimationsAsync(),
     provideHttpClient(
