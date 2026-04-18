@@ -1,0 +1,51 @@
+syntax = "proto3";
+
+package bf.gov.actes;
+
+option java_multiple_files = true;
+option java_package = "bf.gov.actes.grpc.verification";
+option java_outer_classname = "EcVerificationProto";
+
+service EcVerificationService {
+    rpc RegisterDocument(RegisterDocumentRequest) returns (RegisterDocumentResponse);
+    rpc GetDocumentStatus(GetDocumentStatusRequest) returns (GetDocumentStatusResponse);
+}
+
+message RegisterDocumentRequest {
+    string document_id = 1;
+    string demande_id = 2;
+    string tenant_id = 3;
+    string reference = 4;
+    string numero_acte = 5;
+    string type_document = 6;
+    string issuer_name = 7;
+    string canonical_data = 8;
+    string minio_key = 9;
+    int64 expires_at_epoch = 10;
+}
+
+message RegisterDocumentResponse {
+    string token = 1;
+    string verification_url = 2;
+    bool success = 3;
+    string error_message = 4;
+}
+
+message GetDocumentStatusRequest {
+    string token = 1;
+}
+
+message GetDocumentStatusResponse {
+    string token = 1;
+    string status = 2;
+    string type_document = 3;
+    string reference = 4;
+    string numero_acte = 5;
+    string demande_id = 6;
+    string tenant_id = 7;
+    string issuer_name = 8;
+    int64 issued_at_epoch = 9;
+    int64 expires_at_epoch = 10;
+    int32 scan_count = 11;
+    bool found = 12;
+}

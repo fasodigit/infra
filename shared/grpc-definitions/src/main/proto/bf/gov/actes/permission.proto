@@ -1,0 +1,88 @@
+syntax = "proto3";
+package bf.gov.actes;
+
+option java_multiple_files = true;
+option java_package = "bf.gov.actes.grpc.permission";
+option java_outer_classname = "PermissionProto";
+
+import "bf/gov/actes/common.proto";
+
+service PermissionService {
+  rpc CheckPermission(CheckPermissionRequest) returns (CheckPermissionResponse);
+  rpc BulkCheckPermissions(BulkCheckRequest) returns (BulkCheckResponse);
+  rpc GrantPermission(GrantPermissionRequest) returns (GrantPermissionResponse);
+  rpc RevokePermission(RevokePermissionRequest) returns (RevokePermissionResponse);
+  rpc ListPermissions(ListPermissionsRequest) returns (ListPermissionsResponse);
+}
+
+message CheckPermissionRequest {
+  RequestMetadata metadata = 1;
+  string subject_id = 2;
+  string tenant_id = 3;
+  string resource = 4;
+  string action = 5;
+}
+
+message CheckPermissionResponse {
+  ResponseStatus status = 1;
+  bool allowed = 2;
+  string reason = 3;
+  repeated string obligations = 4;
+}
+
+message BulkCheckRequest {
+  RequestMetadata metadata = 1;
+  repeated CheckPermissionRequest checks = 2;
+}
+
+message BulkCheckResponse {
+  ResponseStatus status = 1;
+  repeated CheckPermissionResponse results = 2;
+}
+
+message GrantPermissionRequest {
+  RequestMetadata metadata = 1;
+  string subject_id = 2;
+  string tenant_id = 3;
+  string namespace = 4;
+  string object = 5;
+  string relation = 6;
+}
+
+message GrantPermissionResponse {
+  ResponseStatus status = 1;
+}
+
+message RevokePermissionRequest {
+  RequestMetadata metadata = 1;
+  string subject_id = 2;
+  string tenant_id = 3;
+  string namespace = 4;
+  string object = 5;
+  string relation = 6;
+}
+
+message RevokePermissionResponse {
+  ResponseStatus status = 1;
+}
+
+message ListPermissionsRequest {
+  RequestMetadata metadata = 1;
+  string subject_id = 2;
+  string tenant_id = 3;
+  string namespace = 4;
+  PaginationRequest pagination = 5;
+}
+
+message PermissionEntry {
+  string namespace = 1;
+  string object = 2;
+  string relation = 3;
+  string subject_id = 4;
+}
+
+message ListPermissionsResponse {
+  ResponseStatus status = 1;
+  repeated PermissionEntry permissions = 2;
+  PaginationResponse pagination = 3;
+}

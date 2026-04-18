@@ -1,0 +1,2 @@
+org.springframework.boot.autoconfigure.EnableAutoConfiguration=\
+  bf.gov.actes.security.config.CorrelationIdAutoConfiguration

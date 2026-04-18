@@ -1,0 +1,38 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# © 2026 FASO DIGITALISATION — Burkina Faso
+
+server:
+  port: 8902
+
+spring:
+  application:
+    name: workflow-engine
+  profiles:
+    active: dev
+  temporal:
+    workers-auto-discovery:
+      packages:
+        - bf.gov.faso.workflow.impl
+        - bf.gov.faso.workflow.activities
+    workers:
+      - name: poulets-main
+        task-queue: poulets-main
+    namespace: poulets
+    connection:
+      target: ${TEMPORAL_GRPC_TARGET:localhost:7233}
+      enable-https: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      show-details: when-authorized
+
+logging:
+  level:
+    root: INFO
+    bf.gov.faso.workflow: DEBUG
+    io.temporal: INFO

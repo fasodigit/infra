@@ -1,0 +1,180 @@
+syntax = "proto3";
+
+package bf.gov.actes;
+
+option java_multiple_files = true;
+option java_package = "bf.gov.actes.grpc.filestorage";
+option java_outer_classname = "FileStorageProto";
+
+import "google/protobuf/timestamp.proto";
+import "bf/gov/actes/common.proto";
+
+// =============================================================================
+// File Storage Service - Streaming for large files (up to 100MB)
+// =============================================================================
+
+service FileStorageService {
+    // Upload file using client streaming (for files up to 100MB)
+    rpc UploadFile(stream FileChunk) returns (UploadResponse);
+
+    // Download file using server streaming
+    rpc DownloadFile(DownloadRequest) returns (stream FileChunk);
+
+    // Get file metadata without downloading content
+    rpc GetFileMetadata(GetMetadataRequest) returns (FileMetadata);
+
+    // List files for a client
+    rpc ListClientFiles(ListFilesRequest) returns (ListFilesResponse);
+
+    // Delete file (soft delete)
+    rpc DeleteFile(DeleteFileRequest) returns (DeleteFileResponse);
+
+    // Verify file integrity
+    rpc VerifyFileIntegrity(VerifyIntegrityRequest) returns (VerifyIntegrityResponse);
+
+    // Initiate resumable upload (for unreliable networks)
+    rpc InitiateResumableUpload(InitiateUploadRequest) returns (InitiateUploadResponse);
+
+    // Resume upload from last chunk
+    rpc ResumeUpload(stream FileChunk) returns (UploadResponse);
+}
+
+// =============================================================================
+// Upload Messages
+// =============================================================================
+
+// File chunk for streaming (4MB chunks for 100MB max file size)
+message FileChunk {
+    // Metadata (only required in first chunk)
+    oneof first_chunk_metadata {
+        UploadMetadata metadata = 1;
+    }
+
+    // Chunk data
+    bytes data = 2;
+    int64 offset = 3;
+    int32 chunk_number = 4;
+    int32 total_chunks = 5;
+    string chunk_checksum = 6;  // SHA-256 of this chunk
+    bool is_final = 7;
+
+    // For resumable uploads
+    string upload_id = 8;
+}
+
+message UploadMetadata {
+    RequestMetadata request_metadata = 1;
+    string client_id = 2;  // UUID of the client
+    string original_filename = 3;
+    string content_type = 4;
+    int64 total_size = 5;
+    FileFormat format = 6;
+    string demande_id = 7;  // Optional: link to demande
+    map<string, string> custom_metadata = 8;
+}
+
+message UploadResponse {
+    ResponseStatus status = 1;
+    FileMetadata file_metadata = 2;
+    bool virus_scan_passed = 3;
+    string virus_scan_message = 4;
+}
+
+// =============================================================================
+// Download Messages
+// =============================================================================
+
+message DownloadRequest {
+    RequestMetadata request_metadata = 1;
+    string file_id = 2;
+
+    // Optional: range download (for partial downloads/resume)
+    int64 start_offset = 3;
+    int64 end_offset = 4;  // 0 means end of file
+}
+
+// =============================================================================
+// Metadata Operations
+// =============================================================================
+
+message GetMetadataRequest {
+    RequestMetadata request_metadata = 1;
+    string file_id = 2;
+}
+
+message ListFilesRequest {
+    RequestMetadata request_metadata = 1;
+    string client_id = 2;
+    string demande_id = 3;  // Optional: filter by demande
+    PaginationRequest pagination = 4;
+
+    // Filters
+    repeated FileFormat formats = 5;
+    google.protobuf.Timestamp uploaded_after = 6;
+    google.protobuf.Timestamp uploaded_before = 7;
+}
+
+message ListFilesResponse {
+    ResponseStatus status = 1;
+    repeated FileMetadata files = 2;
+    PaginationResponse pagination = 3;
+}
+
+// =============================================================================
+// Delete Operations
+// =============================================================================
+
+message DeleteFileRequest {
+    RequestMetadata request_metadata = 1;
+    string file_id = 2;
+    string reason = 3;
+    bool permanent = 4;  // Hard delete (admin only)
+}
+
+message DeleteFileResponse {
+    ResponseStatus status = 1;
+    google.protobuf.Timestamp deleted_at = 2;
+}
+
+// =============================================================================
+// Integrity Verification
+// =============================================================================
+
+message VerifyIntegrityRequest {
+    RequestMetadata request_metadata = 1;
+    string file_id = 2;
+    string expected_checksum = 3;  // Optional: verify against specific checksum
+}
+
+message VerifyIntegrityResponse {
+    ResponseStatus status = 1;
+    bool integrity_valid = 2;
+    string stored_checksum = 3;
+    string computed_checksum = 4;
+    google.protobuf.Timestamp last_verified = 5;
+}
+
+// =============================================================================
+// Resumable Upload
+// =============================================================================
+
+message InitiateUploadRequest {
+    RequestMetadata request_metadata = 1;
+    UploadMetadata file_metadata = 2;
+}
+
+message InitiateUploadResponse {
+    ResponseStatus status = 1;
+    string upload_id = 2;
+    int32 chunk_size = 3;  // Recommended chunk size (4MB)
+    google.protobuf.Timestamp expires_at = 4;  // Upload must complete before this
+}
+
+// =============================================================================
+// Constants
+// =============================================================================
+// MAX_FILE_SIZE = 100MB (104857600 bytes)
+// CHUNK_SIZE = 4MB (4194304 bytes)
+// MAX_CHUNKS = 25 (100MB / 4MB)
+// ALLOWED_FORMATS = [PDF, PNG, JPG, JPEG]
+// STORAGE_PATH = /docs-etat-civil/{client_id}/

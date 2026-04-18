@@ -1,0 +1,249 @@
+syntax = "proto3";
+
+package bf.gov.actes;
+
+option java_multiple_files = true;
+option java_package = "bf.gov.actes.grpc.notification";
+option java_outer_classname = "NotificationProto";
+
+import "google/protobuf/timestamp.proto";
+import "bf/gov/actes/common.proto";
+
+// =============================================================================
+// Notification Service - Email, SMS via Redpanda
+// =============================================================================
+
+service NotificationService {
+    // Send notification (queued to Redpanda)
+    rpc SendNotification(NotificationRequest) returns (NotificationResponse);
+
+    // Send batch notifications
+    rpc SendBatchNotifications(stream NotificationRequest) returns (BatchNotificationResponse);
+
+    // Get notification status
+    rpc GetNotificationStatus(GetStatusRequest) returns (NotificationStatusResponse);
+
+    // Send OTP for verification
+    rpc SendOtp(OtpRequest) returns (OtpResponse);
+
+    // Verify OTP
+    rpc VerifyOtp(VerifyOtpRequest) returns (VerifyOtpResponse);
+
+    // Get notification history for user
+    rpc GetNotificationHistory(NotificationHistoryRequest) returns (NotificationHistoryResponse);
+}
+
+// =============================================================================
+// Notification Types
+// =============================================================================
+
+enum NotificationChannel {
+    NOTIFICATION_CHANNEL_UNSPECIFIED = 0;
+    EMAIL = 1;
+    SMS = 2;
+    PUSH = 3;
+    WEBSOCKET = 4;
+}
+
+enum NotificationType {
+    NOTIFICATION_TYPE_UNSPECIFIED = 0;
+
+    // Demande lifecycle
+    DEMANDE_RECEIVED = 1;
+    DEMANDE_IN_TREATMENT = 2;
+    DEMANDE_VALIDATED = 3;
+    DEMANDE_REJECTED = 4;
+    DEMANDE_READY = 5;
+    DEMANDE_DELIVERED = 6;
+
+    // OTP & Security
+    OTP_VERIFICATION = 10;
+    PASSWORD_RESET = 11;
+    ACCOUNT_LOCKED = 12;
+    SUSPICIOUS_LOGIN = 13;
+
+    // Payment
+    PAYMENT_RECEIVED = 20;
+    PAYMENT_FAILED = 21;
+    PAYMENT_REMINDER = 22;
+
+    // System
+    SYSTEM_MAINTENANCE = 30;
+    SYSTEM_ALERT = 31;
+}
+
+enum NotificationStatus {
+    NOTIFICATION_STATUS_UNSPECIFIED = 0;
+    PENDING = 1;
+    QUEUED = 2;
+    SENT = 3;
+    DELIVERED = 4;
+    FAILED = 5;
+    CANCELLED = 6;
+}
+
+enum NotificationPriority {
+    NOTIFICATION_PRIORITY_UNSPECIFIED = 0;
+    LOW = 1;
+    NORMAL = 2;
+    HIGH = 3;
+    URGENT = 4;
+}
+
+// =============================================================================
+// Notification Messages
+// =============================================================================
+
+message NotificationRequest {
+    RequestMetadata request_metadata = 1;
+
+    // Recipient
+    string recipient_id = 2;  // User UUID
+    string recipient_email = 3;
+    string recipient_phone = 4;  // Format: +226XXXXXXXX
+
+    // Content
+    NotificationChannel channel = 5;
+    NotificationType type = 6;
+    NotificationPriority priority = 7;
+
+    string subject = 8;  // For email
+    string content = 9;  // Plain text or HTML for email
+
+    // Template support
+    string template_code = 10;
+    map<string, string> template_params = 11;
+
+    // Reference
+    string reference_type = 12;  // demande, document, payment
+    string reference_id = 13;
+
+    // Scheduling
+    google.protobuf.Timestamp scheduled_at = 14;  // Optional: schedule for later
+    google.protobuf.Timestamp expires_at = 15;  // Optional: don't send after this time
+
+    // Metadata
+    map<string, string> metadata = 16;
+}
+
+message NotificationResponse {
+    ResponseStatus status = 1;
+    string notification_id = 2;
+    NotificationStatus delivery_status = 3;
+    google.protobuf.Timestamp queued_at = 4;
+}
+
+message BatchNotificationResponse {
+    ResponseStatus status = 1;
+    int32 total_received = 2;
+    int32 total_queued = 3;
+    int32 total_failed = 4;
+    repeated string failed_notification_ids = 5;
+    repeated NotificationResponse results = 6;
+}
+
+// =============================================================================
+// Status Query
+// =============================================================================
+
+message GetStatusRequest {
+    RequestMetadata request_metadata = 1;
+    string notification_id = 2;
+}
+
+message NotificationStatusResponse {
+    ResponseStatus status = 1;
+    string notification_id = 2;
+    NotificationStatus delivery_status = 3;
+    NotificationChannel channel = 4;
+    string recipient = 5;
+    google.protobuf.Timestamp created_at = 6;
+    google.protobuf.Timestamp sent_at = 7;
+    google.protobuf.Timestamp delivered_at = 8;
+    string failure_reason = 9;
+    int32 retry_count = 10;
+}
+
+// =============================================================================
+// OTP Messages
+// =============================================================================
+
+message OtpRequest {
+    RequestMetadata request_metadata = 1;
+    string user_id = 2;
+    NotificationChannel channel = 3;  // EMAIL or SMS
+    string recipient = 4;  // Email or phone
+    string purpose = 5;  // login, password_reset, verification
+    int32 validity_seconds = 6;  // Default: 300 (5 minutes)
+    int32 otp_length = 7;  // Default: 8 digits
+}
+
+message OtpResponse {
+    ResponseStatus status = 1;
+    string otp_id = 2;
+    google.protobuf.Timestamp expires_at = 3;
+    int32 attempts_remaining = 4;
+    NotificationStatus delivery_status = 5;
+}
+
+message VerifyOtpRequest {
+    RequestMetadata request_metadata = 1;
+    string user_id = 2;
+    string otp_code = 3;
+    string purpose = 4;
+}
+
+message VerifyOtpResponse {
+    ResponseStatus status = 1;
+    bool verified = 2;
+    string failure_reason = 3;  // INVALID, EXPIRED, TOO_MANY_ATTEMPTS
+    int32 attempts_remaining = 4;
+}
+
+// =============================================================================
+// History Query
+// =============================================================================
+
+message NotificationHistoryRequest {
+    RequestMetadata request_metadata = 1;
+    string user_id = 2;
+    repeated NotificationChannel channels = 3;
+    repeated NotificationType types = 4;
+    NotificationStatus status_filter = 5;
+    google.protobuf.Timestamp start_time = 6;
+    google.protobuf.Timestamp end_time = 7;
+    PaginationRequest pagination = 8;
+}
+
+message NotificationHistoryResponse {
+    ResponseStatus status = 1;
+    repeated NotificationRecord notifications = 2;
+    PaginationResponse pagination = 3;
+}
+
+message NotificationRecord {
+    string notification_id = 1;
+    NotificationChannel channel = 2;
+    NotificationType type = 3;
+    NotificationStatus status = 4;
+    string subject = 5;
+    string content_preview = 6;  // First 100 chars
+    string recipient = 7;
+    google.protobuf.Timestamp created_at = 8;
+    google.protobuf.Timestamp sent_at = 9;
+}
+
+// =============================================================================
+// Redpanda/Kafka Topic Configuration
+// =============================================================================
+// Topics:
+//   - etat-civil.notifications.email.outbound (email to send)
+//   - etat-civil.notifications.email.status (delivery status updates)
+//   - etat-civil.notifications.sms.outbound (SMS to send)
+//   - etat-civil.notifications.sms.status (delivery status updates)
+//   - etat-civil.notifications.push.outbound (push notifications)
+//   - etat-civil.notifications.otp (OTP events for audit)
+//
+// Partitioning: by tenant_id for isolation
+// Retention: 30 days
+// Replication: 3 (production)

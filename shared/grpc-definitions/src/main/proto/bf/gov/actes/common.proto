@@ -1,0 +1,123 @@
+syntax = "proto3";
+
+package bf.gov.actes;
+
+option java_multiple_files = true;
+option java_package = "bf.gov.actes.grpc.common";
+option java_outer_classname = "CommonProto";
+
+import "google/protobuf/timestamp.proto";
+
+// =============================================================================
+// Common Types - Shared across all microservices
+// =============================================================================
+
+// Tenant context for multi-tenant isolation
+message TenantContext {
+    string tenant_id = 1;
+    string tenant_name = 2;
+}
+
+// User context for audit and authorization
+message UserContext {
+    string user_id = 1;
+    string username = 2;
+    string role = 3;  // TRAITEMENT, VALIDATION, IMPRESSION, ADMIN
+    string ip_address = 4;
+    string user_agent = 5;
+}
+
+// Request metadata included in all gRPC requests
+message RequestMetadata {
+    TenantContext tenant = 1;
+    UserContext user = 2;
+    string correlation_id = 3;  // Distributed tracing
+    google.protobuf.Timestamp request_time = 4;
+}
+
+// Standard response status
+message ResponseStatus {
+    bool success = 1;
+    string code = 2;
+    string message = 3;
+    repeated ErrorDetail errors = 4;
+}
+
+message ErrorDetail {
+    string field = 1;
+    string code = 2;
+    string message = 3;
+}
+
+// Pagination for list operations
+message PaginationRequest {
+    int32 page = 1;
+    int32 size = 2;
+    string sort_by = 3;
+    bool ascending = 4;
+}
+
+message PaginationResponse {
+    int32 page = 1;
+    int32 size = 2;
+    int64 total_elements = 3;
+    int32 total_pages = 4;
+    bool has_next = 5;
+    bool has_previous = 6;
+}
+
+// =============================================================================
+// Document Types
+// =============================================================================
+
+enum DocumentType {
+    DOCUMENT_TYPE_UNSPECIFIED = 0;
+    ACTE_NAISSANCE = 1;
+    ACTE_MARIAGE = 2;
+    ACTE_DECES = 3;
+    CERTIFICAT_NATIONALITE = 4;
+    CASIER_JUDICIAIRE = 5;
+    PERMIS_CONSTRUIRE = 6;
+    ATTESTATION = 7;
+}
+
+enum DocumentStatus {
+    DOCUMENT_STATUS_UNSPECIFIED = 0;
+    BROUILLON = 1;
+    SOUMIS = 2;
+    EN_TRAITEMENT = 3;
+    EN_VALIDATION = 4;
+    VALIDE = 5;
+    REJETE = 6;
+    PRET_IMPRESSION = 7;
+    IMPRIME = 8;
+    DELIVRE = 9;
+    ARCHIVE = 10;
+}
+
+// Allowed file formats for attachments
+enum FileFormat {
+    FILE_FORMAT_UNSPECIFIED = 0;
+    FILE_PDF = 1;
+    FILE_PNG = 2;
+    FILE_JPG = 3;
+    FILE_JPEG = 4;
+}
+
+// File metadata stored in database
+message FileMetadata {
+    string file_id = 1;
+    string client_id = 2;  // UUID of the client
+    string original_name = 3;
+    string stored_path = 4;  // /docs-etat-civil/{client_id}/{filename}
+    FileFormat format = 5;
+    string content_type = 6;
+    int64 size_bytes = 7;
+    string checksum_sha256 = 8;
+    google.protobuf.Timestamp uploaded_at = 9;
+    string uploaded_by = 10;
+    string tenant_id = 11;
+    bool virus_scanned = 12;
+    bool virus_clean = 13;
+    map<string, string> custom_metadata = 14;
+}
