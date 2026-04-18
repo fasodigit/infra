@@ -5,7 +5,8 @@ datasources:
     type: prometheus
     uid: faso-prometheus-ds
     access: proxy
-    url: ${PROMETHEUS_URL:-http://prometheus:9090}
+    # Prometheus runs on the host network (same as Grafana).
+    url: http://127.0.0.1:9090
     isDefault: true
     jsonData:
       timeInterval: "15s"
@@ -18,4 +19,4 @@ datasources:
       disableRecordingRules: false
       incrementalQueryOverlapWindow: "10m"
     editable: false
-    version: 1
+    version: 2

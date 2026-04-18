@@ -172,6 +172,12 @@
             <artifactId>lettuce-core</artifactId>
         </dependency>
 
+        <!-- Prometheus metrics registry (Micrometer) -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-registry-prometheus</artifactId>
+        </dependency>
+
         <!-- OpenTelemetry / Distributed Tracing -->
         <dependency>
             <groupId>io.micrometer</groupId>

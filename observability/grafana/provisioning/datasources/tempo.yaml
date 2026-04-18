@@ -5,7 +5,8 @@ datasources:
     type: tempo
     uid: faso-tempo-ds
     access: proxy
-    url: ${TEMPO_URL:-http://tempo:3200}
+    # Tempo runs on its bridge; host-published on 127.0.0.1:3200.
+    url: http://127.0.0.1:3200
     isDefault: false
     jsonData:
       httpMethod: GET
@@ -25,4 +26,4 @@ datasources:
         type: "Tag"
         tag: "http.path"
     editable: false
-    version: 1
+    version: 2

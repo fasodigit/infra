@@ -36,16 +36,16 @@ services:
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-lifecycle"
       - "--web.enable-remote-write-receiver"
+      # Bind Prometheus UI to loopback only (host network mode)
+      - "--web.listen-address=127.0.0.1:9090"
     volumes:
-      - ./config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
-      - ./config/alerts/:/etc/prometheus/alerts/:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus_data:/prometheus
-    ports:
-      - "9090:9090"
-    networks:
-      - observability
+    # Host network mode so Prometheus can scrape Java services on the host
+    # (containerized firewall blocks cross-bridge traffic to host ports)
+    network_mode: host
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:9090/-/healthy"]
       interval: 15s
       timeout: 5s
       retries: 3
@@ -62,10 +62,12 @@ services:
     command:
       - "-config.file=/etc/loki/local-config.yaml"
     volumes:
-      - ./config/loki.yaml:/etc/loki/local-config.yaml:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/loki.yaml:/etc/loki/local-config.yaml:ro
       - loki_data:/loki
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - observability
     healthcheck:
@@ -86,12 +88,14 @@ services:
     command:
       - "-config.file=/etc/tempo.yaml"
     volumes:
-      - ./config/tempo.yaml:/etc/tempo.yaml:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/tempo.yaml:/etc/tempo.yaml:ro
       - tempo_data:/tmp/tempo
     ports:
-      - "3200:3200"    # Tempo HTTP API
-      - "4317:4317"    # OTLP gRPC
-      - "4318:4318"    # OTLP HTTP
+      - "127.0.0.1:3200:3200"    # Tempo HTTP API
+      - "127.0.0.1:4317:4317"    # OTLP gRPC
+      - "127.0.0.1:4318:4318"    # OTLP HTTP
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     networks:
       - observability
     healthcheck:
@@ -112,12 +116,14 @@ services:
     command:
       - "--config=/etc/otel/config.yaml"
     volumes:
-      - ./config/otel-collector.yaml:/etc/otel/config.yaml:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/otel-collector.yaml:/etc/otel/config.yaml:ro
     ports:
-      - "4319:4317"    # OTLP gRPC (external facing — avoids clash with Tempo)
-      - "4320:4318"    # OTLP HTTP (external facing)
-      - "8889:8889"    # Prometheus exporter (collector self-metrics)
-      - "13133:13133"  # Health check
+      - "127.0.0.1:4319:4317"    # OTLP gRPC (external facing — avoids clash with Tempo)
+      - "127.0.0.1:4320:4318"    # OTLP HTTP (external facing)
+      - "127.0.0.1:8889:8889"    # Prometheus exporter (collector self-metrics)
+      - "127.0.0.1:13133:13133"  # Health check
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       tempo:
         condition: service_healthy
@@ -150,28 +156,18 @@ services:
       GF_INSTALL_PLUGINS: "grafana-piechart-panel,grafana-worldmap-panel"
       GF_FEATURE_TOGGLES_ENABLE: "traceToMetrics,correlations"
       GF_SERVER_ROOT_URL: "http://localhost:3000"
-      # Datasource env vars (read by provisioning templates)
-      PROMETHEUS_URL: "http://prometheus:9090"
-      LOKI_URL: "http://loki:3100"
-      TEMPO_URL: "http://tempo:3200"
+      # Bind Grafana to loopback only (host network mode)
+      GF_SERVER_HTTP_ADDR: "127.0.0.1"
     volumes:
       - grafana_data:/var/lib/grafana
-      - ./provisioning/datasources:/etc/grafana/provisioning/datasources:ro
-      - ./provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./dashboards:/var/lib/grafana/dashboards:ro
-    ports:
-      - "3000:3000"
-    depends_on:
-      prometheus:
-        condition: service_healthy
-      loki:
-        condition: service_healthy
-      tempo:
-        condition: service_healthy
-    networks:
-      - observability
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    # Host network so Grafana can reach Prometheus (also on host network)
+    # and host-bound Java services without bridge firewall restrictions.
+    network_mode: host
     healthcheck:
-      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1:3000/api/health"]
       interval: 15s
       timeout: 5s
       retries: 5

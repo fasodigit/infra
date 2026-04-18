@@ -12,6 +12,9 @@ spring:
   application:
     name: notifier-ms
 
+  profiles:
+    active: ${SPRING_PROFILES_ACTIVE:dev}
+
   # ── Database ────────────────────────────────────────────────
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:notifier}
@@ -43,7 +46,7 @@ spring:
 
   # ── Redpanda (Kafka-compatible protocol) ────────────────────
   kafka:
-    bootstrap-servers: ${KAFKA_BROKERS:redpanda:9092}
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:${KAFKA_BROKERS:redpanda:9092}}
     consumer:
       group-id: notifier-ms
       auto-offset-reset: earliest
@@ -61,6 +64,7 @@ spring:
     listener:
       ack-mode: MANUAL_IMMEDIATE
       concurrency: 3
+      auto-startup: ${FASO_KAFKA_ENABLED:false}
 
   # ── KAYA (sovereign in-memory store, Redis-protocol) ────────
   data:
@@ -74,9 +78,9 @@ spring:
           max-idle: 4
           min-idle: 1
 
-  # ── Mail (MailHog dev) ───────────────────────────────────────
+  # ── Mail (Mailpit dev) ───────────────────────────────────────
   mail:
-    host: ${SMTP_HOST:mailhog}
+    host: ${SMTP_HOST:mailpit}
     port: ${SMTP_PORT:1025}
     username: ${SMTP_USER:}
     password: ${SMTP_PASSWORD:}
@@ -97,17 +101,25 @@ spring:
       thread-name-prefix: notifier-async-
 
 # ── Actuator ────────────────────────────────────────────────────
+# NOTE: actuator exposed on the main server port (8803) so that
+# /actuator/health is reachable at http://localhost:8803/actuator/health
+# without needing a separate management port.
 management:
-  server:
-    port: 9090
   endpoints:
     web:
       exposure:
-        include: health,prometheus,info,metrics
+        include: "health,info,prometheus,metrics"
       base-path: /actuator
   endpoint:
     health:
-      show-details: always
+      show-details: when_authorized
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
   metrics:
     export:
       prometheus:
@@ -115,6 +127,15 @@ management:
     tags:
       application: notifier-ms
       environment: ${FASO_ENV:dev}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+  tracing:
+    sampling:
+      probability: 1.0
+  otlp:
+    tracing:
+      endpoint: http://localhost:4318/v1/traces
 
 # ── Resilience4j ────────────────────────────────────────────────
 resilience4j:
@@ -154,6 +175,45 @@ grpc:
   server:
     port: 9803
     enabled: false
+
+---
+# ── Dev profile — host-local bootstrap ─────────────────────────
+# Active by default (SPRING_PROFILES_ACTIVE=dev). Points at
+# host-exposed services (localhost Postgres, KAYA, Mailpit) and
+# keeps the Kafka listener stopped so there's no broker-spam when
+# Redpanda isn't running.
+spring:
+  config:
+    activate:
+      on-profile: dev
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/notifier
+    username: notifier
+    password: notifier
+
+  flyway:
+    baseline-on-migrate: true
+    baseline-version: 0
+
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:localhost:9092}
+    listener:
+      auto-startup: false
+
+  data:
+    redis:
+      url: redis://127.0.0.1:6380
+
+  mail:
+    host: localhost
+    port: 1025
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${AUTH_MS_JWKS_URI:http://localhost:8801/.well-known/jwks.json}
 
 ---
 # ── Production profile (Mailersend) ─────────────────────────────

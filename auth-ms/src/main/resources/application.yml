@@ -130,6 +130,15 @@ management:
   health:
     db:
       enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+    export:
+      prometheus:
+        enabled: true
   tracing:
     sampling:
       probability: 1.0

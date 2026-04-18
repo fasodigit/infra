@@ -5,7 +5,8 @@ datasources:
     type: loki
     uid: faso-loki-ds
     access: proxy
-    url: ${LOKI_URL:-http://loki:3100}
+    # Loki runs on its bridge; host-published on 127.0.0.1:3100.
+    url: http://127.0.0.1:3100
     isDefault: false
     jsonData:
       maxLines: 5000
@@ -21,4 +22,4 @@ datasources:
           url: "$${__value.raw}"
           urlDisplayLabel: "View in Tempo"
     editable: false
-    version: 1
+    version: 2
