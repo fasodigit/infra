@@ -24,7 +24,7 @@
 #   - notifier-ms             : 8803 (HTTP), 9090 (Actuator/Prometheus)
 #
 # Mail (dev):
-#   - MailHog                 : 1025 (SMTP), 8025 (Web UI)
+#   - Mailpit                 : 1025 (SMTP), 8025 (Web UI + REST API /api/v1/messages)
 #
 # Frontend:
 #   - poulets-bff (Next.js)   : 4800
@@ -205,15 +205,18 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: migrate sql -e --yes
-    environment:
-      DSN: postgres://faso@postgres:5432/kratos?sslmode=disable
-    secrets:
-      - postgres_password
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        PGPW=$$(cat /etc/faso-secrets/postgres_password.txt)
+        export DSN="postgres://faso:$${PGPW}@postgres:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4"
+        exec kratos migrate sql -e --yes
     volumes:
+      - ./secrets:/etc/faso-secrets:ro
       - ../../ory/kratos/config:/etc/config/kratos:ro
       - ../../ory/kratos/schemas:/etc/config/kratos-schemas:ro
     networks:
+      - faso-network
       - admin-network
     restart: "no"
 
@@ -227,23 +230,24 @@ services:
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
-    command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        PGPW=$$(cat /etc/faso-secrets/postgres_password.txt)
+        export DSN="postgres://faso:$${PGPW}@postgres:5432/kratos?sslmode=disable&max_conns=20&max_idle_conns=4"
+        export SECRETS_COOKIE=$$(cat /etc/faso-secrets/kratos_cookie_secret.txt)
+        export SECRETS_CIPHER=$$(cat /etc/faso-secrets/kratos_cipher_secret.txt)
+        exec kratos serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
     ports:
       - "4433:4433"
       - "127.0.0.1:4434:4434"   # Admin: loopback only
     environment:
-      DSN: postgres://faso@postgres:5432/kratos?sslmode=disable
       SERVE_PUBLIC_BASE_URL: http://localhost:4433/
       SERVE_ADMIN_BASE_URL: http://localhost:4434/
-      COURIER_SMTP_CONNECTION_URI: smtp://mailslurper:1025/?disable_starttls=true
+      COURIER_SMTP_CONNECTION_URI: smtp://mailpit:1025/?disable_starttls=true
       LOG_LEVEL: debug
-      SECRETS_COOKIE_FILE: /run/secrets/kratos_cookie_secret
-      SECRETS_CIPHER_FILE: /run/secrets/kratos_cipher_secret
-    secrets:
-      - postgres_password
-      - kratos_cookie_secret
-      - kratos_cipher_secret
     volumes:
+      - ./secrets:/etc/faso-secrets:ro
       - ../../ory/kratos/config:/etc/config/kratos:ro
       - ../../ory/kratos/schemas:/etc/config/kratos-schemas:ro
     healthcheck:
@@ -267,14 +271,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    command: migrate up --yes --config /etc/config/keto/keto.yml
-    environment:
-      DSN: postgres://faso@postgres:5432/keto?sslmode=disable
-    secrets:
-      - postgres_password
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        PGPW=$$(cat /etc/faso-secrets/postgres_password.txt)
+        export DSN="postgres://faso:$${PGPW}@postgres:5432/keto?sslmode=disable&max_conns=20&max_idle_conns=4"
+        exec keto migrate up --yes --config /etc/config/keto/keto.yml
     volumes:
+      - ./secrets:/etc/faso-secrets:ro
       - ../../ory/keto/config:/etc/config/keto:ro
     networks:
+      - faso-network
       - admin-network
     restart: "no"
 
@@ -288,16 +295,19 @@ services:
     depends_on:
       keto-migrate:
         condition: service_completed_successfully
-    command: serve --config /etc/config/keto/keto.yml
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        PGPW=$$(cat /etc/faso-secrets/postgres_password.txt)
+        export DSN="postgres://faso:$${PGPW}@postgres:5432/keto?sslmode=disable&max_conns=20&max_idle_conns=4"
+        exec keto serve --config /etc/config/keto/keto.yml
     ports:
       - "4466:4466"
       - "127.0.0.1:4467:4467"   # Write API: loopback only
     environment:
-      DSN: postgres://faso@postgres:5432/keto?sslmode=disable
       LOG_LEVEL: debug
-    secrets:
-      - postgres_password
     volumes:
+      - ./secrets:/etc/faso-secrets:ro
       - ../../ory/keto/config:/etc/config/keto:ro
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:4466/health/alive"]
@@ -311,20 +321,28 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # MailSlurper - Dev email testing
-  # Pin to immutable tag - latest-smtps is mutable
-  # TODO: pin digest via docker manifest inspect oryd/mailslurper:latest-smtps
+  # Mailpit - Dev email testing (replaces MailSlurper + MailHog)
+  # Clean REST API /api/v1/messages for Playwright OTP fetching
+  # TODO: pin digest via docker manifest inspect axllent/mailpit:v1.21.1
   # ---------------------------------------------------------------------------
-  mailslurper:
-    image: oryd/mailslurper:latest-smtps
-    container_name: faso-mailslurper
+  mailpit:
+    image: axllent/mailpit:v1.21.1
+    container_name: faso-mailpit
+    restart: unless-stopped
     ports:
-      - "4436:4436"
-      - "4437:4437"
-      - "1025:1025"
+      - "1025:1025"   # SMTP
+      - "8025:8025"   # HTTP UI + API REST
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8025/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
       - faso-network
-    restart: unless-stopped
 
   # ===========================================================================
   # GATEWAY
@@ -540,7 +558,7 @@ services:
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       KAFKA_BROKERS: redpanda:9092
       KAYA_URL: redis://kaya:6379
-      SMTP_HOST: mailhog
+      SMTP_HOST: mailpit
       SMTP_PORT: 1025
       MAIL_FROM: noreply@faso.gov.bf
       MAIL_FROM_NAME: "FASO DIGITALISATION"
@@ -559,17 +577,9 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # MailHog - SMTP dev server (dev only)
+  # MailHog service removed 2026-04-18 — superseded by mailpit (above).
+  # Mailpit exposes SMTP on 1025 and REST API + UI on 8025.
   # ---------------------------------------------------------------------------
-  mailhog:
-    image: docker.io/mailhog/mailhog:v1.0.1
-    container_name: faso-mailhog
-    ports:
-      - "1025:1025"   # SMTP
-      - "8025:8025"   # Web UI
-    networks:
-      - faso-network
-    restart: unless-stopped
 
   # ---------------------------------------------------------------------------
   # poulets-frontend - Angular 21 SPA

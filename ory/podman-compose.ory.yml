@@ -93,7 +93,7 @@ services:
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
-      mailslurper:
+      mailpit:
         condition: service_started
     command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
     ports:
@@ -103,7 +103,7 @@ services:
       DSN: postgres://kratos:kratos@postgres-kratos:5432/kratos?sslmode=disable
       SERVE_PUBLIC_BASE_URL: http://localhost:4433/
       SERVE_ADMIN_BASE_URL: http://localhost:4434/
-      COURIER_SMTP_CONNECTION_URI: smtp://mailslurper:1025/?disable_starttls=true
+      COURIER_SMTP_CONNECTION_URI: smtp://mailpit:1025/?disable_starttls=true
       LOG_LEVEL: debug
       LOG_LEAK_SENSITIVE_VALUES: "true"
       SECRETS_COOKIE: faso-dev-cookie-secret-change-in-production-minimum-32-chars
@@ -170,15 +170,24 @@ services:
     restart: unless-stopped
 
   # -------------------------------------------------------------------------
-  # MailSlurper (Dev email testing)
+  # Mailpit (Dev email testing) - replaces MailSlurper
+  # Clean REST API /api/v1/messages for Playwright OTP fetching
   # -------------------------------------------------------------------------
-  mailslurper:
-    image: oryd/mailslurper:latest-smtps
-    container_name: faso-mailslurper
+  mailpit:
+    image: axllent/mailpit:v1.21.1
+    container_name: faso-mailpit
     ports:
-      - "4436:4436"   # Web UI
-      - "4437:4437"   # API
       - "1025:1025"   # SMTP
+      - "8025:8025"   # HTTP UI + REST API
+    environment:
+      MP_MAX_MESSAGES: 5000
+      MP_SMTP_AUTH_ACCEPT_ANY: 1
+      MP_SMTP_AUTH_ALLOW_INSECURE: 1
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8025/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
     networks:
       - faso-ory
     restart: unless-stopped

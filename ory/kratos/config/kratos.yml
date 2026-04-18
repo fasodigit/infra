@@ -172,9 +172,9 @@ hashers:
 # ---------------------------------------------------------------------------
 secrets:
   cookie:
-    - "{{ env "SECRETS_COOKIE" }}"
+    - '{{ env "SECRETS_COOKIE" }}'
   cipher:
-    - "{{ env "SECRETS_CIPHER" }}"
+    - '{{ env "SECRETS_CIPHER" }}'
 
 # ---------------------------------------------------------------------------
 # Ciphers
