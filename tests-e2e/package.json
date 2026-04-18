@@ -1,0 +1,33 @@
+{
+  "name": "faso-tests-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test --project=chromium-headless",
+    "test:smoke": "playwright test --project=chromium-headless -g @smoke",
+    "test:acceptance": "WIPE_IDENTITIES=true playwright test --project=chromium-headless tests/01-signup tests/02-security tests/03-profile tests/04-business --workers=1 --retries=2",
+    "test:load": "playwright test tests/05-load",
+    "test:ui": "playwright test --ui",
+    "test:debug": "PWDEBUG=1 playwright test",
+    "test:chrome": "playwright test --project=chrome-headless-new",
+    "test:chrome:smoke": "playwright test --project=chrome-headless-new -g @smoke",
+    "simulation": "bun run scripts/run-simulation.ts --project=chrome-headless-new",
+    "simulation:quick": "bun run scripts/run-simulation.ts --project=chromium-headless --max-iterations=3",
+    "load:small": "SIM_BATCH=10 SIM_TX_PER_CLIENT=2 playwright test tests/05-load",
+    "load:medium": "SIM_BATCH=100 SIM_TX_PER_CLIENT=3 playwright test tests/05-load --workers=8",
+    "load:full": "SIM_BATCH=1000 SIM_TX_PER_CLIENT=5 playwright test tests/05-load --workers=20",
+    "classify": "bun run scripts/classify-failures.ts",
+    "report": "playwright show-report reports/html",
+    "analyze": "bun run scripts/analyze-timings.ts",
+    "install-browsers": "playwright install chromium --with-deps"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.51.0",
+    "@faker-js/faker": "^9.3.0",
+    "@types/node": "^22.0.0",
+    "otplib": "^12.0.1",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
