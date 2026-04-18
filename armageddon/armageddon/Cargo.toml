@@ -19,6 +19,13 @@ armageddon-nexus = { workspace = true }
 armageddon-veil = { workspace = true }
 armageddon-wasm = { workspace = true }
 armageddon-ai = { workspace = true }
+armageddon-quic = { workspace = true }
+armageddon-mesh = { workspace = true }
+armageddon-xds = { workspace = true }
+armageddon-lb = { workspace = true }
+armageddon-retry = { workspace = true }
+armageddon-cache = { workspace = true }
+armageddon-admin = { workspace = true }
 tokio = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { workspace = true }
@@ -31,3 +38,10 @@ anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 redis = { workspace = true }
+prometheus = { workspace = true }
+async-trait = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true }
+anyhow = { workspace = true }
+tracing-subscriber = { workspace = true }

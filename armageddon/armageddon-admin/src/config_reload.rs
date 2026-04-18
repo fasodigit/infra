@@ -198,6 +198,16 @@ mod tests {
             ext_authz: ExtAuthzConfig::default(),
             xds: XdsEndpoint::default(),
             webhooks: Default::default(),
+            // Vague 1 fields — all optional/defaulted
+            quic: None,
+            mesh: None,
+            xds_consumer: None,
+            lb: Default::default(),
+            retry: Default::default(),
+            cache: None,
+            admin: None,
+            websocket_enabled: false,
+            grpc_web_enabled: false,
         }
     }
 

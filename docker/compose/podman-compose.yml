@@ -108,27 +108,30 @@ services:
     restart: unless-stopped
 
   # ---------------------------------------------------------------------------
-  # KAYA - In-Memory Database (Redis-compatible)
+  # KAYA - In-Memory Database (sovereign Redis replacement)
+  # Built from INFRA/kaya Rust workspace (23 crates, RESP3 + gRPC + Prometheus)
   # ---------------------------------------------------------------------------
   kaya:
     build:
       context: ../..
       dockerfile: docker/images/Containerfile.kaya
+    image: faso/kaya:dev
     container_name: faso-kaya
     ports:
-      - "6380:6379"
+      - "127.0.0.1:6380:6379"   # RESP3 (Redis-compatible protocol)
+      - "127.0.0.1:6381:6381"   # gRPC API
+      - "127.0.0.1:9100:9100"   # Prometheus metrics
     environment:
+      RUST_LOG: "info,kaya=debug"
       KAYA_BIND: "0.0.0.0"
-      KAYA_PORT: "6379"
-      KAYA_LOG_LEVEL: "info"
-      KAYA_MAX_MEMORY: "512mb"
-      KAYA_EVICTION_POLICY: "allkeys-lru"
+    volumes:
+      - kaya-data:/var/lib/kaya
     healthcheck:
-      test: ["CMD", "/usr/local/bin/kaya-cli", "ping"]
+      test: ["CMD", "/usr/local/bin/kaya-cli", "--port", "6379", "ping"]
       interval: 10s
-      timeout: 5s
+      timeout: 3s
       retries: 5
-      start_period: 10s
+      start_period: 30s
     networks:
       - faso-network
       - admin-network
@@ -600,6 +603,9 @@ volumes:
   postgres-data:
     driver: local
     name: faso-postgres-data
+  kaya-data:
+    driver: local
+    name: faso-kaya-data
 
 # =============================================================================
 # Networks

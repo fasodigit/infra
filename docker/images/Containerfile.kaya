@@ -1,90 +1,96 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
 # =============================================================================
-# Dockerfile - KAYA In-Memory Database
+# Containerfile - KAYA In-Memory Database (sovereign Redis replacement)
 # =============================================================================
-# Multi-stage build: Rust compilation -> minimal Debian runtime
+# Multi-stage build:
+#   Stage 1 (chef)     : install cargo-chef for optimal layer caching
+#   Stage 2 (planner)  : generate recipe.json from workspace manifests
+#   Stage 3 (builder)  : cook deps then compile final binaries
+#   Stage 4 (runtime)  : debian:bookworm-slim with only the two binaries
+#
+# Build context root: INFRA/   (one level above kaya/)
+#   podman build -f docker/images/Containerfile.kaya -t faso/kaya:dev .
+# Or via podman-compose (context: ../..  from docker/compose/):
+#   podman-compose -f podman-compose.yml build kaya
 # =============================================================================
 
 # ---------------------------------------------------------------------------
-# Stage 1: Build
+# Stage 1: cargo-chef installer
 # ---------------------------------------------------------------------------
-FROM rust:1.85-slim AS builder
+FROM rust:1.92-slim AS chef
 
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     cmake \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && cargo install cargo-chef --version 0.1.67 --locked
 
 WORKDIR /build
 
-# Copy workspace manifests for dependency caching
-COPY kaya/Cargo.toml kaya/Cargo.lock ./
+# ---------------------------------------------------------------------------
+# Stage 2: dependency planner
+# ---------------------------------------------------------------------------
+FROM chef AS planner
 
-# Copy all member Cargo.toml files
-COPY kaya/src/store/Cargo.toml ./src/store/Cargo.toml
-COPY kaya/src/protocol/Cargo.toml ./src/protocol/Cargo.toml
-COPY kaya/src/network/Cargo.toml ./src/network/Cargo.toml
-COPY kaya/src/commands/Cargo.toml ./src/commands/Cargo.toml
-COPY kaya/src/relational/Cargo.toml ./src/relational/Cargo.toml
-COPY kaya/src/streams/Cargo.toml ./src/streams/Cargo.toml
-COPY kaya/src/cluster/Cargo.toml ./src/cluster/Cargo.toml
-COPY kaya/src/sync/Cargo.toml ./src/sync/Cargo.toml
-COPY kaya/src/views/Cargo.toml ./src/views/Cargo.toml
-COPY kaya/src/scripting/Cargo.toml ./src/scripting/Cargo.toml
-COPY kaya/src/compress/Cargo.toml ./src/compress/Cargo.toml
-COPY kaya/src/security/Cargo.toml ./src/security/Cargo.toml
-COPY kaya/src/observe/Cargo.toml ./src/observe/Cargo.toml
-COPY kaya/src/cli/Cargo.toml ./src/cli/Cargo.toml
-COPY kaya/src/server/Cargo.toml ./src/server/Cargo.toml
-COPY kaya/src/bench/Cargo.toml ./src/bench/Cargo.toml
-COPY kaya/src/sdk/Cargo.toml ./src/sdk/Cargo.toml
-
-# Create dummy source files for dependency caching
-RUN for d in store protocol network commands relational streams cluster \
-             sync views scripting compress security observe cli server bench sdk; do \
-        mkdir -p src/$d/src && echo "fn main() {}" > src/$d/src/lib.rs; \
-    done && \
-    echo "fn main() {}" > src/server/src/main.rs && \
-    echo "fn main() {}" > src/cli/src/main.rs
-
-# Build dependencies only
-RUN cargo build --release 2>/dev/null || true
-
-# Copy actual source code
+# Copy the full kaya workspace (manifests + sources) for recipe generation
 COPY kaya/ .
 
-# Touch all source files to invalidate Cargo's fingerprint cache
-# (the dummy lib.rs files from the dependency caching step may have
-# the same mtime as the real sources after COPY)
-RUN find src -name "*.rs" -exec touch {} + && touch Cargo.toml Cargo.lock
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build server and CLI binaries
+# ---------------------------------------------------------------------------
+# Stage 3: builder
+# ---------------------------------------------------------------------------
+FROM chef AS builder
+
+# Restore only the dependency layer (cache-optimal: rebuilt only when
+# Cargo.lock or Cargo.toml files change)
+COPY --from=planner /build/recipe.json recipe.json
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Copy real sources and compile the two target binaries
+COPY kaya/ .
+
+# Touch sources to ensure Cargo rebuilds from real code, not the chef stubs
+RUN find src -name "*.rs" -exec touch {} +
+
 RUN cargo build --release --bin kaya-server --bin kaya-cli
 
 # ---------------------------------------------------------------------------
-# Stage 2: Runtime
+# Stage 4: minimal runtime image (debian:bookworm-slim)
 # ---------------------------------------------------------------------------
 FROM debian:bookworm-slim
 
+# wget is needed for the HEALTHCHECK in the compose and for kaya-cli to work
 RUN apt-get update && apt-get install -y \
     ca-certificates \
-    wget \
     && rm -rf /var/lib/apt/lists/*
 
-RUN groupadd -r kaya && useradd -r -g kaya kaya
+# Dedicated non-root user
+RUN groupadd -r kaya && useradd -r -g kaya -d /var/lib/kaya -s /usr/sbin/nologin kaya
 
+# Binaries
 COPY --from=builder /build/target/release/kaya-server /usr/local/bin/kaya-server
-COPY --from=builder /build/target/release/kaya-cli /usr/local/bin/kaya-cli
-COPY kaya/config /etc/kaya
+COPY --from=builder /build/target/release/kaya-cli    /usr/local/bin/kaya-cli
 
-RUN chmod +x /usr/local/bin/kaya-server /usr/local/bin/kaya-cli && \
-    mkdir -p /data/kaya && chown -R kaya:kaya /data/kaya
+# Default config: mounted/overridden at runtime, but ship a sane default
+COPY kaya/config/default.yaml /etc/kaya/default.yaml
+
+# Data directory for WAL + snapshots when persistence.enabled=true
+RUN mkdir -p /var/lib/kaya && chown -R kaya:kaya /var/lib/kaya
 
 USER kaya
 
-EXPOSE 6379
+# RESP3 (Redis-compatible) | gRPC | Prometheus metrics
+EXPOSE 6379 6381 9100
 
-VOLUME ["/data/kaya"]
+VOLUME ["/var/lib/kaya"]
+
+# Health probe: kaya-cli speaks RESP3 natively, no curl/wget needed
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=5 \
+  CMD ["/usr/local/bin/kaya-cli", "--port", "6379", "ping"]
 
 ENTRYPOINT ["/usr/local/bin/kaya-server"]
-CMD ["--config", "/etc/kaya/kaya.yml"]
+# --port 6379  : listen on the standard internal port (host maps 6380->6379)
+# --bind 0.0.0.0 : accept connections from all container interfaces
+CMD ["--config", "/etc/kaya/default.yaml", "--port", "6379", "--bind", "0.0.0.0"]

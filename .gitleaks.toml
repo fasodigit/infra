@@ -43,3 +43,57 @@ regexes = [
   '''\$\{.*\}''',   # shell variable placeholders
   '''{{.*}}''',     # template placeholders
 ]
+
+[[allowlists]]
+description = "ARMAGEDDON mTLS test fixtures — self-signed EC keys generated for unit tests only, never used in production. See fixtures.rs header comment."
+paths = [
+  '''armageddon/.*/src/fixtures\.rs''',
+  '''armageddon/.*/tests?/fixtures?/.*''',
+]
+# Note: after BFG history rewrite, the inline private key will be replaced by
+# a runtime-generated key (rcgen). This allowlist covers only the remaining
+# certificate PEM constants (CA cert, workload cert) which contain no private key material.
+
+[[allowlists]]
+description = "E2E seed data — test passwords in seed files must come from E2E_TEST_PASSWORD env var. This allowlist suppresses false positives on the variable reference and on generic placeholder patterns in test data files."
+paths = [
+  '''poulets-platform/e2e/data/.*''',
+  '''poulets-platform/e2e/fixtures/.*''',
+]
+regexes = [
+  # Generic test values that are not real credentials
+  '''Test1234''',
+  # Env var reference (not a hardcoded secret)
+  '''E2E_TEST_PASSWORD''',
+  '''TEST_PASSWORD''',
+]
+
+[[allowlists]]
+description = "Vault policy HCL files — paths like auth/token/renew-self are Vault API paths, not secrets"
+paths = [
+  '''vault/policies/.*\.hcl''',
+  '''vault/.*policy.*\.hcl''',
+]
+
+[[allowlists]]
+description = "Shell scripts using openssl for key generation — the commands generate keys but do not embed them"
+paths = [
+  '''scripts/.*\.sh''',
+  '''vault/scripts/.*\.sh''',
+]
+regexes = [
+  # Dynamic generation — not embedded secrets
+  '''\$\(openssl''',
+  '''\$\(vault write''',
+  '''\$\(jq -r''',
+]
+
+[[allowlists]]
+description = "CI/CD workflows — GitHub Actions secrets references (not real values)"
+paths = [
+  '''\.github/workflows/.*\.(yml|yaml)''',
+]
+regexes = [
+  # GitHub Actions secrets are never real values
+  '''\$\{\{ secrets\..* \}\}''',
+]

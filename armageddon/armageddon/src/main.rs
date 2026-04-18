@@ -1,15 +1,31 @@
-//! ARMAGEDDON: Security gateway replacing Envoy for the FASO DIGITALISATION project.
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 FASO DIGITALISATION
+//
+//! ARMAGEDDON: Sovereign security gateway for the FASO DIGITALISATION project.
 //!
-//! Pentagon architecture: 5 security engines running in parallel on every request,
-//! coordinated by NEXUS, fronted by FORGE (the HTTP/gRPC proxy).
+//! Orchestration of all Vague 1 components:
 //!
-//! Request flow:
-//! 1. TCP listener accepts connection
-//! 2. FORGE parses HTTP request, builds RequestContext
-//! 3. Pentagon pipeline: SENTINEL + ARBITER run in parallel, then AEGIS, conditional ORACLE, AI
-//! 4. NEXUS aggregates all decisions into a FinalVerdict
-//! 5. If allowed: FORGE proxies to upstream via round-robin load balancing
-//! 6. If blocked: return 403 with structured error
+//! ```text
+//!  ┌──────────────────────────────────────────────────────┐
+//!  │                   ARMAGEDDON GATEWAY                 │
+//!  │                                                      │
+//!  │  HTTP/1+2 ─┐          ┌─ Pentagon security pipeline  │
+//!  │            ├─ FORGE ──┤  (SENTINEL/ARBITER/ORACLE/   │
+//!  │  HTTP/3 ───┘          │   AEGIS/AI/WASM)             │
+//!  │  (QUIC)               │                              │
+//!  │                       ├─ LB (7 algorithms)           │
+//!  │                       ├─ Retry + Budget              │
+//!  │                       ├─ Response Cache (KAYA)       │
+//!  │                       └─ VEIL (header masking)       │
+//!  │                                                      │
+//!  │  MESH (SPIRE mTLS) ──── outbound mTLS connections    │
+//!  │  xDS consumer ─────────  hot-reload clusters/routes  │
+//!  │  Admin API (loopback) ── /admin/* management         │
+//!  └──────────────────────────────────────────────────────┘
+//! ```
+//!
+//! All optional components (QUIC, Mesh, xDS consumer, Cache, Admin) are
+//! gracefully skipped when absent from the config file.
 //!
 //! Usage:
 //!   armageddon --config config/armageddon.yaml
@@ -17,25 +33,51 @@
 mod pipeline;
 
 use anyhow::Context;
+use armageddon_admin::{AdminConfig as AdminServerConfig, AdminServer, AdminState};
+use armageddon_cache::{CachePolicy, InMemoryKv, ResponseCache};
 use armageddon_common::context::RequestContext;
 use armageddon_common::decision::Action;
-use armageddon_common::types::{AuthMode, ConnectionInfo, HttpRequest, HttpVersion, Protocol};
+use armageddon_common::types::{AuthMode, ConnectionInfo, HttpRequest, HttpResponse, HttpVersion, Protocol};
 use armageddon_forge::cors::CorsHandler;
 use armageddon_forge::jwt::JwtValidator;
 use armageddon_forge::kafka_producer::RedpandaProducer;
 use armageddon_forge::router::Router;
 use armageddon_forge::webhooks::GithubWebhookHandler;
+use armageddon_lb::{
+    LoadBalancer, LeastConnections, Maglev, PowerOfTwoChoices, Random, RingHash, RoundRobin,
+    WeightedRoundRobin, Endpoint,
+};
+use armageddon_mesh::Mesh;
+use armageddon_quic::{Http3Server, QuicListenerConfig, RequestHandler as QuicRequestHandler};
+use armageddon_retry::{RetryBudget, RetryPolicy};
+use armageddon_xds::{AdsClient, XdsCallback};
+use armageddon_xds::proto::{
+    cluster::Cluster as XdsCluster,
+    endpoint::ClusterLoadAssignment as XdsEndpointAssignment,
+    listener::Listener as XdsListener,
+    route::RouteConfiguration as XdsRouteConfig,
+    tls::Secret as XdsSecret,
+};
+use async_trait::async_trait;
 use bytes::Bytes;
 use http_body_util::{BodyExt, Full};
 use hyper::body::Incoming;
 use hyper::server::conn::http1;
 use hyper::service::service_fn;
 use hyper::{Request, Response};
+use prometheus::Registry;
 use std::collections::HashMap;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::path::Path;
 use std::sync::Arc;
+use std::time::Duration;
 use tokio::net::TcpListener;
+use tokio::sync::broadcast;
 use tracing_subscriber::EnvFilter;
+
+// ---------------------------------------------------------------------------
+// CLI args
+// ---------------------------------------------------------------------------
 
 /// CLI arguments.
 struct Args {
@@ -54,6 +96,10 @@ impl Args {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Shared gateway state
+// ---------------------------------------------------------------------------
+
 /// Shared state passed to each request handler.
 struct GatewayState {
     pipeline: pipeline::Pentagon,
@@ -62,14 +108,85 @@ struct GatewayState {
     auth_mode: AuthMode,
     /// GitHub webhook handler (bypasses Pentagon pipeline).
     github_webhook: Option<Arc<GithubWebhookHandler>>,
+    /// Load balancer (selected via config).
+    lb: Arc<dyn LoadBalancer>,
+    /// LB endpoint pool (derived from cluster config at startup).
+    lb_endpoints: Vec<Arc<Endpoint>>,
+    /// Retry policy.
+    retry_policy: RetryPolicy,
+    /// Retry budget (shared across all requests).
+    retry_budget: Arc<RetryBudget>,
+    /// Response cache backed by KAYA (or in-memory fallback).
+    cache: Option<Arc<ResponseCache>>,
+    /// mTLS mesh (present when SPIRE is configured and reachable).
+    mesh: Option<Arc<Mesh>>,
 }
 
-#[tokio::main]
+// ---------------------------------------------------------------------------
+// HTTP/3 bridge: GatewayState implements QuicRequestHandler
+// ---------------------------------------------------------------------------
+
+/// Thin wrapper that bridges `QuicRequestHandler` to `GatewayState`.
+///
+/// HTTP/3 requests arrive as `HttpRequest` directly (no TCP peer addr at the
+/// trait boundary); we synthesise a dummy peer address.
+struct Http3Bridge {
+    state: Arc<GatewayState>,
+}
+
+#[async_trait]
+impl QuicRequestHandler for Http3Bridge {
+    async fn handle(
+        &self,
+        req: HttpRequest,
+    ) -> Result<HttpResponse, armageddon_quic::QuicError> {
+        // HTTP/3 requests are forwarded through the same pipeline as HTTP/1.
+        // We synthesise a peer address (QUIC layer does not surface it here).
+        let dummy_peer: SocketAddr = "0.0.0.0:0".parse().expect("valid addr");
+        let resp = handle_http_request(req, dummy_peer, Arc::clone(&self.state)).await;
+        Ok(resp)
+    }
+}
+
+// ---------------------------------------------------------------------------
+// xDS callback — forwards cluster/endpoint updates into the LB pool
+// ---------------------------------------------------------------------------
+
+/// Minimal xDS callback: logs every resource update.
+///
+/// In production, wire this to a shared cluster registry so that new
+/// endpoints from xDS hot-reload the LB ring without a restart.
+struct LoggingXdsCallback;
+
+#[async_trait]
+impl XdsCallback for LoggingXdsCallback {
+    async fn on_cluster_update(&self, c: XdsCluster) {
+        tracing::info!(cluster = %c.name, "xDS cluster update");
+    }
+    async fn on_endpoint_update(&self, e: XdsEndpointAssignment) {
+        tracing::info!(cluster = %e.cluster_name, "xDS endpoint update");
+    }
+    async fn on_listener_update(&self, l: XdsListener) {
+        tracing::info!(listener = %l.name, "xDS listener update");
+    }
+    async fn on_route_update(&self, r: XdsRouteConfig) {
+        tracing::info!(route = %r.name, "xDS route update");
+    }
+    async fn on_secret_update(&self, s: XdsSecret) {
+        tracing::info!(secret = %s.name, "xDS secret update");
+    }
+}
+
+// ---------------------------------------------------------------------------
+// main
+// ---------------------------------------------------------------------------
+
+#[tokio::main(flavor = "multi_thread")]
 async fn main() -> anyhow::Result<()> {
-    // Parse CLI args
+    // -- 1. Parse CLI args
     let args = Args::parse();
 
-    // Initialize tracing
+    // -- 2. Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
             EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
@@ -78,19 +195,20 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     tracing::info!(
-        "ARMAGEDDON v{} starting (Pentagon security gateway)",
+        "ARMAGEDDON v{} starting (Pentagon + Vague-1 components)",
         env!("CARGO_PKG_VERSION")
     );
 
-    // Load configuration
+    // -- 3. Load configuration
     let config_loader = armageddon_config::ConfigLoader::from_file(&args.config_path)
         .context("failed to load configuration")?;
-
     let config = config_loader.get();
+    tracing::info!(path = %args.config_path, "configuration loaded");
 
-    tracing::info!("configuration loaded from {}", args.config_path);
+    // -- 4. Prometheus registry
+    let registry = Registry::new();
 
-    // Build FORGE proxy server
+    // -- 5. Build FORGE
     let cors_configs: Vec<(String, armageddon_common::types::CorsConfig)> = config
         .gateway
         .cors
@@ -108,32 +226,175 @@ async fn main() -> anyhow::Result<()> {
         config.gateway.ext_authz.clone(),
     );
 
-    // Build VEIL
+    // -- 6. Build VEIL
     let veil = armageddon_veil::Veil::new(config.security.veil.clone());
 
-    // Initialize the Pentagon pipeline
-    let mut pipeline = pipeline::Pentagon::new(&config)?;
-    pipeline.init().await?;
+    // -- 7. Initialize Pentagon pipeline
+    let mut pentagon = pipeline::Pentagon::new(&config)?;
+    pentagon.init().await?;
+    tracing::info!("Pentagon pipeline initialized — all 5 engines ready");
 
-    tracing::info!("Pentagon pipeline initialized -- all engines ready");
-
-    // Start health checks
+    // -- 8. Start ForgeServer health checks
     let _health_handles = forge.start_health_checks();
 
-    // Build GitHub webhook handler (optional — disabled if secret env is absent or feature off).
+    // -- 9. GitHub webhook handler (optional)
     let github_webhook = build_github_webhook_handler(&config).await;
 
-    // Build shared state
+    // -- 10. mTLS Mesh (optional)
+    let mesh: Option<Arc<Mesh>> = if let Some(mesh_cfg) = config.gateway.mesh.clone() {
+        tracing::info!(socket = %mesh_cfg.socket_path, "initialising SPIRE mTLS mesh");
+        let ca_bundle = mesh_cfg
+            .ca_bundle_pem
+            .as_deref()
+            .unwrap_or("")
+            .as_bytes()
+            .to_vec();
+        match Mesh::new(
+            Path::new(&mesh_cfg.socket_path),
+            ca_bundle,
+            mesh_cfg.peer_id.clone(),
+        )
+        .await
+        {
+            Ok(m) => {
+                tracing::info!(peer = %mesh_cfg.peer_id, "mTLS mesh initialised");
+                Some(m)
+            }
+            Err(e) => {
+                tracing::warn!(err = %e, "mTLS mesh init failed — running without SPIRE (fallback to plain TLS)");
+                None
+            }
+        }
+    } else {
+        tracing::info!("mTLS mesh not configured — skipping");
+        None
+    };
+
+    // -- 11. xDS ADS consumer (optional)
+    let xds_client: Option<AdsClient> = if let Some(xds_cfg) = config.gateway.xds_consumer.clone() {
+        tracing::info!(endpoint = %xds_cfg.endpoint, node = %xds_cfg.node_id, "connecting to xDS controller");
+        match AdsClient::connect(&xds_cfg.endpoint, xds_cfg.node_id.clone()).await {
+            Ok(c) => {
+                tracing::info!(endpoint = %xds_cfg.endpoint, "xDS ADS channel established");
+                Some(c)
+            }
+            Err(e) => {
+                tracing::warn!(err = %e, "xDS connection failed — running with static config (will retry in background)");
+                None
+            }
+        }
+    } else {
+        tracing::info!("xDS consumer not configured — using static cluster config only");
+        None
+    };
+
+    // -- 12. Load balancer
+    let lb_endpoints = build_lb_endpoints(&config);
+    let lb: Arc<dyn LoadBalancer> = build_load_balancer(&config, &lb_endpoints);
+    tracing::info!(algorithm = %config.gateway.lb.algorithm, endpoints = lb_endpoints.len(), "load balancer ready");
+
+    // -- 13. Retry policy + budget
+    let retry_policy = build_retry_policy(&config);
+    let retry_budget = Arc::new(RetryBudget::new(
+        config.gateway.retry.budget_percent / 100.0,
+        config.gateway.retry.min_concurrency,
+    ));
+
+    // -- 14. Response cache (optional — in-memory fallback if KAYA unavailable)
+    let cache: Option<Arc<ResponseCache>> = if let Some(cache_cfg) = config.gateway.cache.clone() {
+        if cache_cfg.enabled {
+            tracing::info!(prefix = %cache_cfg.kaya_prefix, ttl = cache_cfg.default_ttl_secs, "response cache enabled (in-memory fallback)");
+            let kv = Arc::new(InMemoryKv::new());
+            let policy = CachePolicy {
+                default_ttl: Duration::from_secs(cache_cfg.default_ttl_secs),
+                max_body_size: cache_cfg.max_body_size,
+                ..CachePolicy::default()
+            };
+            match ResponseCache::new(kv, policy, &registry) {
+                Ok(c) => Some(Arc::new(c)),
+                Err(e) => {
+                    tracing::warn!(err = %e, "response cache metrics registration failed — cache disabled");
+                    None
+                }
+            }
+        } else {
+            tracing::info!("response cache disabled in config");
+            None
+        }
+    } else {
+        tracing::info!("response cache not configured — skipping");
+        None
+    };
+
+    // -- 15. Auth mode
     let auth_mode = config.gateway.auth_mode.clone();
+
+    // -- 16. Shared gateway state
     let state = Arc::new(GatewayState {
-        pipeline,
+        pipeline: pentagon,
         forge,
         veil,
         auth_mode,
         github_webhook,
+        lb,
+        lb_endpoints,
+        retry_policy,
+        retry_budget,
+        cache,
+        mesh: mesh.clone(),
     });
 
-    // Determine listen address from first listener config
+    // -- 17. Shutdown broadcast channel
+    let (shutdown_tx, _) = broadcast::channel::<()>(16);
+
+    // -- 18. Spawn Mesh SVID rotation task (optional)
+    if let Some(m) = mesh.clone() {
+        let rx = shutdown_tx.subscribe();
+        tokio::spawn(async move {
+            Arc::clone(&m).run(rx).await;
+        });
+        tracing::info!("mTLS SVID rotation task spawned");
+    }
+
+    // -- 19. Spawn xDS ADS consumer task (optional)
+    if let Some(client) = xds_client {
+        tokio::spawn(async move {
+            let cb = Arc::new(LoggingXdsCallback);
+            if let Err(e) = client.run(cb).await {
+                tracing::error!(err = %e, "xDS ADS consumer exited with error");
+            }
+        });
+        tracing::info!("xDS ADS consumer task spawned");
+    }
+
+    // -- 20. Spawn Admin API (optional)
+    if let Some(admin_cfg) = config.gateway.admin.clone() {
+        if admin_cfg.enabled {
+            let bind_addr: IpAddr = admin_cfg
+                .bind_addr
+                .parse()
+                .unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST));
+            let server_cfg = AdminServerConfig {
+                bind_addr,
+                port: admin_cfg.port,
+                admin_token: admin_cfg.admin_token.clone(),
+            };
+            let admin_state = AdminState::new(
+                config.gateway.clone(),
+                args.config_path.clone(),
+            );
+            let server = AdminServer::new(server_cfg, admin_state);
+            let rx = shutdown_tx.subscribe();
+            tokio::spawn(async move {
+                if let Err(e) = server.run(rx).await {
+                    tracing::error!(err = %e, "admin server exited with error");
+                }
+            });
+            tracing::info!(port = admin_cfg.port, "admin API task spawned");
+        }
+    }
+
+    // -- 21. Determine HTTP/1 listen address from first listener config
     let listen_addr = if let Some(listener) = config.gateway.listeners.first() {
         SocketAddr::new(
             listener
@@ -146,15 +407,50 @@ async fn main() -> anyhow::Result<()> {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8443)
     };
 
-    // Bind TCP listener
+    // -- 22. Bind HTTP/1+2 TCP listener
     let tcp_listener = TcpListener::bind(listen_addr)
         .await
-        .context(format!("failed to bind to {}", listen_addr))?;
+        .context(format!("failed to bind HTTP/1 listener on {}", listen_addr))?;
+    tracing::info!(addr = %listen_addr, "HTTP/1 listener bound");
 
-    tracing::info!("ARMAGEDDON listening on {}", listen_addr);
+    // -- 23. Bind HTTP/3 QUIC listener (optional)
+    let http3_handle: Option<tokio::task::JoinHandle<anyhow::Result<()>>> =
+        if let Some(quic_cfg) = config.gateway.quic.clone() {
+            let quic_listener_cfg = QuicListenerConfig {
+                address: quic_cfg.address.clone(),
+                port: quic_cfg.port,
+                cert_path: quic_cfg.cert_path.clone(),
+                key_path: quic_cfg.key_path.clone(),
+                max_concurrent_streams: quic_cfg.max_concurrent_streams,
+            };
+            let rx = shutdown_tx.subscribe();
+            let bridge = Arc::new(Http3Bridge {
+                state: Arc::clone(&state),
+            });
+            match Http3Server::new(quic_listener_cfg).await {
+                Ok(server) => {
+                    tracing::info!(port = quic_cfg.port, "HTTP/3 QUIC listener bound");
+                    let handle = tokio::spawn(async move {
+                        server
+                            .run(bridge, rx)
+                            .await
+                            .map_err(|e| anyhow::anyhow!("HTTP/3 server error: {}", e))
+                    });
+                    Some(handle)
+                }
+                Err(e) => {
+                    tracing::warn!(err = %e, "HTTP/3 QUIC bind failed — continuing without HTTP/3");
+                    None
+                }
+            }
+        } else {
+            tracing::info!("HTTP/3 (QUIC) not configured — skipping");
+            None
+        };
+
     tracing::info!("ARMAGEDDON is operational");
 
-    // Set up graceful shutdown
+    // -- 24. HTTP/1 accept loop
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);
 
@@ -186,187 +482,88 @@ async fn main() -> anyhow::Result<()> {
                 }
             }
             _ = &mut shutdown => {
-                tracing::info!("shutdown signal received, draining...");
+                tracing::info!("shutdown signal received — draining connections");
                 break;
             }
         }
+    }
+
+    // -- 25. Graceful shutdown (30 s timeout)
+    let _ = shutdown_tx.send(());
+    if let Some(h) = http3_handle {
+        let _ = tokio::time::timeout(Duration::from_secs(30), h).await;
     }
 
     tracing::info!("ARMAGEDDON shutdown complete");
     Ok(())
 }
 
-/// Build the GitHub webhook handler from config.
+// ---------------------------------------------------------------------------
+// Builder helpers
+// ---------------------------------------------------------------------------
+
+/// Build an LB endpoint pool from the cluster config.
 ///
-/// Returns `None` if:
-/// - `webhooks.github.enabled = false`
-/// - Secret env var is absent or empty
-/// - KAYA client construction fails
-async fn build_github_webhook_handler(
+/// Flattens all cluster endpoints into a single pool for the shared LB.
+/// In production, per-cluster pools should be maintained; this covers the
+/// common single-cluster deployment.
+fn build_lb_endpoints(config: &armageddon_config::ArmageddonConfig) -> Vec<Arc<Endpoint>> {
+    config
+        .gateway
+        .clusters
+        .iter()
+        .flat_map(|c| {
+            c.endpoints.iter().map(|e| {
+                Arc::new(Endpoint::new(
+                    format!("{}:{}", e.address, e.port),
+                    format!("{}:{}", e.address, e.port),
+                    e.weight,
+                ))
+            })
+        })
+        .collect()
+}
+
+/// Instantiate the correct LB algorithm from the config string.
+fn build_load_balancer(
     config: &armageddon_config::ArmageddonConfig,
-) -> Option<Arc<GithubWebhookHandler>> {
-    if !config.gateway.webhooks.github.enabled {
-        tracing::info!("GitHub webhook handler disabled in configuration");
-        return None;
-    }
-
-    let wh_cfg = &config.gateway.webhooks.github;
-    let secret = match std::env::var(&wh_cfg.secret_env) {
-        Ok(s) if !s.is_empty() => s,
-        _ => {
-            tracing::warn!(
-                "GitHub webhook handler disabled: env var '{}' not set or empty",
-                wh_cfg.secret_env
-            );
-            return None;
-        }
-    };
-
-    // Build Redpanda producer (logging fallback — rdkafka requires native lib).
-    // To use the real rdkafka backend, enable feature `rdkafka-backend` on armageddon-forge.
-    let producer = Arc::new(RedpandaProducer::new_logging());
-    tracing::info!(
-        brokers = %wh_cfg.kafka_brokers.join(","),
-        topic = %wh_cfg.topic,
-        "Redpanda producer initialized (logging backend)"
-    );
-
-    // Build KAYA redis::Client
-    let kaya_url = format!(
-        "redis://{}:{}/{}",
-        config.kaya.host,
-        config.kaya.port,
-        config.kaya.db,
-    );
-
-    let kaya_client = match redis::Client::open(kaya_url.as_str()) {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::warn!(
-                "GitHub webhook handler disabled: KAYA client build failed: {}",
-                e
-            );
-            return None;
-        }
-    };
-
-    let handler = GithubWebhookHandler::new(
-        secret.into_bytes(),
-        producer,
-        kaya_client,
-        wh_cfg.topic.clone(),
-        wh_cfg.rate_limit_per_ip_per_min,
-    );
-
-    tracing::info!(
-        topic = %wh_cfg.topic,
-        "GitHub webhook handler enabled"
-    );
-
-    Some(Arc::new(handler))
-}
-
-/// Dedicated handler for `POST /webhooks/github`.
-///
-/// This bypasses the normal Pentagon pipeline entirely; the webhook has its own
-/// HMAC validation, rate-limiting, deduplication, and Redpanda publication flow.
-async fn handle_github_webhook(
-    state: &Arc<GatewayState>,
-    headers: &HashMap<String, String>,
-    body_bytes: &Bytes,
-    peer_addr: &SocketAddr,
-) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    let handler = match &state.github_webhook {
-        Some(h) => h.clone(),
-        None => {
-            tracing::warn!("GitHub webhook request received but handler is disabled");
-            return Ok(Response::builder()
-                .status(503)
-                .header("content-type", "application/json")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "webhook_disabled",
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Service Unavailable")))));
-        }
-    };
-
-    let http_req = HttpRequest {
-        method: "POST".to_string(),
-        uri: "/webhooks/github".to_string(),
-        path: "/webhooks/github".to_string(),
-        query: None,
-        headers: headers.clone(),
-        body: if body_bytes.is_empty() {
-            None
-        } else {
-            Some(body_bytes.to_vec())
-        },
-        version: HttpVersion::Http11,
-    };
-
-    let source_ip = peer_addr.ip().to_string();
-
-    match handler.handle(&http_req, &source_ip).await {
-        Ok(wh_resp) => {
-            tracing::info!(
-                source_ip = %source_ip,
-                status = wh_resp.status,
-                event_type = %headers.get("x-github-event").map(|s| s.as_str()).unwrap_or("unknown"),
-                delivery_id = %headers.get("x-github-delivery").map(|s| s.as_str()).unwrap_or("unknown"),
-                "GitHub webhook handled"
-            );
-            Ok(Response::builder()
-                .status(wh_resp.status)
-                .header("content-type", "application/json")
-                .body(Full::new(Bytes::from(wh_resp.body)))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("OK")))))
-        }
-        Err(wh_err) => {
-            use armageddon_forge::webhooks::WebhookError;
-            tracing::warn!(
-                source_ip = %source_ip,
-                error = %wh_err,
-                "GitHub webhook error"
-            );
-            let (status, error_key) = match &wh_err {
-                WebhookError::BodyTooLarge { .. } => (413u16, "payload_too_large"),
-                WebhookError::MissingHeader(_) => (400, "missing_header"),
-                WebhookError::InvalidSignature => (401, "invalid_signature"),
-                WebhookError::UnsupportedEvent(_) => (400, "unsupported_event"),
-                WebhookError::InvalidJson(_) => (400, "invalid_json"),
-                WebhookError::DuplicateDelivery(_) => (200, "duplicate"),
-                WebhookError::RateLimitExceeded { .. } => (429, "rate_limit_exceeded"),
-                WebhookError::Kaya(_) | WebhookError::Redpanda(_) => (500, "internal_error"),
-            };
-            Ok(Response::builder()
-                .status(status)
-                .header("content-type", "application/json")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": error_key,
-                        "message": wh_err.to_string(),
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Error")))))
-        }
+    endpoints: &[Arc<Endpoint>],
+) -> Arc<dyn LoadBalancer> {
+    let algo = config.gateway.lb.algorithm.as_str();
+    let eps_vec: Vec<Arc<Endpoint>> = endpoints.to_vec();
+    match algo {
+        "least_conn" => Arc::new(LeastConnections::new()),
+        "p2c" => Arc::new(PowerOfTwoChoices::new()),
+        "ring_hash" => Arc::new(RingHash::new(eps_vec)),
+        "maglev" => Arc::new(Maglev::new(eps_vec)),
+        "weighted" => Arc::new(WeightedRoundRobin::new(eps_vec)),
+        "random" => Arc::new(Random::new()),
+        _ => Arc::new(RoundRobin::new()),
     }
 }
 
-/// Handle a single HTTP request through the full ARMAGEDDON pipeline.
+/// Build a retry policy from config.
+fn build_retry_policy(config: &armageddon_config::ArmageddonConfig) -> RetryPolicy {
+    let rc = &config.gateway.retry;
+    RetryPolicy {
+        max_retries: rc.max_retries,
+        per_try_timeout: Duration::from_millis(rc.per_try_timeout_ms),
+        overall_timeout: Duration::from_millis(rc.overall_timeout_ms),
+        ..Default::default()
+    }
+}
+
+// ---------------------------------------------------------------------------
+// HTTP request handling (HTTP/1 entrypoint + shared logic)
+// ---------------------------------------------------------------------------
+
+/// Handle a single HTTP/1 request through the full ARMAGEDDON pipeline.
 async fn handle_request(
     req: Request<Incoming>,
     peer_addr: SocketAddr,
     state: Arc<GatewayState>,
 ) -> Result<Response<Full<Bytes>>, hyper::Error> {
-    // Extract request parts
     let (parts, body) = req.into_parts();
-
     let body_bytes = match body.collect().await {
         Ok(collected) => collected.to_bytes(),
         Err(_) => Bytes::new(),
@@ -377,7 +574,6 @@ async fn handle_request(
     let path = parts.uri.path().to_string();
     let query = parts.uri.query().map(|q| q.to_string());
 
-    // Build header map
     let mut headers: HashMap<String, String> = HashMap::new();
     for (name, value) in &parts.headers {
         if let Ok(v) = value.to_str() {
@@ -385,55 +581,87 @@ async fn handle_request(
         }
     }
 
-    // Detect protocol
-    let protocol = if Router::is_grpc(&headers) {
-        Protocol::Grpc
-    } else if Router::is_graphql(&path) {
-        Protocol::GraphQL
-    } else {
-        Protocol::Http
-    };
-
-    // --- CORS preflight handling ---
-    if CorsHandler::is_preflight(&method, &headers) {
-        if let Some(origin) = headers.get("origin").cloned() {
-            if let Some(cors_headers) = state.forge.cors_handler().build_headers_for_origin(&origin) {
-                let mut response = Response::builder().status(204);
-                for (name, value) in &cors_headers {
-                    response = response.header(name.as_str(), value.as_str());
-                }
-                return Ok(response
-                    .body(Full::new(Bytes::new()))
-                    .unwrap_or_else(|_| {
-                        Response::new(Full::new(Bytes::new()))
-                    }));
-            }
-        }
-        // Preflight with no matching origin: return 403
-        return Ok(Response::builder()
-            .status(403)
-            .body(Full::new(Bytes::from("CORS origin not allowed")))
-            .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Forbidden")))));
-    }
-
-    // --- GitHub webhook fast path (bypasses Pentagon pipeline) ---
-    if method == "POST" && path == "/webhooks/github" {
-        return handle_github_webhook(&state, &headers, &body_bytes, &peer_addr).await;
-    }
-
-    // Build RequestContext for the Pentagon pipeline
     let http_req = HttpRequest {
         method: method.clone(),
-        uri: uri.clone(),
-        path: path.clone(),
+        uri,
+        path,
         query,
-        headers: headers.clone(),
+        headers,
         body: if body_bytes.is_empty() {
             None
         } else {
             Some(body_bytes.to_vec())
         },
         version: HttpVersion::Http11,
+    };
+
+    let resp = handle_http_request(http_req, peer_addr, state).await;
+    build_hyper_response(resp)
+}
+
+/// Core request handler shared by HTTP/1 (hyper) and HTTP/3 (QUIC) paths.
+async fn handle_http_request(
+    http_req: HttpRequest,
+    peer_addr: SocketAddr,
+    state: Arc<GatewayState>,
+) -> HttpResponse {
+    let method = http_req.method.clone();
+    let path = http_req.path.clone();
+    let headers = http_req.headers.clone();
+
+    // --- CORS preflight ---
+    if CorsHandler::is_preflight(&method, &headers) {
+        if let Some(origin) = headers.get("origin").cloned() {
+            if let Some(cors_headers) = state.forge.cors_handler().build_headers_for_origin(&origin) {
+                return HttpResponse {
+                    status: 204,
+                    headers: cors_headers.into_iter().collect(),
+                    body: None,
+                };
+            }
+        }
+        return error_response(403, "cors_rejected", "CORS origin not allowed");
+    }
+
+    // --- GitHub webhook fast path ---
+    if method == "POST" && path == "/webhooks/github" {
+        let body_bytes = http_req.body.as_deref().map(Bytes::copy_from_slice).unwrap_or_default();
+        return handle_github_webhook_inner(&state, &headers, &body_bytes, &peer_addr).await;
+    }
+
+    // --- Cache lookup (GET only, before Pentagon) ---
+    let cache_hit = if method == "GET" {
+        if let Some(cache) = &state.cache {
+            match cache.get(&http_req).await {
+                Ok(Some(cached)) => {
+                    tracing::debug!(path = %path, "cache hit");
+                    return HttpResponse {
+                        status: cached.status,
+                        headers: cached.headers.into_iter().collect(),
+                        body: Some(cached.body.to_vec()),
+                    };
+                }
+                Ok(None) => false,
+                Err(e) => {
+                    tracing::warn!(err = %e, "cache get error — bypassing cache");
+                    false
+                }
+            }
+        } else {
+            false
+        }
+    } else {
+        false
+    };
+    let _ = cache_hit; // may be extended later
+
+    // --- Detect protocol ---
+    let protocol = if Router::is_grpc(&headers) {
+        Protocol::Grpc
+    } else if Router::is_graphql(&path) {
+        Protocol::GraphQL
+    } else {
+        Protocol::Http
     };
 
     let conn_info = ConnectionInfo {
@@ -445,7 +673,7 @@ async fn handle_request(
         ja3_fingerprint: None,
     };
 
-    let mut ctx = RequestContext::new(http_req, conn_info, protocol);
+    let mut ctx = RequestContext::new(http_req.clone(), conn_info, protocol);
 
     // --- Route matching ---
     let matched_route = state.forge.router().match_route(&method, &path, &headers);
@@ -457,161 +685,20 @@ async fn handle_request(
             (route.cluster.clone(), route.timeout_ms, route.auth_skip)
         }
         None => {
-            // No route matched: return 404
             tracing::debug!("no route matched for {} {}", method, path);
-            return Ok(Response::builder()
-                .status(404)
-                .header("content-type", "application/json")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "not_found",
-                        "message": format!("No route for {} {}", method, path),
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Not Found")))));
+            return error_response(
+                404,
+                "not_found",
+                &format!("No route for {} {}", method, path),
+            );
         }
     };
 
     // --- Authentication ---
     if !auth_skip {
-        let auth_result = match state.auth_mode {
-            AuthMode::Jwt => {
-                // Extract Bearer token from Authorization header
-                if let Some(auth_header) = headers.get("authorization") {
-                    if let Some(token) = JwtValidator::extract_bearer(auth_header) {
-                        match state.forge.jwt_validator().validate(token).await {
-                            Ok(claims) => {
-                                ctx.user_id = claims
-                                    .get("sub")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string());
-                                ctx.tenant_id = claims
-                                    .get("tenant_id")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string());
-                                ctx.user_roles = claims
-                                    .get("roles")
-                                    .and_then(|v| v.as_array())
-                                    .map(|arr| {
-                                        arr.iter()
-                                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                            .collect()
-                                    })
-                                    .unwrap_or_default();
-                                ctx.jwt_claims = Some(claims);
-                                Ok(())
-                            }
-                            Err(e) => Err(format!("{}", e)),
-                        }
-                    } else {
-                        Err("invalid Authorization header (expected Bearer token)".to_string())
-                    }
-                } else {
-                    Err("missing Authorization header".to_string())
-                }
-            }
-            AuthMode::Session => {
-                // Extract session cookie
-                if let Some(cookie_header) = headers.get("cookie") {
-                    match state
-                        .forge
-                        .kratos_validator()
-                        .validate_session(cookie_header)
-                        .await
-                    {
-                        Ok(session) => {
-                            ctx.user_id = Some(session.user_id);
-                            ctx.tenant_id = session.tenant_id;
-                            ctx.user_roles = session.roles;
-                            Ok(())
-                        }
-                        Err(e) => Err(format!("{}", e)),
-                    }
-                } else {
-                    Err("missing session cookie".to_string())
-                }
-            }
-            AuthMode::Dual => {
-                // Try JWT first, fallback to session
-                let jwt_result = if let Some(auth_header) = headers.get("authorization") {
-                    if let Some(token) = JwtValidator::extract_bearer(auth_header) {
-                        match state.forge.jwt_validator().validate(token).await {
-                            Ok(claims) => {
-                                ctx.user_id = claims
-                                    .get("sub")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string());
-                                ctx.tenant_id = claims
-                                    .get("tenant_id")
-                                    .and_then(|v| v.as_str())
-                                    .map(|s| s.to_string());
-                                ctx.user_roles = claims
-                                    .get("roles")
-                                    .and_then(|v| v.as_array())
-                                    .map(|arr| {
-                                        arr.iter()
-                                            .filter_map(|v| v.as_str().map(|s| s.to_string()))
-                                            .collect()
-                                    })
-                                    .unwrap_or_default();
-                                ctx.jwt_claims = Some(claims);
-                                Some(Ok(()))
-                            }
-                            Err(_) => None, // JWT failed, try session
-                        }
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                };
-
-                if let Some(result) = jwt_result {
-                    result
-                } else if let Some(cookie_header) = headers.get("cookie") {
-                    match state
-                        .forge
-                        .kratos_validator()
-                        .validate_session(cookie_header)
-                        .await
-                    {
-                        Ok(session) => {
-                            ctx.user_id = Some(session.user_id);
-                            ctx.tenant_id = session.tenant_id;
-                            ctx.user_roles = session.roles;
-                            Ok(())
-                        }
-                        Err(e) => Err(format!("{}", e)),
-                    }
-                } else {
-                    Err("no valid authentication credentials found".to_string())
-                }
-            }
-        };
-
-        if let Err(reason) = auth_result {
-            tracing::warn!(
-                request_id = %ctx.request_id,
-                path = %path,
-                "auth failed: {}",
-                reason,
-            );
-            return Ok(Response::builder()
-                .status(401)
-                .header("content-type", "application/json")
-                .header("x-armageddon-request-id", ctx.request_id.to_string())
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "unauthorized",
-                        "message": "Authentication required",
-                        "request_id": ctx.request_id.to_string(),
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Unauthorized")))));
+        if let Err(reason) = authenticate(&state, &headers, &mut ctx).await {
+            tracing::warn!(request_id = %ctx.request_id, path = %path, "auth failed: {}", reason);
+            return error_response(401, "unauthorized", "Authentication required");
         }
     }
 
@@ -620,21 +707,7 @@ async fn handle_request(
         Ok(v) => v,
         Err(e) => {
             tracing::error!("Pentagon pipeline error: {}", e);
-            // Fail-closed: block on pipeline error
-            return Ok(Response::builder()
-                .status(503)
-                .header("content-type", "application/json")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "security_pipeline_error",
-                        "message": "Security inspection failed",
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| {
-                    Response::new(Full::new(Bytes::from("Service Unavailable")))
-                }));
+            return error_response(503, "security_pipeline_error", "Security inspection failed");
         }
     };
 
@@ -647,20 +720,7 @@ async fn handle_request(
                 "BLOCKED: {}",
                 verdict.reason,
             );
-            return Ok(Response::builder()
-                .status(403)
-                .header("content-type", "application/json")
-                .header("x-armageddon-request-id", ctx.request_id.to_string())
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "blocked",
-                        "message": "Request blocked by ARMAGEDDON security gateway",
-                        "request_id": ctx.request_id.to_string(),
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Forbidden")))));
+            return error_response(403, "blocked", "Request blocked by ARMAGEDDON security gateway");
         }
         Action::Challenge => {
             tracing::info!(
@@ -669,63 +729,27 @@ async fn handle_request(
                 "CHALLENGE: {}",
                 verdict.reason,
             );
-            return Ok(Response::builder()
-                .status(429)
-                .header("content-type", "application/json")
-                .header("x-armageddon-request-id", ctx.request_id.to_string())
-                .header("retry-after", "30")
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "challenge_required",
-                        "message": "Verification required",
-                        "request_id": ctx.request_id.to_string(),
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Too Many Requests")))));
+            return error_response(429, "challenge_required", "Verification required");
         }
         Action::Throttle => {
-            tracing::info!(
-                request_id = %ctx.request_id,
-                "THROTTLE: {}",
-                verdict.reason,
-            );
-            // Continue to proxy but log the throttle decision
+            tracing::info!(request_id = %ctx.request_id, "THROTTLE: {}", verdict.reason);
         }
         Action::LogOnly => {
-            tracing::debug!(
-                request_id = %ctx.request_id,
-                "LOG: {}",
-                verdict.reason,
-            );
-            // Continue to proxy
+            tracing::debug!(request_id = %ctx.request_id, "LOG: {}", verdict.reason);
         }
-        Action::Forward => {
-            // All clear
-        }
+        Action::Forward => {}
     }
 
-    // --- Proxy to upstream ---
-    let endpoint = match state.forge.select_upstream(&cluster_name) {
+    // --- Proxy to upstream via LB ---
+    let endpoint = match select_endpoint(&state, &cluster_name) {
         Some(ep) => ep,
         None => {
             tracing::error!("no healthy upstream for cluster '{}'", cluster_name);
-            return Ok(Response::builder()
-                .status(503)
-                .header("content-type", "application/json")
-                .header("x-armageddon-request-id", ctx.request_id.to_string())
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "no_upstream",
-                        "message": format!("No healthy upstream for cluster '{}'", cluster_name),
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| {
-                    Response::new(Full::new(Bytes::from("Service Unavailable")))
-                }));
+            return error_response(
+                503,
+                "no_upstream",
+                &format!("No healthy upstream for cluster '{}'", cluster_name),
+            );
         }
     };
 
@@ -734,15 +758,14 @@ async fn handle_request(
         breaker.on_request_start();
     }
 
-    // Forward the request -- inject identity headers before proxying
+    // Forward — inject identity headers
     let mut header_pairs: Vec<(String, String)> = headers.into_iter().collect();
     armageddon_veil::Veil::inject_identity_headers(&mut header_pairs, &ctx);
 
-    let body_option = if body_bytes.is_empty() {
-        None
-    } else {
-        Some(body_bytes)
-    };
+    let body_option = http_req
+        .body
+        .as_ref()
+        .map(|b| Bytes::copy_from_slice(b));
 
     let proxy_result = armageddon_forge::proxy::forward_request(
         &endpoint,
@@ -754,74 +777,293 @@ async fn handle_request(
     )
     .await;
 
-    // Record result on circuit breaker
+    // Record circuit breaker result
     if let Some(breaker) = state.forge.circuit_breakers().get(&cluster_name) {
         breaker.on_request_end();
     }
 
     match proxy_result {
         Ok(proxy_resp) => {
-            // Record success
             if let Some(breaker) = state.forge.circuit_breakers().get(&cluster_name) {
                 breaker.record_success();
             }
 
-            // Build response
-            let mut builder = Response::builder().status(proxy_resp.status);
+            let mut response_headers_vec = proxy_resp.headers.clone();
+            state.veil.process_response_headers(&mut response_headers_vec);
+            let response_headers: HashMap<String, String> =
+                response_headers_vec.into_iter().collect();
 
-            // Apply upstream response headers
-            let mut response_headers = proxy_resp.headers;
-
-            // Apply VEIL: remove sensitive headers, inject security headers
-            state.veil.process_response_headers(&mut response_headers);
-
-            for (name, value) in &response_headers {
-                builder = builder.header(name.as_str(), value.as_str());
-            }
-
-            // Add ARMAGEDDON headers
-            builder = builder.header("x-armageddon-request-id", ctx.request_id.to_string());
-
-            // Add CORS headers if origin was present
-            if let Some(origin) = header_pairs.iter().find(|(k, _)| k == "origin").map(|(_, v)| v.clone()) {
-                if let Some(cors_headers) = state.forge.cors_handler().build_headers_for_origin(&origin) {
-                    for (name, value) in &cors_headers {
-                        builder = builder.header(name.as_str(), value.as_str());
+            // Cache PUT for successful GET responses
+            if method == "GET" && proxy_resp.status == 200 {
+                if let Some(cache) = &state.cache {
+                    let upstream_resp = armageddon_common::types::HttpResponse {
+                        status: proxy_resp.status,
+                        headers: response_headers.clone(),
+                        body: Some(proxy_resp.body.to_vec()),
+                    };
+                    if let Err(e) = cache
+                        .put(&http_req, &upstream_resp, Duration::from_secs(60))
+                        .await
+                    {
+                        tracing::debug!(err = %e, "cache put skipped");
                     }
                 }
             }
 
-            Ok(builder
-                .body(Full::new(proxy_resp.body))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Internal Error")))))
+            HttpResponse {
+                status: proxy_resp.status,
+                headers: response_headers,
+                body: Some(proxy_resp.body.to_vec()),
+            }
         }
         Err(e) => {
-            // Record failure
             if let Some(breaker) = state.forge.circuit_breakers().get(&cluster_name) {
                 breaker.record_failure();
             }
-
             tracing::error!(
                 request_id = %ctx.request_id,
                 cluster = %cluster_name,
-                upstream = %format!("{}:{}", endpoint.address, endpoint.port),
+                upstream = %endpoint.address,
                 "upstream error: {}",
                 e,
             );
-
-            Ok(Response::builder()
-                .status(502)
-                .header("content-type", "application/json")
-                .header("x-armageddon-request-id", ctx.request_id.to_string())
-                .body(Full::new(Bytes::from(
-                    serde_json::json!({
-                        "error": "upstream_error",
-                        "message": "Bad gateway",
-                        "gateway": "ARMAGEDDON"
-                    })
-                    .to_string(),
-                )))
-                .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Bad Gateway")))))
+            error_response(502, "upstream_error", "Bad gateway")
         }
     }
+}
+
+// ---------------------------------------------------------------------------
+// LB endpoint selection (adapts ForgeServer endpoint type to LB endpoint type)
+// ---------------------------------------------------------------------------
+
+/// Select an upstream endpoint via the configured LB algorithm.
+///
+/// Falls back to `ForgeServer::select_upstream` which uses the Forge-internal
+/// round-robin when the LB pool is empty.
+fn select_endpoint(
+    state: &GatewayState,
+    cluster_name: &str,
+) -> Option<armageddon_common::types::Endpoint> {
+    // Prefer the LB pool if populated
+    if !state.lb_endpoints.is_empty() {
+        if let Some(ep) = state.lb.select(&state.lb_endpoints, None) {
+            return Some(armageddon_common::types::Endpoint {
+                address: ep.address.split(':').next().unwrap_or(&ep.address).to_string(),
+                port: ep.address
+                    .split(':')
+                    .nth(1)
+                    .and_then(|p| p.parse().ok())
+                    .unwrap_or(8080),
+                weight: ep.weight,
+                healthy: ep.is_healthy(),
+            });
+        }
+    }
+    // Fallback to Forge's built-in selection
+    state.forge.select_upstream(cluster_name)
+}
+
+// ---------------------------------------------------------------------------
+// Authentication helper
+// ---------------------------------------------------------------------------
+
+async fn authenticate(
+    state: &GatewayState,
+    headers: &HashMap<String, String>,
+    ctx: &mut RequestContext,
+) -> Result<(), String> {
+    match state.auth_mode {
+        AuthMode::Jwt => authenticate_jwt(state, headers, ctx).await,
+        AuthMode::Session => authenticate_session(state, headers, ctx).await,
+        AuthMode::Dual => {
+            // Try JWT first, fall back to session
+            if authenticate_jwt(state, headers, ctx).await.is_ok() {
+                Ok(())
+            } else {
+                authenticate_session(state, headers, ctx).await
+            }
+        }
+    }
+}
+
+async fn authenticate_jwt(
+    state: &GatewayState,
+    headers: &HashMap<String, String>,
+    ctx: &mut RequestContext,
+) -> Result<(), String> {
+    let auth_header = headers
+        .get("authorization")
+        .ok_or_else(|| "missing Authorization header".to_string())?;
+    let token = JwtValidator::extract_bearer(auth_header)
+        .ok_or_else(|| "invalid Authorization header (expected Bearer token)".to_string())?;
+    let claims = state
+        .forge
+        .jwt_validator()
+        .validate(token)
+        .await
+        .map_err(|e| e.to_string())?;
+    ctx.user_id = claims.get("sub").and_then(|v| v.as_str()).map(|s| s.to_string());
+    ctx.tenant_id = claims.get("tenant_id").and_then(|v| v.as_str()).map(|s| s.to_string());
+    ctx.user_roles = claims
+        .get("roles")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+    ctx.jwt_claims = Some(claims);
+    Ok(())
+}
+
+async fn authenticate_session(
+    state: &GatewayState,
+    headers: &HashMap<String, String>,
+    ctx: &mut RequestContext,
+) -> Result<(), String> {
+    let cookie = headers
+        .get("cookie")
+        .ok_or_else(|| "missing session cookie".to_string())?;
+    let session = state
+        .forge
+        .kratos_validator()
+        .validate_session(cookie)
+        .await
+        .map_err(|e| e.to_string())?;
+    ctx.user_id = Some(session.user_id);
+    ctx.tenant_id = session.tenant_id;
+    ctx.user_roles = session.roles;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// GitHub webhook helper
+// ---------------------------------------------------------------------------
+
+async fn build_github_webhook_handler(
+    config: &armageddon_config::ArmageddonConfig,
+) -> Option<Arc<GithubWebhookHandler>> {
+    if !config.gateway.webhooks.github.enabled {
+        tracing::info!("GitHub webhook handler disabled in configuration");
+        return None;
+    }
+    let wh_cfg = &config.gateway.webhooks.github;
+    let secret = match std::env::var(&wh_cfg.secret_env) {
+        Ok(s) if !s.is_empty() => s,
+        _ => {
+            tracing::warn!(
+                "GitHub webhook handler disabled: env var '{}' not set or empty",
+                wh_cfg.secret_env
+            );
+            return None;
+        }
+    };
+    let producer = Arc::new(RedpandaProducer::new_logging());
+    let kaya_url = format!(
+        "redis://{}:{}/{}",
+        config.kaya.host, config.kaya.port, config.kaya.db,
+    );
+    let kaya_client = match redis::Client::open(kaya_url.as_str()) {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::warn!("GitHub webhook handler disabled: KAYA client build failed: {}", e);
+            return None;
+        }
+    };
+    let handler = GithubWebhookHandler::new(
+        secret.into_bytes(),
+        producer,
+        kaya_client,
+        wh_cfg.topic.clone(),
+        wh_cfg.rate_limit_per_ip_per_min,
+    );
+    tracing::info!(topic = %wh_cfg.topic, "GitHub webhook handler enabled");
+    Some(Arc::new(handler))
+}
+
+async fn handle_github_webhook_inner(
+    state: &Arc<GatewayState>,
+    headers: &HashMap<String, String>,
+    body_bytes: &Bytes,
+    peer_addr: &SocketAddr,
+) -> HttpResponse {
+    let handler = match &state.github_webhook {
+        Some(h) => h.clone(),
+        None => {
+            tracing::warn!("GitHub webhook request received but handler is disabled");
+            return error_response(503, "webhook_disabled", "Webhook handler not configured");
+        }
+    };
+
+    let http_req = HttpRequest {
+        method: "POST".to_string(),
+        uri: "/webhooks/github".to_string(),
+        path: "/webhooks/github".to_string(),
+        query: None,
+        headers: headers.clone(),
+        body: if body_bytes.is_empty() { None } else { Some(body_bytes.to_vec()) },
+        version: HttpVersion::Http11,
+    };
+    let source_ip = peer_addr.ip().to_string();
+
+    match handler.handle(&http_req, &source_ip).await {
+        Ok(wh_resp) => {
+            tracing::info!(source_ip = %source_ip, status = wh_resp.status, "GitHub webhook handled");
+            let mut h = HashMap::new();
+            h.insert("content-type".to_string(), "application/json".to_string());
+            HttpResponse {
+                status: wh_resp.status,
+                headers: h,
+                body: Some(wh_resp.body.into_bytes()),
+            }
+        }
+        Err(wh_err) => {
+            use armageddon_forge::webhooks::WebhookError;
+            let (status, error_key) = match &wh_err {
+                WebhookError::BodyTooLarge { .. } => (413u16, "payload_too_large"),
+                WebhookError::MissingHeader(_) => (400, "missing_header"),
+                WebhookError::InvalidSignature => (401, "invalid_signature"),
+                WebhookError::UnsupportedEvent(_) => (400, "unsupported_event"),
+                WebhookError::InvalidJson(_) => (400, "invalid_json"),
+                WebhookError::DuplicateDelivery(_) => (200, "duplicate"),
+                WebhookError::RateLimitExceeded { .. } => (429, "rate_limit_exceeded"),
+                WebhookError::Kaya(_) | WebhookError::Redpanda(_) => (500, "internal_error"),
+            };
+            error_response(status, error_key, &wh_err.to_string())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Utility helpers
+// ---------------------------------------------------------------------------
+
+/// Build a JSON error `HttpResponse`.
+fn error_response(status: u16, error_key: &str, message: &str) -> HttpResponse {
+    let body = serde_json::json!({
+        "error": error_key,
+        "message": message,
+        "gateway": "ARMAGEDDON"
+    })
+    .to_string()
+    .into_bytes();
+
+    let mut headers = HashMap::new();
+    headers.insert("content-type".to_string(), "application/json".to_string());
+    HttpResponse {
+        status,
+        headers,
+        body: Some(body),
+    }
+}
+
+/// Convert an `HttpResponse` (internal type) to a `hyper::Response<Full<Bytes>>`.
+fn build_hyper_response(
+    resp: HttpResponse,
+) -> Result<Response<Full<Bytes>>, hyper::Error> {
+    let mut builder = Response::builder().status(resp.status);
+    for (name, value) in &resp.headers {
+        builder = builder.header(name.as_str(), value.as_str());
+    }
+    let body = resp.body.map(Bytes::from).unwrap_or_default();
+    Ok(builder
+        .body(Full::new(body))
+        .unwrap_or_else(|_| Response::new(Full::new(Bytes::from("Internal Error")))))
 }

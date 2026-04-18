@@ -69,3 +69,4 @@ results.json
 # Benchmarks
 criterion/
 bencher-*.json
+gitleaks-full-history.json
