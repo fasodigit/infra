@@ -77,8 +77,12 @@ export async function middleware(request: NextRequest) {
     });
   }
 
-  // Rate-limited auth mutation endpoints
-  const rateLimitedPaths = ['/api/auth/login', '/api/auth/register'];
+  // Rate-limited auth mutation endpoints (+ SMS OTP fallback, self-service)
+  const rateLimitedPaths = [
+    '/api/auth/login',
+    '/api/auth/register',
+    '/api/auth/sms-otp',
+  ];
   if (rateLimitedPaths.some((p) => pathname.startsWith(p))) {
     const ip = clientIp(request);
     const { allowed, retryAfter } = checkRateLimit(ip);
@@ -101,10 +105,14 @@ export async function middleware(request: NextRequest) {
   }
 
   // Other public routes that don't require authentication
+  // Mobile-money initiation is deliberately public here to support SMS
+  // deep-links (payment links sent outside an authenticated session).
+  // A subsequent Kratos-guarded `confirm` endpoint can verify the buyer.
   const publicPaths = [
     '/api/auth/session',
     '/api/auth/logout',
     '/api/health',
+    '/api/payments/mobile-money',
   ];
 
   if (publicPaths.some((p) => pathname.startsWith(p))) {
@@ -112,12 +120,26 @@ export async function middleware(request: NextRequest) {
   }
 
   // All other /api/* routes (including /api/graphql): require valid Kratos session
-  // Identity headers are injected here so downstream services never trust client input
+  // Identity headers are injected here so downstream services never trust client input.
+  //
+  // Auth precedence:
+  //   1. Authorization: Bearer <token>      → API clients
+  //   2. ory_kratos_session cookie starts with "ory_st_"  → Kratos session token
+  //      (Angular SPA API flow) — forward as X-Session-Token.
+  //   3. ory_kratos_session cookie (encrypted browser payload) → forward as Cookie.
+  //
+  // Never combine Cookie + X-Session-Token/Authorization — Kratos prefers the
+  // token header and will reject the encrypted cookie payload as invalid, 401.
   if (pathname.startsWith('/api/')) {
-    const cookie = request.headers.get('cookie') || '';
-    const sessionToken = request.cookies.get('ory_kratos_session')?.value;
+    const cookieHeader = request.headers.get('cookie') || '';
+    const authzHeader = request.headers.get('authorization') || '';
+    const kratosSessionCookie = request.cookies.get('ory_kratos_session')?.value;
+    const hasCookie =
+      Boolean(kratosSessionCookie) ||
+      /(?:^|;\s*)ory_kratos_session=/.test(cookieHeader);
+    const hasBearer = /^Bearer\s+/i.test(authzHeader);
 
-    if (!cookie && !sessionToken) {
+    if (!hasCookie && !hasBearer) {
       return addCorsHeaders(
         NextResponse.json({ error: 'Unauthorized' }, { status: 401 }),
       );
@@ -125,11 +147,15 @@ export async function middleware(request: NextRequest) {
 
     try {
       const kratosHeaders: Record<string, string> = {};
-      if (sessionToken) {
-        kratosHeaders['X-Session-Token'] = sessionToken;
-      }
-      if (cookie) {
-        kratosHeaders['Cookie'] = cookie;
+      if (hasBearer) {
+        kratosHeaders['Authorization'] = authzHeader;
+      } else if (
+        kratosSessionCookie &&
+        kratosSessionCookie.startsWith('ory_st_')
+      ) {
+        kratosHeaders['X-Session-Token'] = kratosSessionCookie;
+      } else {
+        kratosHeaders['Cookie'] = cookieHeader;
       }
 
       const sessionResponse = await fetch(
