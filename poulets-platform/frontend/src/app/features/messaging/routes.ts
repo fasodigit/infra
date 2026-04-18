@@ -7,6 +7,14 @@ export default [
       import('./conversations-list.component').then(m => m.ConversationsListComponent),
     title: 'Messagerie - Poulets Platform',
   },
+  // Realtime chat stub (F4) — sous-chemin explicite pour éviter de casser
+  // l'existant `:conversationId` qui pointe vers ChatWindowComponent.
+  {
+    path: 'chat/:conversationId',
+    loadComponent: () =>
+      import('./components/chat-realtime.component').then(m => m.ChatRealtimeComponent),
+    title: 'Chat temps réel - Poulets Platform',
+  },
   {
     path: ':conversationId',
     loadComponent: () =>

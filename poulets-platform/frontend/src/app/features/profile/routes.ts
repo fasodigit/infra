@@ -37,4 +37,18 @@ export default [
       import('./components/security-sessions.component').then(m => m.SecuritySessionsComponent),
     title: 'Sessions actives - Poulets BF',
   },
+  // KYC renforcé (F6) — vérification d'identité CNIB + selfie
+  {
+    path: 'kyc',
+    loadComponent: () =>
+      import('./components/kyc.component').then(m => m.KycComponent),
+    title: 'Vérification d\'identité - Poulets BF',
+  },
+  // Notifications push (F8) — distinct de /notifications (inbox)
+  {
+    path: 'notifications-push',
+    loadComponent: () =>
+      import('./components/notifications-push.component').then(m => m.NotificationsPushComponent),
+    title: 'Notifications push - Poulets BF',
+  },
 ] as Routes;

@@ -31,4 +31,11 @@ export default [
       import('./admin-dashboard.component').then(m => m.AdminDashboardComponent),
     title: 'Administration - Poulets Platform',
   },
+  // Analytique vendeur (F10) — KPI + graphiques (stub MVP)
+  {
+    path: 'analytics',
+    loadComponent: () =>
+      import('./analytics.component').then(m => m.AnalyticsComponent),
+    title: 'Analytique vendeur - Poulets Platform',
+  },
 ] as Routes;

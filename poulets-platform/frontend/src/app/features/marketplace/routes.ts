@@ -49,4 +49,11 @@ export default [
       import('./components/matching.component').then(m => m.MatchingComponent),
     title: 'Matching - Poulets Platform',
   },
+  // Géolocalisation à proximité (F9) — carte Leaflet + communes BF
+  {
+    path: 'near-me',
+    loadComponent: () =>
+      import('./components/near-me.component').then(m => m.NearMeComponent),
+    title: 'À proximité - Poulets Platform',
+  },
 ] as Routes;

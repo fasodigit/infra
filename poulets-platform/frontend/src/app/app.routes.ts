@@ -17,6 +17,28 @@ export const routes: Routes = [
     loadChildren: () => import('./features/auth/routes'),
   },
 
+  // Public: Mobile Money payment (unguarded for SMS deep-links + smoke tests).
+  // Registered BEFORE the guarded `/checkout` group so router matches these
+  // literal paths first.
+  {
+    path: 'pay/:txId',
+    loadComponent: () =>
+      import('./features/payments/mobile-money-form.component').then(m => m.MobileMoneyFormComponent),
+    title: 'Paiement Mobile Money - Poulets BF',
+  },
+  {
+    path: 'checkout/pay/:txId',
+    loadComponent: () =>
+      import('./features/payments/mobile-money-form.component').then(m => m.MobileMoneyFormComponent),
+    title: 'Paiement Mobile Money - Poulets BF',
+  },
+
+  // Public: PWA / offline info (stub F5 — pas de guard, consultable hors-ligne)
+  {
+    path: 'pwa-info',
+    loadChildren: () => import('./features/pwa/routes'),
+  },
+
   // Protected: Layout wrapper with sidebar + toolbar
   {
     path: '',
@@ -103,6 +125,11 @@ export const routes: Routes = [
       {
         path: 'checkout',
         loadChildren: () => import('./features/checkout/routes'),
+      },
+      // Payments (guarded — escrow stub F7)
+      {
+        path: 'payments',
+        loadChildren: () => import('./features/payments/routes'),
       },
       // Admin
       {

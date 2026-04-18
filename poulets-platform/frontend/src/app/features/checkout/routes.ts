@@ -9,4 +9,16 @@ export default [
     loadComponent: () => import('./checkout.component').then(m => m.CheckoutComponent),
     title: 'Commande - Poulets BF',
   },
+  {
+    path: 'pay/:txId',
+    loadComponent: () =>
+      import('../payments/mobile-money-form.component').then(m => m.MobileMoneyFormComponent),
+    title: 'Paiement Mobile Money - Poulets BF',
+  },
+  {
+    path: 'pay',
+    loadComponent: () =>
+      import('../payments/mobile-money-form.component').then(m => m.MobileMoneyFormComponent),
+    title: 'Paiement Mobile Money - Poulets BF',
+  },
 ] as Routes;
