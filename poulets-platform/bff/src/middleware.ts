@@ -5,11 +5,20 @@ const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:4801';
 
 // =============================================================================
 // In-memory token bucket rate limiter for auth endpoints
-// 10 requests / IP / 60-second window
+// Default: 10 requests / IP / 60-second window (prod-safe).
+// Overridable via env: RATE_LIMIT_MAX, RATE_LIMIT_WINDOW_MS, RATE_LIMIT_DISABLED.
 // State is per-isolate; for multi-instance deployments use KAYA (redis://kaya:6379)
 // =============================================================================
-const RATE_LIMIT_MAX = 10;
-const RATE_LIMIT_WINDOW_MS = 60_000;
+const RATE_LIMIT_DISABLED =
+  process.env.RATE_LIMIT_DISABLED === 'true' ||
+  process.env.RATE_LIMIT_DISABLED === '1';
+const RATE_LIMIT_MAX = Number(
+  process.env.RATE_LIMIT_MAX ??
+    (process.env.NODE_ENV === 'production' ? 10 : 500),
+);
+const RATE_LIMIT_WINDOW_MS = Number(
+  process.env.RATE_LIMIT_WINDOW_MS ?? 60_000,
+);
 
 interface Bucket {
   count: number;
@@ -19,6 +28,10 @@ interface Bucket {
 const rateLimitStore = new Map<string, Bucket>();
 
 function checkRateLimit(ip: string): { allowed: boolean; retryAfter: number } {
+  if (RATE_LIMIT_DISABLED) {
+    return { allowed: true, retryAfter: 0 };
+  }
+
   const now = Date.now();
   let bucket = rateLimitStore.get(ip);
 

@@ -128,8 +128,6 @@ management:
     health:
       show-details: when-authorized
   health:
-    redis:
-      enabled: true
     db:
       enabled: true
   tracing:

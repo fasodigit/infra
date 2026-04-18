@@ -2,7 +2,10 @@ package bf.gov.faso.poulets.controller;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataAccessException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -20,6 +23,8 @@ import java.util.*;
 @RestController
 @RequestMapping("/api/public/dashboard")
 public class PublicDashboardController {
+
+    private static final Logger log = LoggerFactory.getLogger(PublicDashboardController.class);
 
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
 
@@ -98,9 +103,18 @@ public class PublicDashboardController {
         };
 
         for (String key : keys) {
-            String value = redisTemplate.opsForValue().get(key);
             // Strip the namespace prefix for cleaner response keys
             String shortKey = key.substring("poulets:stats:".length());
+            // TODO: retirer ce try/catch quand KAYA RESP3 complet — ticket INFRA/kaya#resp3-encoder
+            // Graceful fallback: en dev, KAYA retourne "ERR protocol parse error"
+            // sur certaines commandes (bug inbound frame parser). On dégrade à 0.
+            String value;
+            try {
+                value = redisTemplate.opsForValue().get(key);
+            } catch (DataAccessException e) {
+                log.debug("KAYA GET {} failed: {}", key, e.getMessage());
+                value = null;
+            }
             if (value != null) {
                 try {
                     stats.put(shortKey, Long.parseLong(value));
@@ -133,7 +147,16 @@ public class PublicDashboardController {
         fetchSize = Math.max(fetchSize, 50);
 
         // ZREVRANGE: newest first (highest score = most recent timestamp)
-        Set<String> ids = redisTemplate.opsForZSet().reverseRange(indexKey, 0, fetchSize - 1);
+        // TODO: retirer ce try/catch quand KAYA RESP3 complet — ticket INFRA/kaya#resp3-encoder
+        // Graceful fallback: KAYA peut renvoyer "ERR protocol parse error" sur
+        // ZREVRANGE en dev (bug inbound frame parser). On dégrade à liste vide.
+        Set<String> ids;
+        try {
+            ids = redisTemplate.opsForZSet().reverseRange(indexKey, 0, fetchSize - 1);
+        } catch (DataAccessException e) {
+            log.debug("KAYA ZREVRANGE {} failed: {}", indexKey, e.getMessage());
+            return Collections.emptyList();
+        }
         if (ids == null || ids.isEmpty()) {
             return Collections.emptyList();
         }
@@ -143,7 +166,14 @@ public class PublicDashboardController {
         for (String id : ids) {
             if (results.size() >= limit) break;
 
-            String json = redisTemplate.opsForValue().get(dataPrefix + id);
+            // TODO: retirer ce try/catch quand KAYA RESP3 complet — ticket INFRA/kaya#resp3-encoder
+            String json;
+            try {
+                json = redisTemplate.opsForValue().get(dataPrefix + id);
+            } catch (DataAccessException e) {
+                log.debug("KAYA GET {}{} failed: {}", dataPrefix, id, e.getMessage());
+                continue;
+            }
             if (json == null) continue;
 
             try {
