@@ -13,7 +13,7 @@
 
     <groupId>bf.gov.faso</groupId>
     <artifactId>poulets-api</artifactId>
-    <version>1.1.0</version>
+    <version>1.0.0</version>
     <name>poulets-api</name>
     <description>Chicken selling platform API - FASO DIGITALISATION</description>
 

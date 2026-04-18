@@ -5,6 +5,16 @@
 <!-- NEVER manually delete published tags or entries -->
 
 
+## 1.0.0 (2026-04-18)
+
+> FASO DIGITALISATION — Licensed under AGPL-3.0
+> Breaking changes require migration — see RELEASE.md
+
+### Features
+
+* **infra:** sovereign hardening wave — 20 automations + ARMAGEDDON Vague 1 + docs publiques ([ba81af7](https://github.com/fasodigit/infra/commit/ba81af749057008c1094e8cbe297372a67e33710))
+* **vault,podman:** integrate Vault+Consul secret management + rename to podman-compose ([ef1f27f](https://github.com/fasodigit/infra/commit/ef1f27fa116fab50bb353ef27784c31f4fafe2ff))
+
 ## 1.1.0 (2026-04-17)
 
 > FASO DIGITALISATION — Licensed under AGPL-3.0
