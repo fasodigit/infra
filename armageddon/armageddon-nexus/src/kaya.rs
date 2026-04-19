@@ -166,4 +166,49 @@ impl KayaClient {
         // so we return true optimistically if a connection was established.
         true
     }
+
+    /// Fixed-window counter: INCR + EXPIRE only on first hit (count==1).
+    /// Used by DDoS mitigation for bucket counters without TTL reset.
+    pub async fn incr_with_expire(
+        &self,
+        key: &str,
+        window_secs: u64,
+    ) -> Result<u64, KayaError> {
+        let mut conn = self.get_conn().await?;
+        let (count,): (u64,) = redis::pipe()
+            .atomic()
+            .incr(key, 1u64)
+            .query_async(&mut conn)
+            .await?;
+        if count == 1 {
+            let _: () = conn.expire(key, window_secs as i64).await?;
+        }
+        Ok(count)
+    }
+
+    /// Sorted-set sliding-window log: ZADD + ZREMRANGEBYSCORE + ZCARD + EXPIRE.
+    /// Sub-second precision counter for DDoS mitigation.
+    pub async fn sliding_window_incr(
+        &self,
+        key: &str,
+        window_secs: u64,
+    ) -> Result<u64, KayaError> {
+        let mut conn = self.get_conn().await?;
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as i64)
+            .unwrap_or(0);
+        let cutoff = now_ms - (window_secs as i64 * 1000);
+        let uid = format!("{}-{}", now_ms, uuid::Uuid::new_v4());
+        let (_, _, count): (i64, i64, u64) = redis::pipe()
+            .atomic()
+            .zrembyscore(key, 0, cutoff)
+            .zadd(key, &uid, now_ms)
+            .zcard(key)
+            .expire(key, (window_secs + 1) as i64)
+            .ignore()
+            .query_async(&mut conn)
+            .await?;
+        Ok(count)
+    }
 }

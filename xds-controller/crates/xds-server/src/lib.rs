@@ -7,9 +7,11 @@
 // The server watches the ConfigStore for changes and pushes updates
 // to all connected ARMAGEDDON instances without requiring SIGHUP.
 
+pub mod canary;
 pub mod config;
 pub mod convert;
 pub mod generated;
+pub mod prometheus_client;
 pub mod server;
 pub mod services;
 pub mod subscription;

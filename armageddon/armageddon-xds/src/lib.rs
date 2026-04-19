@@ -40,7 +40,9 @@
 //!   server does not stall.
 
 pub mod ads_client;
+pub mod debouncer;
 pub mod error;
+pub mod metrics;
 pub mod proto;
 pub mod resources;
 pub mod subscription;

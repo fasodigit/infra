@@ -13,6 +13,51 @@ pub struct SecurityConfig {
     pub veil: VeilConfig,
     pub wasm: WasmConfig,
     pub ai: AiConfig,
+    /// GraphQL depth/complexity limiter applied before the Pentagon pipeline.
+    #[serde(default)]
+    pub graphql_limits: GraphQLLimiterConfig,
+}
+
+/// GraphQL depth, complexity, alias, and introspection limiter config.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GraphQLLimiterConfig {
+    /// Enable the limiter.  When `false` all GraphQL queries pass unchecked.
+    #[serde(default = "default_gql_enabled")]
+    pub enabled: bool,
+    /// Maximum query nesting depth (0 = unlimited).
+    #[serde(default = "default_max_depth")]
+    pub max_depth: u32,
+    /// Maximum query complexity score (0 = unlimited).
+    #[serde(default = "default_max_complexity")]
+    pub max_complexity: u32,
+    /// Maximum number of alias definitions in a document (0 = unlimited).
+    #[serde(default = "default_max_aliases")]
+    pub max_aliases: u32,
+    /// Maximum number of directive usages in a document (0 = unlimited).
+    #[serde(default = "default_max_directives")]
+    pub max_directives: u32,
+    /// Whether `__schema` / `__type` introspection queries are permitted.
+    #[serde(default)]
+    pub introspection_enabled: bool,
+}
+
+fn default_gql_enabled() -> bool { true }
+fn default_max_depth() -> u32 { 8 }
+fn default_max_complexity() -> u32 { 1000 }
+fn default_max_aliases() -> u32 { 30 }
+fn default_max_directives() -> u32 { 20 }
+
+impl Default for GraphQLLimiterConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_depth: default_max_depth(),
+            max_complexity: default_max_complexity(),
+            max_aliases: default_max_aliases(),
+            max_directives: default_max_directives(),
+            introspection_enabled: false,
+        }
+    }
 }
 
 /// SENTINEL (IPS) configuration.
@@ -23,6 +68,8 @@ pub struct SentinelConfig {
     pub geoip_db_path: String,
     pub blocked_countries: Vec<String>,
     pub ja3_blacklist_path: Option<String>,
+    #[serde(default)]
+    pub ja4_blacklist_path: Option<String>,
     pub rate_limit: RateLimitConfig,
     pub dlp: DlpConfig,
 }

@@ -101,6 +101,11 @@ impl SecurityEngine for Arbiter {
 
     async fn inspect(&self, ctx: &RequestContext) -> Result<Decision> {
         let start = std::time::Instant::now();
+
+        if !self.config.enabled {
+            return Ok(Decision::allow(self.name(), start.elapsed().as_micros() as u64));
+        }
+
         let mut all_matches = Vec::new();
 
         // Scan URI
@@ -251,6 +256,7 @@ mod tests {
                 server_port: 443,
                 tls: None,
                 ja3_fingerprint: None,
+                ja4_fingerprint: None,
             },
             Protocol::Http,
         )

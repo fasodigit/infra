@@ -3,8 +3,10 @@
 //! Extracts 22 features from each request, runs inference through an ONNX model,
 //! and produces an anomaly score. Also includes prompt injection detection.
 
+pub mod config;
 pub mod features;
 pub mod model;
+pub mod otel_propagation;
 
 use armageddon_common::context::RequestContext;
 use armageddon_common::decision::{Decision, Severity};
@@ -53,6 +55,10 @@ impl SecurityEngine for Oracle {
 
     async fn inspect(&self, ctx: &RequestContext) -> Result<Decision> {
         let start = std::time::Instant::now();
+
+        if !self.config.enabled {
+            return Ok(Decision::allow(self.name(), start.elapsed().as_micros() as u64));
+        }
 
         // Extract features from request
         let features = self.feature_extractor.extract(ctx);

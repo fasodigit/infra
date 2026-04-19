@@ -6,6 +6,12 @@
 //   envoy.config.cluster.v3    -> envoy::config::cluster::v3
 //   google.rpc                 -> google::rpc
 
+pub mod canary {
+    pub mod v1 {
+        include!("faso.canary.v1.rs");
+    }
+}
+
 pub mod google {
     pub mod rpc {
         include!("google.rpc.rs");

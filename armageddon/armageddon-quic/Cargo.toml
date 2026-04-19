@@ -43,3 +43,9 @@ rcgen = "0.13"
 tempfile = "3"
 # async-trait is also needed in tests (re-export via main deps is fine, but explicit is clearer)
 async-trait = { workspace = true }
+# Criterion for micro-benchmarks (hpack_bench)
+criterion = { version = "0.5", features = ["html_reports"] }
+
+[[bench]]
+name = "hpack_bench"
+harness = false

@@ -15,6 +15,7 @@
 use clap::{Parser, Subcommand};
 
 mod commands;
+use commands::canary::CanaryAction;
 
 #[derive(Parser)]
 #[command(
@@ -63,6 +64,11 @@ enum Commands {
     Listener {
         #[command(subcommand)]
         action: ListenerAction,
+    },
+    /// Canary / progressive rollout management.
+    Canary {
+        #[command(subcommand)]
+        action: CanaryAction,
     },
     /// Show the current configuration snapshot.
     Snapshot,
@@ -182,6 +188,7 @@ async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
+        Commands::Canary { action } => commands::canary::handle(action, &cli.server).await?,
         Commands::Cluster { action } => commands::cluster::handle(action, &cli.server).await?,
         Commands::Route { action } => commands::route::handle(action, &cli.server).await?,
         Commands::Endpoint { action } => commands::endpoint::handle(action, &cli.server).await?,

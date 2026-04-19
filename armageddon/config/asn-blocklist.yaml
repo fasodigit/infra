@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# ASN deny-list for ARMAGEDDON distributed DDoS mitigation.
+#
+# Format: a YAML sequence under the `asns` key.
+# Each entry is a 32-bit unsigned integer (ASN number).
+#
+# This file is hot-reloaded every `reload_interval_secs` seconds
+# (configured under security.sentinel.distributed_rate_limit).
+# No process restart is required after editing this file.
+#
+# To find the ASN for an IP:
+#   whois <ip> | grep -i "^origin"
+#   or: curl https://ipinfo.io/<ip>/org
+#
+# Recommended sources:
+#   - https://www.spamhaus.org/drop/asndrop.txt
+#   - https://bgpview.io/
+
+asns: []
+  # Uncomment and populate as needed:
+  # - 12345   # Example: bulletproof hosting AS
+  # - 67890   # Example: known botnet infrastructure

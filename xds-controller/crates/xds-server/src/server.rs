@@ -3,14 +3,16 @@
 // Registers all xDS services (ADS, CDS, EDS, RDS, LDS, SDS) on a single
 // tonic server listening on port 18000 (configurable).
 
+use crate::canary::CanaryOrchestrator;
 use crate::config::ServerConfig;
+use crate::generated::canary::v1::canary_service_server::CanaryServiceServer;
 use crate::generated::envoy::service::cluster::v3::cluster_discovery_service_server::ClusterDiscoveryServiceServer;
 use crate::generated::envoy::service::discovery::v3::aggregated_discovery_service_server::AggregatedDiscoveryServiceServer;
 use crate::generated::envoy::service::endpoint::v3::endpoint_discovery_service_server::EndpointDiscoveryServiceServer;
 use crate::generated::envoy::service::listener::v3::listener_discovery_service_server::ListenerDiscoveryServiceServer;
 use crate::generated::envoy::service::route::v3::route_discovery_service_server::RouteDiscoveryServiceServer;
 use crate::generated::envoy::service::secret::v3::secret_discovery_service_server::SecretDiscoveryServiceServer;
-use crate::services::{AdsService, CdsService, EdsService, LdsService, RdsService, SdsService};
+use crate::services::{AdsService, CanaryGrpcService, CdsService, EdsService, LdsService, RdsService, SdsService};
 
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -41,6 +43,13 @@ impl XdsServer {
             .parse()
             .map_err(|e| format!("invalid listen address: {e}"))?;
 
+        // Canary orchestrator — tick loop runs in background.
+        let orchestrator = Arc::new(CanaryOrchestrator::new(self.store.clone()));
+        {
+            let orch = orchestrator.as_ref().clone();
+            tokio::spawn(async move { orch.run_tick_loop().await });
+        }
+
         // Create service instances, all sharing the same ConfigStore
         let ads = AdsService::new(self.store.clone(), self.config.clone());
         let cds = CdsService::new(self.store.clone(), self.config.clone());
@@ -48,6 +57,7 @@ impl XdsServer {
         let rds = RdsService::new(self.store.clone(), self.config.clone());
         let lds = LdsService::new(self.store.clone(), self.config.clone());
         let sds = SdsService::new(self.store.clone(), self.config.clone());
+        let canary_svc = CanaryGrpcService::new(orchestrator.clone());
 
         info!(
             address = %addr,
@@ -62,6 +72,7 @@ impl XdsServer {
             .add_service(RouteDiscoveryServiceServer::new(rds))
             .add_service(ListenerDiscoveryServiceServer::new(lds))
             .add_service(SecretDiscoveryServiceServer::new(sds))
+            .add_service(CanaryServiceServer::new(canary_svc))
             .serve(addr)
             .await?;
 

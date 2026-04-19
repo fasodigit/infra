@@ -3,6 +3,7 @@
 //! Allows loading custom security plugins as WebAssembly modules.
 //! Plugins run in a sandboxed environment with controlled memory and time limits.
 
+pub mod abi_v0_2_0;
 pub mod host;
 pub mod plugin;
 pub mod runtime;

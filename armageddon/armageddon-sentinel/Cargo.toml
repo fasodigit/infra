@@ -19,6 +19,16 @@ regex = { workspace = true }
 ipnet = { workspace = true }
 chrono = { workspace = true }
 aho-corasick = { workspace = true }
+hex = { workspace = true }
+sha2 = { workspace = true }
+serde_yaml = { workspace = true }
+arc-swap = { workspace = true }
+blake3 = { workspace = true }
+prometheus = { workspace = true }
+lazy_static = { workspace = true }
+armageddon-nexus = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }
+uuid = { workspace = true }
+tempfile = { workspace = true }

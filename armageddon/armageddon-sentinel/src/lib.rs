@@ -1,9 +1,11 @@
 //! armageddon-sentinel: IPS engine with Aho-Corasick signatures, DLP, GeoIP, JA3, rate limiting.
 
+pub mod ddos;
 pub mod dlp;
 pub mod geoip;
 pub mod ips;
 pub mod ja3;
+pub mod ja4;
 pub mod rate_limit;
 
 use armageddon_common::context::RequestContext;
@@ -20,6 +22,7 @@ pub struct Sentinel {
     dlp: dlp::DlpEngine,
     geoip: geoip::GeoIpEngine,
     ja3: ja3::Ja3Engine,
+    ja4: ja4::Ja4Engine,
     rate_limiter: rate_limit::SlidingWindowLimiter,
     ready: bool,
 }
@@ -35,6 +38,7 @@ impl Sentinel {
             dlp: dlp::DlpEngine::new(&config.dlp),
             geoip: geoip::GeoIpEngine::new(&config.geoip_db_path, &config.blocked_countries),
             ja3: ja3::Ja3Engine::new(config.ja3_blacklist_path.as_deref()),
+            ja4: ja4::Ja4Engine::new(config.ja4_blacklist_path.as_deref()),
             rate_limiter,
             config,
             ready: false,
@@ -61,6 +65,10 @@ impl SecurityEngine for Sentinel {
 
     async fn inspect(&self, ctx: &RequestContext) -> Result<Decision> {
         let start = std::time::Instant::now();
+
+        if !self.config.enabled {
+            return Ok(Decision::allow(self.name(), start.elapsed().as_micros() as u64));
+        }
 
         // 1. Rate limit check
         if self.config.rate_limit.enabled {
@@ -97,6 +105,19 @@ impl SecurityEngine for Sentinel {
                     self.name(),
                     "SENTINEL-JA3-001",
                     "Blacklisted JA3 TLS fingerprint",
+                    Severity::High,
+                    start.elapsed().as_micros() as u64,
+                ));
+            }
+        }
+
+        // 3b. JA4 fingerprint check (modern TLS 1.3-aware fingerprint)
+        if let Some(ja4) = &ctx.connection.ja4_fingerprint {
+            if self.ja4.observe(ja4) {
+                return Ok(Decision::deny(
+                    self.name(),
+                    "SENTINEL-JA4-001",
+                    "Blacklisted JA4 TLS fingerprint",
                     Severity::High,
                     start.elapsed().as_micros() as u64,
                 ));

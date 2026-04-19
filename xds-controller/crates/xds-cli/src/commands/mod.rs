@@ -4,6 +4,7 @@
 // In the future, these will use a gRPC management API
 // to communicate with the xDS Controller.
 
+pub mod canary;
 pub mod cluster;
 pub mod endpoint;
 pub mod listener;

@@ -22,3 +22,4 @@ tonic = { workspace = true }
 prost = { workspace = true }
 
 xds-store = { workspace = true }
+xds-server = { workspace = true }

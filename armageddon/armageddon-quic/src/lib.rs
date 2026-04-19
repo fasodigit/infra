@@ -45,6 +45,8 @@
 //! ```
 
 pub mod codec;
+pub mod hpack_simd;
 pub mod server;
 
+pub use hpack_simd::{decode_huffman_simd, decode_huffman_scalar, encode_huffman, HpackError};
 pub use server::{Http3Server, QuicListenerConfig, QuicError, RequestHandler};

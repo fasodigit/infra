@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<!--
+  SPDX-License-Identifier: AGPL-3.0-or-later
+  Copyright (C) 2026 FASO DIGITALISATION
+  ARMAGEDDON Admin UI — single-page dashboard, no external CDN deps.
+  All assets are embedded in the binary via rust-embed.
+-->
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ARMAGEDDON — Admin</title>
+  <link rel="stylesheet" href="/admin/style.css" />
+</head>
+<body>
+
+<!-- ============================  TOP BAR  ============================ -->
+<div id="topbar">
+  <span class="logo">ARMAGEDDON</span>
+  <span class="tagline">Gateway Admin — FASO DIGITALISATION</span>
+
+  <div id="token-area">
+    <label for="token-input" style="color:var(--text-muted);font-size:11px">Token:</label>
+    <input id="token-input" type="password" placeholder="X-Admin-Token (optionnel)" autocomplete="off" />
+  </div>
+
+  <!-- Burkina Faso tricolore -->
+  <div class="flag" title="Burkina Faso">
+    <span class="flag-red"></span>
+    <span class="flag-star">&#9733;</span>
+    <span class="flag-green"></span>
+  </div>
+</div>
+
+<!-- ============================  NAV TABS  ============================ -->
+<div id="nav">
+  <div class="tab active" data-tab="overview">Overview</div>
+  <div class="tab" data-tab="clusters">Clusters</div>
+  <div class="tab" data-tab="listeners">Listeners</div>
+  <div class="tab" data-tab="stats">Stats</div>
+  <div class="tab" data-tab="config">Config</div>
+</div>
+
+<!-- ============================  PAGES  ============================ -->
+<div id="content">
+
+  <!-- OVERVIEW -->
+  <div id="page-overview" class="page active">
+    <div class="card">
+      <div class="card-title">Gateway Overview</div>
+      <div class="stat-grid" id="overview-stats" data-prev-total="0" data-prev-ts="">
+        <div class="stat-box">
+          <div class="stat-label">Uptime</div>
+          <div class="stat-value green" id="stat-uptime">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Total Requests</div>
+          <div class="stat-value" id="stat-total-req">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">RPS (approx)</div>
+          <div class="stat-value" id="stat-rps">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Error Rate</div>
+          <div class="stat-value green" id="stat-errrate">—</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-label">Latency P99</div>
+          <div class="stat-value" id="stat-p99">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Quick Links</div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" onclick="showTab('clusters')">Clusters</button>
+        <button class="btn" onclick="showTab('listeners')">Listeners</button>
+        <button class="btn" onclick="showTab('stats')">Stats live</button>
+        <button class="btn amber" onclick="showTab('config')">Config Dump</button>
+        <a href="/admin/api/stats/prometheus" target="_blank"
+           style="display:inline-block;padding:6px 14px;background:var(--surface2);border:1px solid var(--border);color:var(--text-muted);text-decoration:none;border-radius:3px;font-size:12px">
+          Prometheus text ↗
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <!-- CLUSTERS -->
+  <div id="page-clusters" class="page">
+    <div class="card">
+      <div class="card-title">Upstream Clusters</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Endpoints</th>
+            <th>Health</th>
+            <th>Status</th>
+            <th>Max Conn</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="clusters-tbody">
+          <tr><td colspan="6" style="color:var(--text-muted);text-align:center">
+            <span class="spinner"></span> Loading…
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- LISTENERS -->
+  <div id="page-listeners" class="page">
+    <div class="card">
+      <div class="card-title">Active Listeners</div>
+      <table>
+        <thead>
+          <tr>
+            <th>Name</th>
+            <th>Address</th>
+            <th>Port</th>
+            <th>Protocol</th>
+            <th>TLS</th>
+          </tr>
+        </thead>
+        <tbody id="listeners-tbody">
+          <tr><td colspan="5" style="color:var(--text-muted);text-align:center">
+            <span class="spinner"></span> Loading…
+          </td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div id="page-stats" class="page">
+    <div class="card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Prometheus Metrics (live, 2 s poll)</span>
+        <button class="btn danger" id="btn-reset-counters">Reset Counters</button>
+      </div>
+      <div id="stats-container">
+        <span class="spinner"></span> Loading…
+      </div>
+    </div>
+  </div>
+
+  <!-- CONFIG -->
+  <div id="page-config" class="page">
+    <div class="card">
+      <div class="card-title" style="display:flex;justify-content:space-between;align-items:center">
+        <span>Active Configuration (JSON)</span>
+        <button class="btn amber" id="btn-config-reload">Reload Config</button>
+      </div>
+      <pre id="config-dump-pre"><span class="spinner"></span> Loading…</pre>
+    </div>
+  </div>
+
+</div><!-- /content -->
+
+<!-- ============================  TOAST  ============================ -->
+<div id="toast-area"></div>
+
+<!-- ============================  POLL INDICATOR  ============================ -->
+<div id="poll-indicator">
+  <span class="spinner" style="width:8px;height:8px;border-width:1px"></span>
+  <span>polling 2s</span>
+  <span id="poll-dot" style="color:var(--text-muted)">&#9679;</span>
+</div>
+
+<script src="/admin/app.js"></script>
+</body>
+</html>

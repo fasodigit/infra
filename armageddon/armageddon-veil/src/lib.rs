@@ -139,6 +139,7 @@ mod tests {
             server_port: 8443,
             tls: None,
             ja3_fingerprint: None,
+            ja4_fingerprint: None,
         };
         RequestContext::new(http_req, conn, Protocol::Http)
     }

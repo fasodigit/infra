@@ -21,6 +21,8 @@ thiserror = { workspace = true }
 uuid = { workspace = true }
 dashmap = { workspace = true }
 async-trait = { workspace = true }
+chrono = { workspace = true }
+reqwest = { workspace = true }
 
 xds-store = { workspace = true }
 xds-discovery = { workspace = true }

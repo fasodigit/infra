@@ -175,6 +175,7 @@ mod tests {
                 server_port: 443,
                 tls: None,
                 ja3_fingerprint: None,
+                ja4_fingerprint: None,
             },
             Protocol::Http,
         )

@@ -1,0 +1,26 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+[package]
+name = "header-mutator"
+version = "0.1.0"
+edition = "2021"
+license = "AGPL-3.0-or-later"
+description = "Example proxy-wasm filter: adds X-FASO-Filter: processed to every request"
+
+# ---- important: compile to WASM32-WASI --------------------------------
+# cargo build --target wasm32-wasip1 --release
+# The resulting .wasm lives at:
+# target/wasm32-wasip1/release/header_mutator.wasm
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# proxy-wasm Rust SDK (implements the v0.2 ABI for us)
+proxy-wasm = "0.2"
+log = "0.4"
+
+[profile.release]
+# Minimise binary size
+opt-level = "s"
+lto = true
+strip = "symbols"

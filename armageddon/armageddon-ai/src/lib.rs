@@ -52,6 +52,10 @@ impl SecurityEngine for AiEngine {
     async fn inspect(&self, ctx: &RequestContext) -> Result<Decision> {
         let start = std::time::Instant::now();
 
+        if !self.config.enabled {
+            return Ok(Decision::allow(self.name(), start.elapsed().as_micros() as u64));
+        }
+
         // 1. Check threat intelligence feeds for known-bad IPs
         let ip_str = ctx.connection.client_ip.to_string();
         if self.threat_intel.is_known_threat(&ip_str) {

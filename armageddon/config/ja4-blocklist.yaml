@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# ARMAGEDDON — JA4 TLS client fingerprint blocklist
+#
+# Format (per entry):
+#   hash        : full JA4 string (e.g. t13d1516h2_abcdef123456_fedcba654321)
+#   description : human-readable label (bot family, scanner, malware)
+#   block       : true = hard-deny  |  false = challenge only (default: true)
+#
+# Hot-reloaded at runtime — SENTINEL re-reads this file without restart.
+# Reload trigger: SIGHUP or admin API PATCH /sentinel/ja4/reload
+
+blocklist:
+  # -- Scanners / crawlers --
+  - hash: t13d1516h2_8daaf6152771_e5627efa2ab1
+    description: "Masscan 1.x — mass TCP scanner"
+    block: true
+
+  - hash: t12i0306h2_3a97ce4b8e78_b5a02e7a6c93
+    description: "ZMap scanner"
+    block: true
+
+  - hash: t13d1015h2_cd08e31494f9_3b2c97e4a5f1
+    description: "Shodan crawler"
+    block: true
+
+  # -- Exploit toolkits --
+  - hash: t13d0511h2_8a9bcde23456_12f3456789ab
+    description: "Metasploit default TLS client"
+    block: true
+
+  - hash: t12i0205h2_deadbeef1234_cafebabe5678
+    description: "Cobalt Strike default beacon TLS"
+    block: true
+
+  # -- Suspicious automation --
+  - hash: t13d0800h2_a1b2c3d4e5f6_1a2b3c4d5e6f
+    description: "Python requests (headless, no SNI) — review"
+    block: false
+
+  # -- Known-bad Go clients (crypto mining pools) --
+  - hash: t13d0902h2_feedface0000_0000facefeed
+    description: "Go crypto-miner TLS fingerprint"
+    block: true

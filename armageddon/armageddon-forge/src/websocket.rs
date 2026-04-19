@@ -441,7 +441,7 @@ mod tests {
             .unwrap();
 
         let payload: bytes::Bytes = bytes::Bytes::from(vec![0xABu8; 100 * 1024]);
-        client.send(WsMsg::Binary(payload.clone())).await.unwrap();
+        client.send(WsMsg::Binary(payload.to_vec())).await.unwrap();
         let reply = client.next().await.unwrap().unwrap();
         match reply {
             WsMsg::Binary(data) => assert_eq!(data.len(), 100 * 1024),

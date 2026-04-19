@@ -1,0 +1,323 @@
+# ARMAGEDDON Full Configuration — Vague 1 all-components example
+# FASO DIGITALISATION Project
+# All optional sections (quic, mesh, xds_consumer, cache, admin) are shown.
+# Remove any section to disable that component at runtime.
+
+gateway:
+  listeners:
+    - name: http-inbound
+      address: "0.0.0.0"
+      port: 8080
+      protocol: http
+      tls: null
+
+  auth_mode: session
+
+  routes:
+    - name: health
+      match_rule:
+        prefix: /healthz
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: auth-ms
+      timeout_ms: 5000
+      auth_skip: true
+      retry_policy: null
+
+    - name: auth
+      match_rule:
+        prefix: /api/auth
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: auth-ms
+      timeout_ms: 10000
+      auth_skip: true
+      retry_policy: null
+
+    - name: poulets
+      match_rule:
+        prefix: /api/poulets
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: poulets-api
+      timeout_ms: 10000
+      auth_skip: true
+      retry_policy: null
+
+    - name: default
+      match_rule:
+        prefix: /
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: default-backend
+      timeout_ms: 30000
+      auth_skip: true
+      retry_policy: null
+
+  clusters:
+    - name: auth-ms
+      endpoints:
+        - address: 127.0.0.1
+          port: 8801
+          weight: 100
+          healthy: true
+      health_check:
+        interval_ms: 5000
+        timeout_ms: 2000
+        unhealthy_threshold: 3
+        healthy_threshold: 2
+        protocol: Http
+        path: /actuator/health
+      circuit_breaker:
+        max_connections: 256
+        max_pending_requests: 256
+        max_requests: 256
+        max_retries: 2
+      outlier_detection:
+        consecutive_5xx: 3
+        interval_ms: 10000
+        base_ejection_time_ms: 30000
+        max_ejection_percent: 30
+
+    - name: poulets-api
+      endpoints:
+        - address: 127.0.0.1
+          port: 8901
+          weight: 100
+          healthy: true
+      health_check:
+        interval_ms: 5000
+        timeout_ms: 2000
+        unhealthy_threshold: 3
+        healthy_threshold: 2
+        protocol: Http
+        path: /actuator/health
+      circuit_breaker:
+        max_connections: 256
+        max_pending_requests: 256
+        max_requests: 256
+        max_retries: 2
+      outlier_detection:
+        consecutive_5xx: 3
+        interval_ms: 10000
+        base_ejection_time_ms: 30000
+        max_ejection_percent: 30
+
+    - name: default-backend
+      endpoints:
+        - address: 127.0.0.1
+          port: 4800
+          weight: 100
+          healthy: true
+      health_check:
+        interval_ms: 5000
+        timeout_ms: 2000
+        unhealthy_threshold: 3
+        healthy_threshold: 2
+        protocol: Http
+        path: /healthz
+      circuit_breaker:
+        max_connections: 1024
+        max_pending_requests: 1024
+        max_requests: 1024
+        max_retries: 3
+      outlier_detection:
+        consecutive_5xx: 5
+        interval_ms: 10000
+        base_ejection_time_ms: 30000
+        max_ejection_percent: 50
+
+  jwt:
+    jwks_uri: http://127.0.0.1:8801/.well-known/jwks.json
+    issuer: auth-ms
+    audiences:
+      - faso-api
+    algorithm: ES384
+    cache_ttl_secs: 300
+    require_claims:
+      - sub
+      - iat
+      - exp
+
+  kratos:
+    whoami_url: http://127.0.0.1:4433/sessions/whoami
+    session_cookie: ory_kratos_session
+    timeout_ms: 3000
+    cache_ttl_secs: 60
+
+  cors: []
+
+  ext_authz:
+    enabled: false
+    grpc_address: "127.0.0.1:9191"
+    timeout_ms: 500
+    fail_closed: true
+
+  xds:
+    address: xds-controller
+    port: 18000
+    node_id: armageddon-0
+    cluster_name: armageddon
+
+  webhooks:
+    github:
+      enabled: false
+      secret_env: ARMAGEDDON_GITHUB_WEBHOOK_SECRET
+      kafka_brokers:
+        - redpanda:9092
+      topic: github.events.v1
+      rate_limit_per_ip_per_min: 1000
+
+  # -- Vague 1: HTTP/3 QUIC listener --
+  quic: null
+
+  # -- Vague 1: SPIFFE/SPIRE mTLS mesh --
+  # Uncomment when a SPIRE agent is reachable at the socket path.
+  # mesh:
+  #   socket_path: /run/spire/sockets/agent.sock
+  #   ca_bundle_pem: null
+  #   peer_id: spiffe://faso.gov.bf/ns/default/sa/armageddon
+
+  # -- Vague 1: xDS ADS consumer --
+  # Uncomment when an xds-controller is available.
+  # xds_consumer:
+  #   endpoint: http://xds-controller:18000
+  #   node_id: armageddon-default
+
+  # -- Vague 1: Load balancer --
+  lb:
+    algorithm: round_robin   # round_robin | least_conn | p2c | ring_hash | maglev | weighted | random
+
+  # -- Vague 1: Retry / timeout / budget --
+  retry:
+    max_retries: 2
+    per_try_timeout_ms: 3000
+    overall_timeout_ms: 10000
+    budget_percent: 10.0
+    min_concurrency: 5
+
+  # -- Vague 1: Response cache backed by KAYA --
+  cache:
+    enabled: true
+    default_ttl_secs: 60
+    max_body_size: 1048576
+    kaya_prefix: "armageddon:resp:"
+
+  # -- Vague 1: Admin API (loopback only) --
+  admin:
+    enabled: true
+    bind_addr: "127.0.0.1"
+    port: 9902
+    admin_token: null
+
+  # -- Vague 1: WebSocket + gRPC-Web --
+  websocket_enabled: true
+  grpc_web_enabled: true
+
+  # -- Rate limiting (Vague 2) --
+  # Remove this section entirely (or set enabled: false) to skip rate limiting.
+  # mode: local | global | hybrid
+  # fallback: fail_open | fail_closed  (ignored in local mode)
+  rate_limit:
+    enabled: true
+    mode: local
+    fallback: fail_open
+    shadow: false
+    rules:
+      - descriptor: "_default"
+        requests_per_window: 1000
+        window_secs: 60
+      - descriptor: "route:/api/auth"
+        requests_per_window: 60
+        window_secs: 60
+
+security:
+  sentinel:
+    enabled: false
+    signature_path: /etc/armageddon/signatures/
+    geoip_db_path: /etc/armageddon/geoip/GeoLite2-City.mmdb
+    blocked_countries: []
+    ja3_blacklist_path: /etc/armageddon/ja3/blacklist.txt
+    rate_limit:
+      enabled: true
+      window_secs: 60
+      max_requests: 1000
+      key_type: ip
+    dlp:
+      enabled: false
+      patterns_path: /etc/armageddon/dlp/patterns.yaml
+      scan_response: false
+
+  arbiter:
+    enabled: false
+    paranoia_level: 2
+    crs_path: /etc/armageddon/crs/
+    custom_rules_path: /etc/armageddon/rules/custom/
+    anomaly_threshold: 5
+    learning_mode: false
+
+  oracle:
+    enabled: false
+    model_path: /etc/armageddon/models/anomaly.onnx
+    feature_count: 22
+    anomaly_threshold: 0.85
+    prompt_injection_threshold: 0.80
+
+  aegis:
+    enabled: false
+    policy_dir: /etc/armageddon/policies/
+    default_decision: deny
+
+  nexus:
+    block_threshold: 0.75
+    challenge_threshold: 0.50
+    correlation_window_ms: 5000
+
+  veil:
+    enabled: false
+    remove_headers:
+      - server
+      - x-powered-by
+    inject_headers:
+      - name: Strict-Transport-Security
+        value: "max-age=31536000; includeSubDomains; preload"
+      - name: X-Content-Type-Options
+        value: nosniff
+
+  wasm:
+    enabled: false
+    plugins_dir: /etc/armageddon/plugins/
+    max_memory_bytes: 67108864
+    max_execution_time_ms: 100
+
+  ai:
+    enabled: false
+    threat_intel_feeds: []
+    prompt_injection_model_path: null
+    refresh_interval_secs: 3600
+
+kaya:
+  host: 127.0.0.1
+  port: 6380
+  password: null
+  db: 0
+  pool_size: 16
+  tls: false
+
+observability:
+  log_level: info
+  log_format: json
+  metrics_port: 9090
+  traces_endpoint: null
+
+observe:
+  jaeger_endpoint: null
+  service_name: armageddon

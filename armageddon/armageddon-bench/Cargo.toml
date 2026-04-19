@@ -1,0 +1,39 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+[package]
+name = "armageddon-bench"
+version.workspace = true
+edition.workspace = true
+license = "AGPL-3.0-or-later"
+description = "ARMAGEDDON performance benchmarks"
+publish = false
+
+[dependencies]
+armageddon-forge = { workspace = true, features = [] }
+armageddon-oracle = { workspace = true }
+tokio = { workspace = true }
+bytes = { workspace = true }
+tracing = { workspace = true }
+http = { workspace = true }
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+
+# io_uring backend (Linux only)
+tokio-uring = { workspace = true, optional = true }
+
+[features]
+io_uring = [
+    "dep:tokio-uring",
+    "armageddon-forge/io_uring",
+]
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "uring_compare"
+harness = false
+
+[[bench]]
+name = "otel_propagation"
+harness = false

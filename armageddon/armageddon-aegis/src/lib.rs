@@ -2,6 +2,7 @@
 //!
 //! Implements deny-by-default policy evaluation for authorization decisions.
 
+pub mod graphql_limits;
 pub mod policy;
 
 use armageddon_common::context::RequestContext;
@@ -58,6 +59,10 @@ impl SecurityEngine for Aegis {
 
     async fn inspect(&self, ctx: &RequestContext) -> Result<Decision> {
         let start = std::time::Instant::now();
+
+        if !self.config.enabled {
+            return Ok(Decision::allow(self.name(), start.elapsed().as_micros() as u64));
+        }
 
         // Build input document for Rego evaluation
         let input = self.engine.build_input(ctx);
