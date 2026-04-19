@@ -1,0 +1,112 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — SPIRE stack (podman-compose)
+# Services   : faso-spire-server, faso-spire-agent
+# Network    : faso-net (external — created by main podman-compose.yml)
+# Volumes    : spire-server-data, spire-agent-data (persistent across restarts)
+#
+# Usage (dev):
+#   cd INFRA/spire
+#   bash scripts/bootstrap.sh        # first time: starts stack + registers workloads
+#   podman-compose -f podman-compose.spire.yml up -d    # subsequent starts
+#
+# Healthchecks use the SPIRE built-in health endpoint (HTTP 200 on /live).
+
+version: "3.9"
+
+networks:
+  faso-net:
+    external: true
+
+volumes:
+  spire-server-data:
+    driver: local
+  spire-agent-data:
+    driver: local
+  spire-sockets:
+    driver: local
+
+services:
+  # ── SPIRE Server ────────────────────────────────────────────────────────
+  faso-spire-server:
+    image: ghcr.io/spiffe/spire-server:1.9.6
+    container_name: faso-spire-server
+    restart: unless-stopped
+    hostname: faso-spire-server
+    command:
+      - "-config"
+      - "/opt/spire/conf/server/server.conf"
+    environment:
+      # Injected by Vault Agent or podman secret at runtime.
+      SPIRE_POSTGRES_URL: "${SPIRE_POSTGRES_URL:-postgresql://spire:spire_dev@faso-postgres:5432/spire_server?sslmode=disable}"
+    volumes:
+      - ./server/server.conf:/opt/spire/conf/server/server.conf:ro,Z
+      - ./certs/ca.crt:/opt/spire/conf/server/ca.crt:ro,Z
+      - ./certs/ca.key:/opt/spire/conf/server/ca.key:ro,Z
+      - spire-server-data:/opt/spire/data/server:Z
+    ports:
+      # 8081 registration API — bind to loopback only in prod
+      - "127.0.0.1:8081:8081"
+      # 9988 Prometheus metrics
+      - "127.0.0.1:9988:9988"
+    expose:
+      - "8081"
+      - "8082"   # federation (future)
+    networks:
+      - faso-net
+    healthcheck:
+      test:
+        - "CMD"
+        - "/opt/spire/bin/spire-server"
+        - "healthcheck"
+        - "-socketPath"
+        - "/tmp/spire-server/private/api.sock"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+    labels:
+      org.opencontainers.image.description: "FASO SPIRE server — trust domain faso.gov.bf"
+      faso.service: "spire-server"
+
+  # ── SPIRE Agent ─────────────────────────────────────────────────────────
+  faso-spire-agent:
+    image: ghcr.io/spiffe/spire-agent:1.9.6
+    container_name: faso-spire-agent
+    restart: unless-stopped
+    hostname: faso-spire-agent
+    command:
+      - "-config"
+      - "/opt/spire/conf/agent/agent.conf"
+    depends_on:
+      faso-spire-server:
+        condition: service_healthy
+    environment:
+      # Join token written by bootstrap.sh into this env var.
+      SPIRE_JOIN_TOKEN: "${SPIRE_JOIN_TOKEN:-}"
+    volumes:
+      - ./agent/agent.conf:/opt/spire/conf/agent/agent.conf:ro,Z
+      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro,Z
+      - spire-agent-data:/opt/spire/data/agent:Z
+      # Shared socket volume — mounted by workload containers at /run/spire/sockets/agent.sock
+      - spire-sockets:/run/spire/sockets:Z
+      # Podman socket for docker workload attestor
+      - /run/podman/podman.sock:/run/podman/podman.sock:ro,Z
+    ports:
+      # 9989 Prometheus metrics
+      - "127.0.0.1:9989:9989"
+    networks:
+      - faso-net
+    healthcheck:
+      test:
+        - "CMD"
+        - "/opt/spire/bin/spire-agent"
+        - "healthcheck"
+        - "-socketPath"
+        - "/run/spire/sockets/agent.sock"
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    labels:
+      org.opencontainers.image.description: "FASO SPIRE agent — trust domain faso.gov.bf"
+      faso.service: "spire-agent"

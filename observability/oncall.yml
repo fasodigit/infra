@@ -1,0 +1,22 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Oncall rotation — consulté par postmortem-bot pour assigner la GH issue.
+# Format : une entrée par semaine ISO (YYYY-Www). Engineer = handle GitHub.
+---
+rotation:
+  - week: 2026-W16
+    engineer: "@alice"
+  - week: 2026-W17
+    engineer: "@bob"
+  - week: 2026-W18
+    engineer: "@carol"
+  - week: 2026-W19
+    engineer: "@david"
+  - week: 2026-W20
+    engineer: "@alice"
+  - week: 2026-W21
+    engineer: "@bob"
+
+# Fallback si la semaine courante n'est pas listée.
+default_assignee: "@sre-team-lead"

@@ -1,0 +1,4 @@
+FasoP0ulet$2026Xk9m==>***FASO_REDACTED_TEST_PASSWORD***
+Test1234!@#$==>***FASO_REDACTED_TEST_PASSWORD***
+regex:-----BEGIN PRIVATE KEY-----\n[A-Za-z0-9+/=\n]+\n-----END PRIVATE KEY-----==>***FASO_REDACTED_PRIVATE_KEY***
+regex:-----BEGIN EC PRIVATE KEY-----\n[A-Za-z0-9+/=\n]+\n-----END EC PRIVATE KEY-----==>***FASO_REDACTED_EC_PRIVATE_KEY***

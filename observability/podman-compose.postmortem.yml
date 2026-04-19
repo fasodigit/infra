@@ -1,0 +1,47 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Stack override : faso-postmortem-bot.
+# Usage :
+#   podman-compose \
+#     -f INFRA/docker/compose/podman-compose.yml \
+#     -f INFRA/observability/podman-compose.postmortem.yml \
+#     up -d faso-postmortem-bot
+---
+version: "3.9"
+
+networks:
+  faso-net:
+    external: true
+
+services:
+  faso-postmortem-bot:
+    container_name: faso-postmortem-bot
+    build:
+      context: ../scripts
+      dockerfile: Dockerfile.postmortem-bot
+    image: faso/postmortem-bot:latest
+    restart: unless-stopped
+    networks:
+      - faso-net
+    # Exposed internally — Alertmanager reaches it via service DNS.
+    expose:
+      - "8090"
+    environment:
+      GITHUB_REPO: "faso-digitalisation/INFRA"
+      LOG_LEVEL: "INFO"
+      VAULT_ADDR: "http://vault:8200"
+      VAULT_GH_TOKEN_PATH: "faso/postmortem-bot/github-token"
+      # GITHUB_TOKEN must NOT be set here — Vault is source of truth.
+      # VAULT_TOKEN injected by the Vault Agent sidecar at runtime.
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8090/healthz"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL

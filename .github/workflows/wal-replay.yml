@@ -1,20 +1,119 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# Nightly WAL + snapshot replay test. Creates a P1 GitHub issue on divergence.
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# WAL Replay Nightly — Phase 7 axe 7
+#
+# Validates the full KAYA WAL-format-binary-v2 durability chain every night:
+#   snapshot + WAL append → crash simulation → cold recovery → hash comparison.
+#
+# Cron note: "7 3 * * *" = 03:07 UTC (intentionally offset from the :00 mark
+# to avoid thundering-herd with other nightly workflows that target 03:00).
 name: WAL Replay Nightly
 
 on:
   schedule:
-    - cron: '0 3 * * *'
+    - cron: "7 3 * * *"
   workflow_dispatch:
 
 permissions:
   contents: read
   issues: write
 
+# Cancel any in-flight run on the same branch when a new one is triggered.
+concurrency:
+  group: wal-replay-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  replay:
+  # --------------------------------------------------------------------------
+  # Build kaya-server and kaya-cli release binaries (shared across matrix).
+  # --------------------------------------------------------------------------
+  build:
+    name: Build release binaries
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: INFRA/kaya
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: INFRA/kaya
+          cache-on-failure: true
+
+      - name: Build kaya-server + kaya-cli (release)
+        run: |
+          cargo build --release -p kaya-server -p kaya-cli
+
+      - name: Upload binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaya-binaries
+          path: |
+            INFRA/kaya/target/release/kaya-server
+            INFRA/kaya/target/release/kaya-cli
+          retention-days: 1
+
+  # --------------------------------------------------------------------------
+  # Shell integration test: wal-replay-test.sh --smoke
+  # --------------------------------------------------------------------------
+  smoke-shell:
+    name: Shell smoke (fsync=${{ matrix.fsync_policy }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        fsync_policy: [always, everysec]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: kaya-binaries
+          path: INFRA/kaya/target/release/
+
+      - name: Fix binary permissions
+        run: chmod +x INFRA/kaya/target/release/kaya-server INFRA/kaya/target/release/kaya-cli
+
+      - name: Install b3sum (optional, falls back to sha256sum)
+        run: |
+          cargo install b3sum --quiet 2>/dev/null || true
+
+      - name: Run WAL replay smoke test
+        env:
+          KAYA_FSYNC_POLICY: ${{ matrix.fsync_policy }}
+          KAYA_BIN_DIR: ${{ github.workspace }}/INFRA/kaya/target/release
+        run: |
+          bash INFRA/scripts/wal-replay-test.sh --smoke \
+               --data-dir /tmp/kaya-wal-replay-smoke-${{ matrix.fsync_policy }} \
+               --port 6399 2>&1 | tee smoke-${{ matrix.fsync_policy }}.log
+          grep -qE '^PASS' smoke-${{ matrix.fsync_policy }}.log
+
+      - name: Upload smoke log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-log-${{ matrix.fsync_policy }}
+          path: smoke-${{ matrix.fsync_policy }}.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Rust integration test: cargo test --package kaya-bench --test wal_replay
+  # --------------------------------------------------------------------------
+  rust-integration:
+    name: Rust integration test (fsync=${{ matrix.fsync_policy }})
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -22,37 +121,166 @@ jobs:
     defaults:
       run:
         working-directory: INFRA/kaya
+
     steps:
       - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-        with: { workspaces: INFRA/kaya }
 
-      - name: Run WAL replay test (fsync=${{ matrix.fsync_policy }})
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: INFRA/kaya
+          cache-on-failure: true
+
+      - name: Run WAL replay integration tests (including #[ignore])
         env:
           KAYA_FSYNC_POLICY: ${{ matrix.fsync_policy }}
         run: |
-          cargo test --release --test wal_replay_nightly -- --nocapture | tee replay.log
-          grep -q '^PASS' replay.log
+          cargo test --release \
+            --package kaya-bench \
+            --test wal_replay \
+            -- --nocapture --ignored 2>&1 | tee replay-rust-${{ matrix.fsync_policy }}.log
+          grep -qE '^PASS' replay-rust-${{ matrix.fsync_policy }}.log
 
-      - name: Push metrics to Pushgateway
-        if: always()
+      - name: Also run the non-ignored smoke variant
+        env:
+          KAYA_FSYNC_POLICY: ${{ matrix.fsync_policy }}
+        run: |
+          cargo test --release \
+            --package kaya-bench \
+            --test wal_replay \
+            wal_replay_smoke \
+            -- --nocapture 2>&1 | tee smoke-rust-${{ matrix.fsync_policy }}.log
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-replay-logs-${{ matrix.fsync_policy }}
+          path: |
+            INFRA/kaya/replay-rust-${{ matrix.fsync_policy }}.log
+            INFRA/kaya/smoke-rust-${{ matrix.fsync_policy }}.log
+          retention-days: 7
+
+  # --------------------------------------------------------------------------
+  # Push Prometheus metrics to Pushgateway (best-effort).
+  # --------------------------------------------------------------------------
+  push-metrics:
+    name: Push metrics
+    needs: [smoke-shell, rust-integration]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    strategy:
+      matrix:
+        fsync_policy: [always, everysec]
+
+    steps:
+      - name: Push result to Pushgateway
         env:
           PROM_PUSHGATEWAY_URL: ${{ secrets.PROM_PUSHGATEWAY_URL }}
         run: |
-          [ -z "$PROM_PUSHGATEWAY_URL" ] && exit 0
-          status=$([ "${{ job.status }}" = "success" ] && echo 1 || echo 0)
-          printf 'kaya_wal_replay_success{fsync="%s"} %s\n' "${{ matrix.fsync_policy }}" "$status" | \
-            curl --data-binary @- "$PROM_PUSHGATEWAY_URL/metrics/job/kaya-wal-replay"
+          [ -z "${PROM_PUSHGATEWAY_URL}" ] && exit 0
+          # Derive success flag from upstream job status.
+          SHELL_STATUS="${{ needs.smoke-shell.result }}"
+          RUST_STATUS="${{ needs.rust-integration.result }}"
+          success=0
+          [[ "${SHELL_STATUS}" == "success" ]] && [[ "${RUST_STATUS}" == "success" ]] && success=1
+          printf 'kaya_wal_replay_success{fsync="%s",workflow="%s"} %s\n' \
+            "${{ matrix.fsync_policy }}" \
+            "wal-replay-nightly" \
+            "${success}" | \
+            curl --silent --fail --data-binary @- \
+              "${PROM_PUSHGATEWAY_URL}/metrics/job/kaya-wal-replay" || true
 
-      - name: Create incident issue on failure
-        if: failure()
+  # --------------------------------------------------------------------------
+  # Auto-create a GitHub issue on 3 consecutive nightly failures.
+  # --------------------------------------------------------------------------
+  failure-incident:
+    name: Open incident issue on divergence
+    needs: [smoke-shell, rust-integration]
+    if: |
+      failure() &&
+      github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      issues: write
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Fetch last 7 commits of the default branch to inspect nightly run history.
+          fetch-depth: 0
+
+      - name: Count consecutive nightly failures and open issue
         uses: actions/github-script@v7
         with:
           script: |
-            await github.rest.issues.create({
-              owner: context.repo.owner, repo: context.repo.repo,
-              title: `WAL Replay Divergence (fsync=${{ matrix.fsync_policy }}) ${new Date().toISOString().slice(0,10)}`,
-              labels: ['incident', 'P1', 'kaya-persistence'],
-              body: `Nightly WAL replay test FAILED.\nFsync policy: ${{ matrix.fsync_policy }}\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nRunbook: INFRA/scripts/WAL-REPLAY-README.md`,
+            const { owner, repo } = context.repo;
+
+            // Search for open issues with the same nightly-failure label to
+            // determine how many consecutive nights have failed.
+            const existing = await github.rest.issues.listForRepo({
+              owner, repo,
+              state: 'open',
+              labels: 'severity:high,component:kaya-wal',
+              per_page: 10,
             });
+
+            const nightlyIssues = existing.data.filter(i =>
+              i.title.startsWith('WAL Replay Divergence (nightly)')
+            );
+
+            const consecutiveFails = nightlyIssues.length + 1;
+            console.log(`Consecutive nightly failures: ${consecutiveFails}`);
+
+            if (consecutiveFails < 3) {
+              // Annotate existing issue if present, else just log.
+              if (nightlyIssues.length > 0) {
+                await github.rest.issues.createComment({
+                  owner, repo,
+                  issue_number: nightlyIssues[0].number,
+                  body: `Nightly failure #${consecutiveFails} — run: ${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`,
+                });
+              }
+              console.log(`Not opening new issue yet (need 3 consecutive, at ${consecutiveFails})`);
+              return;
+            }
+
+            // 3rd consecutive failure → open P1 incident issue.
+            const date = new Date().toISOString().slice(0, 10);
+            const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/runs/${context.runId}`;
+            const body = [
+              `## WAL Replay Nightly — ${consecutiveFails} Consecutive Failures`,
+              '',
+              `**Date**: ${date}`,
+              `**Failing run**: ${runUrl}`,
+              `**Fsync policies tested**: \`always\`, \`everysec\``,
+              '',
+              '## Impact',
+              'The KAYA WAL-format-binary-v2 durability chain has failed validation for',
+              `${consecutiveFails} nights in a row. This may indicate silent data loss`,
+              'on crash recovery.',
+              '',
+              '## Triage',
+              '1. Download the `kaya-wal-replay-logs` artifact from the failing run.',
+              '2. Check `replay.log` for `DIVERGENCE` lines and the diff section.',
+              '3. Inspect WAL segments via `cargo run -p kaya-cli -- persistence inspect --data-dir <path>`.',
+              '4. See runbook: `INFRA/scripts/WAL-REPLAY-README.md`',
+              '',
+              '## Checklist',
+              '- [ ] Root cause identified',
+              '- [ ] Fix merged to main',
+              '- [ ] Two consecutive nightly passes confirmed',
+              '- [ ] Issue closed',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner, repo,
+              title: `WAL Replay Divergence (nightly) ${date}`,
+              labels: ['severity:high', 'component:kaya-wal'],
+              body,
+            });
+            console.log('Incident issue created.');

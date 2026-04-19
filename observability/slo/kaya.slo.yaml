@@ -1,41 +1,123 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 FASO DIGITALISATION
-# Sloth SLO definition for KAYA. Generates Prometheus recording + alert rules.
+# Sloth SLO definitions for KAYA (DB in-memory souveraine Rust).
+# Schema: sloth.slok.dev/v1 (prometheus/v1).
+# Generate rules: sloth generate -i kaya.slo.yaml -o ../prometheus/rules/slo/kaya.rules.yml
 version: "prometheus/v1"
 service: "kaya"
 labels:
   project: faso-digitalisation
   tier: critical
+  component: storage
 slos:
-  - name: "availability"
-    objective: 99.95    # 4h22m/month error budget
-    description: "KAYA accepts RESP3 connections and responds without error"
+  # --------------------------------------------------------------------------
+  # P99 latency < 1ms — objective 99.9% sur 30j → budget ~43min/mois
+  # --------------------------------------------------------------------------
+  - name: "latency-p99-1ms"
+    objective: 99.9
+    description: "99.9% des commandes RESP3 KAYA doivent être sous 1ms (P99)."
+    labels:
+      sli_type: latency
+      threshold_ms: "1"
     sli:
       events:
         error_query: |
-          sum(rate(kaya_command_errors_total[{{.window}}]))
+          sum(rate(kaya_command_duration_seconds_count{service="kaya"}[{{.window}}]))
+          -
+          sum(rate(kaya_command_duration_seconds_bucket{service="kaya",le="0.001"}[{{.window}}]))
         total_query: |
-          sum(rate(kaya_commands_total[{{.window}}]))
+          sum(rate(kaya_command_duration_seconds_count{service="kaya"}[{{.window}}]))
     alerting:
-      name: KayaAvailabilityBurn
+      name: KayaLatencyP99Burn
+      labels:
+        category: latency
+      annotations:
+        summary: "KAYA P99 latency burning error budget (<1ms)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
       page_alert:
         labels: { severity: critical, team: platform }
-        annotations: { runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/kaya-down.md" }
       ticket_alert:
         labels: { severity: warning, team: platform }
 
-  - name: "latency-p99-1ms"
-    objective: 99
-    description: "99% of RESP3 commands complete under 1ms"
+  # --------------------------------------------------------------------------
+  # Availability 99.95% (uptime PING successful)
+  # --------------------------------------------------------------------------
+  - name: "availability"
+    objective: 99.95
+    description: "99.95% des PING KAYA RESP3 doivent réussir (uptime)."
+    labels:
+      sli_type: availability
     sli:
       events:
         error_query: |
-          sum(rate(kaya_command_duration_seconds_count[{{.window}}]))
-          -
-          sum(rate(kaya_command_duration_seconds_bucket{le="0.001"}[{{.window}}]))
+          sum(rate(kaya_ping_total{service="kaya",status="fail"}[{{.window}}]))
         total_query: |
-          sum(rate(kaya_command_duration_seconds_count[{{.window}}]))
+          sum(rate(kaya_ping_total{service="kaya"}[{{.window}}]))
     alerting:
-      name: KayaLatencyBurn
-      page_alert: { labels: { severity: critical } }
-      ticket_alert: { labels: { severity: warning } }
+      name: KayaAvailabilityBurn
+      labels:
+        category: availability
+      annotations:
+        summary: "KAYA availability error budget burning."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: platform }
+      ticket_alert:
+        labels: { severity: warning, team: platform }
+
+  # --------------------------------------------------------------------------
+  # Write throughput ≥ 100k ops/s — objective 99.5%
+  # --------------------------------------------------------------------------
+  - name: "write-throughput-100k"
+    objective: 99.5
+    description: "99.5% du temps, débit d'écriture KAYA ≥ 100k ops/s."
+    labels:
+      sli_type: throughput
+      target_ops: "100000"
+    sli:
+      events:
+        error_query: |
+          sum(rate(kaya_write_ops_throughput_below_target_total{service="kaya"}[{{.window}}]))
+        total_query: |
+          sum(rate(kaya_write_ops_throughput_samples_total{service="kaya"}[{{.window}}]))
+    alerting:
+      name: KayaWriteThroughputBurn
+      labels:
+        category: throughput
+      annotations:
+        summary: "KAYA write throughput below 100k ops/s objective."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: platform }
+      ticket_alert:
+        labels: { severity: warning, team: platform }
+
+  # --------------------------------------------------------------------------
+  # Persistence WAL sync P95 < 10ms
+  # --------------------------------------------------------------------------
+  - name: "wal-sync-p95-10ms"
+    objective: 99
+    description: "99% des fsync WAL KAYA doivent être sous 10ms (P95)."
+    labels:
+      sli_type: latency
+      component: wal
+      threshold_ms: "10"
+    sli:
+      events:
+        error_query: |
+          sum(rate(kaya_wal_sync_duration_seconds_count{service="kaya"}[{{.window}}]))
+          -
+          sum(rate(kaya_wal_sync_duration_seconds_bucket{service="kaya",le="0.010"}[{{.window}}]))
+        total_query: |
+          sum(rate(kaya_wal_sync_duration_seconds_count{service="kaya"}[{{.window}}]))
+    alerting:
+      name: KayaWalSyncBurn
+      labels:
+        category: persistence
+      annotations:
+        summary: "KAYA WAL fsync P95 burning error budget (<10ms)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: platform }
+      ticket_alert:
+        labels: { severity: warning, team: platform }

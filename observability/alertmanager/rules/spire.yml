@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — Prometheus alerting rules for SPIRE SVID health
+#
+# Source metrics:
+#   spire_svid_expires_in_hours  (gauge)  — pushed by check-expiration.sh via Pushgateway
+#   up{job="spire-agent"}        (gauge)  — scraped from :9989/metrics by Prometheus
+#   up{job="spire-server"}       (gauge)  — scraped from :9988/metrics by Prometheus
+#
+# Routing (alertmanager.yml):
+#   severity=critical → PagerDuty (P1 pager)
+#   severity=warning  → Slack #faso-ops-alerts
+
+groups:
+  - name: spire_svid_expiry
+    interval: 1m
+    rules:
+
+      # ── Critical: SVID expires within 24 h ─────────────────────────────
+      # Sustained 10 min to avoid flap on fresh issuance (TTL just reset).
+      # Any value < 24 here means the SVID was NOT rotated in time.
+      - alert: SpireSvidExpiringCritical
+        expr: spire_svid_expires_in_hours < 24
+        for: 10m
+        labels:
+          severity: critical
+          team: infra
+          trust_domain: "faso.gov.bf"
+        annotations:
+          summary: "SPIRE SVID expiring critically soon (< 24 h)"
+          description: >
+            SPIFFE ID {{ $labels.spiffe_id }} has only {{ $value | humanizeDuration }} remaining.
+            Immediate action required: verify the SPIRE agent is running and connected to the server.
+            Runbook: INFRA/spire/README.md#runbook-svid-expire
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/spire/README.md#runbook-svid-expire"
+
+      # ── Warning: SVID expires within 72 h ──────────────────────────────
+      # Sustained 1 h — rotation should be automatic; this fires only if
+      # the SPIRE agent has been disconnected long enough to miss a renewal.
+      - alert: SpireSvidExpiringWarn
+        expr: spire_svid_expires_in_hours < 72
+        for: 1h
+        labels:
+          severity: warning
+          team: infra
+          trust_domain: "faso.gov.bf"
+        annotations:
+          summary: "SPIRE SVID expiring within 72 h"
+          description: >
+            SPIFFE ID {{ $labels.spiffe_id }} expires in {{ $value }}h.
+            Rotation should be automatic — check SPIRE agent connectivity.
+            Runbook: INFRA/spire/README.md#runbook-svid-expire
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/spire/README.md#runbook-svid-expire"
+
+  - name: spire_agent_availability
+    interval: 30s
+    rules:
+
+      # ── Agent down ──────────────────────────────────────────────────────
+      # 2-minute window: gives the agent time to restart after a pod reschedule.
+      - alert: SpireAgentDown
+        expr: up{job="spire-agent"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: infra
+          trust_domain: "faso.gov.bf"
+        annotations:
+          summary: "SPIRE agent is unreachable"
+          description: >
+            The SPIRE agent on {{ $labels.instance }} has been down for > 2 minutes.
+            All workload mTLS connections will begin to fail once their current SVIDs expire.
+            Runbook: INFRA/spire/README.md#runbook-agent-down
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/spire/README.md#runbook-agent-down"
+
+      # ── Server down ─────────────────────────────────────────────────────
+      - alert: SpireServerDown
+        expr: up{job="spire-server"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          team: infra
+          trust_domain: "faso.gov.bf"
+        annotations:
+          summary: "SPIRE server is unreachable"
+          description: >
+            The SPIRE server on {{ $labels.instance }} has been down for > 2 minutes.
+            New workload SVID issuance and rotation are blocked.
+            Runbook: INFRA/spire/README.md#runbook-server-down
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/spire/README.md#runbook-server-down"

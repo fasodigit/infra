@@ -1,0 +1,205 @@
+{
+  "__comment": "SPDX-License-Identifier: AGPL-3.0-or-later — (C) 2026 FASO DIGITALISATION",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "FASO DIGITALISATION — Synthetic monitoring for production flows (auth, poulets-order, etat-civil). Metrics pushed from Playwright via Prometheus Pushgateway.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "liveNow": false,
+  "panels": [
+    {
+      "type": "stat",
+      "title": "Success rate — last 24h",
+      "id": 1,
+      "gridPos": { "h": 6, "w": 8, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "avg_over_time(synthetic_success{job=\"synthetic_monitoring\"}[24h])",
+          "legendFormat": "{{flow}} — {{region}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.95 },
+              { "color": "green", "value": 0.99 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "P95 duration trend (per flow)",
+      "id": 2,
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "quantile_over_time(0.95, synthetic_duration_seconds{job=\"synthetic_monitoring\"}[5m])",
+          "legendFormat": "p95 {{flow}} — {{region}}",
+          "refId": "A"
+        },
+        {
+          "expr": "avg_over_time(synthetic_duration_seconds{job=\"synthetic_monitoring\"}[5m])",
+          "legendFormat": "avg {{flow}} — {{region}}",
+          "refId": "B"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineInterpolation": "smooth",
+            "fillOpacity": 10
+          }
+        }
+      }
+    },
+    {
+      "type": "table",
+      "title": "Step duration breakdown",
+      "id": 3,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "avg by (flow, step, region) (synthetic_step_duration_seconds{job=\"synthetic_monitoring\"})",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "timeseries",
+      "title": "Web Vitals — FCP / LCP / TTI",
+      "id": 4,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "synthetic_fcp_seconds{job=\"synthetic_monitoring\"}",
+          "legendFormat": "FCP {{flow}}",
+          "refId": "A"
+        },
+        {
+          "expr": "synthetic_lcp_seconds{job=\"synthetic_monitoring\"}",
+          "legendFormat": "LCP {{flow}}",
+          "refId": "B"
+        },
+        {
+          "expr": "synthetic_tti_seconds{job=\"synthetic_monitoring\"}",
+          "legendFormat": "TTI {{flow}}",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": { "defaults": { "unit": "s" } }
+    },
+    {
+      "type": "alertlist",
+      "title": "Active synthetic alerts",
+      "id": 5,
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "options": {
+        "alertName": "synthetic",
+        "dashboardTitle": "",
+        "maxItems": 10,
+        "showOptions": "current",
+        "sortOrder": 3,
+        "stateFilter": { "firing": true, "pending": true }
+      }
+    },
+    {
+      "type": "stat",
+      "title": "HTTP 5xx observed (last 1h)",
+      "id": 6,
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum by (flow) (increase(synthetic_http5xx_total{job=\"synthetic_monitoring\"}[1h]))",
+          "legendFormat": "{{flow}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        }
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "none",
+        "textMode": "auto"
+      }
+    }
+  ],
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "tags": ["faso", "synthetic", "monitoring", "sre"],
+  "templating": {
+    "list": [
+      {
+        "name": "region",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(synthetic_success, region)",
+        "multi": true,
+        "includeAll": true
+      },
+      {
+        "name": "flow",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(synthetic_success, flow)",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+  "time": { "from": "now-24h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Africa/Ouagadougou",
+  "title": "FASO — Synthetic Monitoring",
+  "uid": "faso-synthetic-monitoring",
+  "version": 1,
+  "weekStart": ""
+}

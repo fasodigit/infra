@@ -1,0 +1,62 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Sloth SLO definitions for poulets-api (plateforme pilote vente poulets).
+# Schema: sloth.slok.dev/v1 (prometheus/v1).
+version: "prometheus/v1"
+service: "poulets-api"
+labels:
+  project: faso-digitalisation
+  tier: business
+  component: commerce
+slos:
+  # --------------------------------------------------------------------------
+  # Order placement P95 < 2s objective 99%
+  # --------------------------------------------------------------------------
+  - name: "order-placement-p95-2s"
+    objective: 99
+    description: "99% des placements de commandes poulets-api doivent être sous 2s (P95)."
+    labels:
+      sli_type: latency
+      endpoint: order_place
+      threshold_ms: "2000"
+    sli:
+      events:
+        error_query: |
+          sum(rate(poulets_order_placement_duration_seconds_count{service="poulets-api"}[{{.window}}]))
+          -
+          sum(rate(poulets_order_placement_duration_seconds_bucket{service="poulets-api",le="2"}[{{.window}}]))
+        total_query: |
+          sum(rate(poulets_order_placement_duration_seconds_count{service="poulets-api"}[{{.window}}]))
+    alerting:
+      name: PouletsOrderPlacementBurn
+      annotations:
+        summary: "poulets-api order placement P95 burning error budget (<2s)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: commerce }
+      ticket_alert:
+        labels: { severity: warning, team: commerce }
+
+  # --------------------------------------------------------------------------
+  # Availability 99.5%
+  # --------------------------------------------------------------------------
+  - name: "availability"
+    objective: 99.5
+    description: "99.5% des requêtes poulets-api doivent réussir (non-5xx)."
+    labels:
+      sli_type: availability
+    sli:
+      events:
+        error_query: |
+          sum(rate(http_server_requests_seconds_count{service="poulets-api",status=~"5.."}[{{.window}}]))
+        total_query: |
+          sum(rate(http_server_requests_seconds_count{service="poulets-api"}[{{.window}}]))
+    alerting:
+      name: PouletsAvailabilityBurn
+      annotations:
+        summary: "poulets-api availability error budget burning."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: commerce }
+      ticket_alert:
+        labels: { severity: warning, team: commerce }

@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — SPIRE SVID expiration check (hourly CI gate)
+#
+# Cron: 17 minutes past every hour (avoids the top-of-hour CI stampede).
+# Connects to the SPIRE server via SSH and runs check-expiration.sh.
+# Exits 1 if any SVID has < 24 h remaining — creates a GitHub Issue (P1).
+#
+# Secrets required:
+#   SPIRE_SSH_HOST          hostname / IP of the SPIRE server host
+#   SPIRE_SSH_USER          SSH user (must have exec rights on the container)
+#   SPIRE_SSH_PRIVATE_KEY   PEM private key (base64-encoded)
+#   PROM_PUSHGATEWAY_URL    Prometheus Pushgateway base URL (optional)
+#
+# For Kubernetes prod environments replace the SSH step with:
+#   kubectl exec -n spire deploy/faso-spire-server -- bash /opt/spire/scripts/check-expiration.sh
+
+name: SPIRE SVID Expiration Check
+
+on:
+  schedule:
+    # Run at :17 past every hour — Phase 7 Axe 18 requirement
+    - cron: '17 * * * *'
+  workflow_dispatch:
+    inputs:
+      debug:
+        description: 'Enable debug output'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: spire-expiration-check
+  cancel-in-progress: false   # Never cancel — always complete expiry checks
+
+jobs:
+  check-svid-expiration:
+    name: Check SPIRE SVID expiration
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            spire/scripts/check-expiration.sh
+
+      # ── SSH path (dev / standalone server) ────────────────────────────
+      - name: Install SSH key
+        if: ${{ secrets.SPIRE_SSH_HOST != '' }}
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SPIRE_SSH_PRIVATE_KEY }}" | base64 -d > ~/.ssh/spire_deploy_key
+          chmod 600 ~/.ssh/spire_deploy_key
+          ssh-keyscan -H "${{ secrets.SPIRE_SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Copy check script to server
+        if: ${{ secrets.SPIRE_SSH_HOST != '' }}
+        run: |
+          scp -i ~/.ssh/spire_deploy_key \
+            spire/scripts/check-expiration.sh \
+            "${{ secrets.SPIRE_SSH_USER }}@${{ secrets.SPIRE_SSH_HOST }}:/tmp/check-expiration.sh"
+
+      - name: Run check-expiration.sh on SPIRE server (SSH)
+        if: ${{ secrets.SPIRE_SSH_HOST != '' }}
+        id: check_ssh
+        env:
+          PROM_PUSHGATEWAY_URL: ${{ secrets.PROM_PUSHGATEWAY_URL }}
+          DEBUG: ${{ github.event.inputs.debug }}
+        run: |
+          set -euo pipefail
+          ssh -i ~/.ssh/spire_deploy_key \
+            "${{ secrets.SPIRE_SSH_USER }}@${{ secrets.SPIRE_SSH_HOST }}" \
+            "PROM_PUSHGATEWAY_URL='${PROM_PUSHGATEWAY_URL:-}' bash /tmp/check-expiration.sh"
+
+      # ── Kubernetes path (prod) ─────────────────────────────────────────
+      # Uncomment when deploying to K8s; comment out the SSH steps above.
+      # - name: Setup kubectl
+      #   uses: azure/setup-kubectl@v4
+      # - name: Load kubeconfig
+      #   run: |
+      #     mkdir -p ~/.kube
+      #     echo "${{ secrets.KUBECONFIG_FASO }}" | base64 -d > ~/.kube/config
+      #     chmod 600 ~/.kube/config
+      # - name: Run check-expiration.sh in SPIRE server pod
+      #   id: check_k8s
+      #   env:
+      #     PROM_PUSHGATEWAY_URL: ${{ secrets.PROM_PUSHGATEWAY_URL }}
+      #   run: |
+      #     kubectl exec -n spire deploy/faso-spire-server -- \
+      #       env PROM_PUSHGATEWAY_URL="${PROM_PUSHGATEWAY_URL:-}" \
+      #       bash /opt/spire/scripts/check-expiration.sh
+
+      # ── Incident creation on critical failure ─────────────────────────
+      - name: Create P1 incident issue on critical SVID expiry
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const now = new Date().toISOString().slice(0, 16).replace('T', ' ');
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `[P1] SPIRE SVID expiring < 24h — ${now} UTC`,
+              labels: ['incident', 'P1', 'spire', 'mTLS', 'security'],
+              body: [
+                '## SPIRE SVID Critical Expiry',
+                '',
+                'At least one workload SVID expires within 24 hours.',
+                `Trust domain: \`spiffe://faso.gov.bf\``,
+                '',
+                `**Workflow run**: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '',
+                '## Immediate actions',
+                '1. Check SPIRE agent connectivity: `podman exec faso-spire-agent /opt/spire/bin/spire-agent healthcheck`',
+                '2. Verify server is reachable: `podman exec faso-spire-server /opt/spire/bin/spire-server healthcheck`',
+                '3. Force SVID refresh: restart the affected workload container.',
+                '4. If agent is disconnected, re-run: `cd INFRA/spire && bash scripts/bootstrap.sh`',
+                '',
+                '## Runbook',
+                'See `INFRA/spire/README.md#runbook-svid-expire`',
+              ].join('\n'),
+            });

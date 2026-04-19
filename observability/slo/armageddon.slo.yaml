@@ -1,49 +1,113 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 FASO DIGITALISATION
+# Sloth SLO definitions for ARMAGEDDON (gateway Rust souveraine).
+# Schema: sloth.slok.dev/v1 (prometheus/v1).
 version: "prometheus/v1"
 service: "armageddon"
 labels:
   project: faso-digitalisation
   tier: critical
+  component: gateway
 slos:
-  - name: "availability"
-    objective: 99.99
-    description: "ARMAGEDDON gateway forwards requests successfully"
-    sli:
-      events:
-        error_query: |
-          sum(rate(armageddon_http_requests_total{code=~"5.."}[{{.window}}]))
-        total_query: |
-          sum(rate(armageddon_http_requests_total[{{.window}}]))
-    alerting:
-      name: ArmageddonAvailabilityBurn
-      page_alert: { labels: { severity: critical, team: platform } }
-      ticket_alert: { labels: { severity: warning } }
-
+  # --------------------------------------------------------------------------
+  # P99 latency < 10ms gateway (excluant upstream)
+  # --------------------------------------------------------------------------
   - name: "latency-p99-10ms"
     objective: 99
-    description: "99% of gateway requests served under 10ms (excluding upstream latency)"
+    description: "99% du temps gateway ARMAGEDDON (hors upstream) doit être sous 10ms (P99)."
+    labels:
+      sli_type: latency
+      threshold_ms: "10"
     sli:
       events:
         error_query: |
-          sum(rate(armageddon_request_duration_seconds_count[{{.window}}]))
+          sum(rate(armageddon_gateway_duration_seconds_count{service="armageddon"}[{{.window}}]))
           -
-          sum(rate(armageddon_request_duration_seconds_bucket{le="0.010"}[{{.window}}]))
+          sum(rate(armageddon_gateway_duration_seconds_bucket{service="armageddon",le="0.010"}[{{.window}}]))
         total_query: |
-          sum(rate(armageddon_request_duration_seconds_count[{{.window}}]))
+          sum(rate(armageddon_gateway_duration_seconds_count{service="armageddon"}[{{.window}}]))
     alerting:
-      name: ArmageddonLatencyBurn
-      page_alert: { labels: { severity: critical } }
+      name: ArmageddonLatencyP99Burn
+      annotations:
+        summary: "ARMAGEDDON P99 gateway latency burning error budget (<10ms)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: platform }
+      ticket_alert:
+        labels: { severity: warning, team: platform }
 
-  - name: "error-budget-4xx-non-429"
-    objective: 99.5
-    description: "Exclude 429 (rate-limit) from error budget — those are expected"
+  # --------------------------------------------------------------------------
+  # Availability 99.99% (healthz 200)
+  # --------------------------------------------------------------------------
+  - name: "availability"
+    objective: 99.99
+    description: "99.99% des sondes /healthz ARMAGEDDON doivent retourner 200."
+    labels:
+      sli_type: availability
     sli:
       events:
         error_query: |
-          sum(rate(armageddon_http_requests_total{code=~"4..",code!="429"}[{{.window}}]))
+          sum(rate(armageddon_healthz_total{service="armageddon",status!="200"}[{{.window}}]))
         total_query: |
-          sum(rate(armageddon_http_requests_total[{{.window}}]))
+          sum(rate(armageddon_healthz_total{service="armageddon"}[{{.window}}]))
     alerting:
-      name: ArmageddonClientErrorBurn
-      ticket_alert: { labels: { severity: info } }
+      name: ArmageddonAvailabilityBurn
+      annotations:
+        summary: "ARMAGEDDON availability error budget burning."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: platform }
+      ticket_alert:
+        labels: { severity: warning, team: platform }
+
+  # --------------------------------------------------------------------------
+  # Error rate < 0.1% (5xx responses)
+  # --------------------------------------------------------------------------
+  - name: "error-rate"
+    objective: 99.9
+    description: "Moins de 0.1% des réponses ARMAGEDDON sont 5xx."
+    labels:
+      sli_type: errors
+    sli:
+      events:
+        error_query: |
+          sum(rate(armageddon_http_requests_total{service="armageddon",code=~"5.."}[{{.window}}]))
+        total_query: |
+          sum(rate(armageddon_http_requests_total{service="armageddon"}[{{.window}}]))
+    alerting:
+      name: ArmageddonErrorRateBurn
+      annotations:
+        summary: "ARMAGEDDON 5xx error rate burning error budget (<0.1%)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: platform }
+      ticket_alert:
+        labels: { severity: warning, team: platform }
+
+  # --------------------------------------------------------------------------
+  # TLS handshake P95 < 50ms
+  # --------------------------------------------------------------------------
+  - name: "tls-handshake-p95-50ms"
+    objective: 99
+    description: "99% des TLS handshakes ARMAGEDDON doivent être sous 50ms (P95)."
+    labels:
+      sli_type: latency
+      component: tls
+      threshold_ms: "50"
+    sli:
+      events:
+        error_query: |
+          sum(rate(armageddon_tls_handshake_duration_seconds_count{service="armageddon"}[{{.window}}]))
+          -
+          sum(rate(armageddon_tls_handshake_duration_seconds_bucket{service="armageddon",le="0.050"}[{{.window}}]))
+        total_query: |
+          sum(rate(armageddon_tls_handshake_duration_seconds_count{service="armageddon"}[{{.window}}]))
+    alerting:
+      name: ArmageddonTlsHandshakeBurn
+      annotations:
+        summary: "ARMAGEDDON TLS handshake P95 burning error budget (<50ms)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: platform }
+      ticket_alert:
+        labels: { severity: warning, team: platform }

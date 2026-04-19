@@ -1,36 +1,90 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 FASO DIGITALISATION
+# Sloth SLO definitions for auth-ms (microservice d'authentification).
+# Schema: sloth.slok.dev/v1 (prometheus/v1).
 version: "prometheus/v1"
 service: "auth-ms"
 labels:
   project: faso-digitalisation
   tier: critical
+  component: identity
 slos:
+  # --------------------------------------------------------------------------
+  # Availability 99.9%
+  # --------------------------------------------------------------------------
   - name: "availability"
     objective: 99.9
-    description: "auth-ms answers login/refresh/validate requests"
+    description: "99.9% des requêtes auth-ms doivent réussir (non-5xx)."
+    labels:
+      sli_type: availability
     sli:
       events:
         error_query: |
-          sum(rate(http_server_requests_seconds_count{application="auth-ms",status=~"5.."}[{{.window}}]))
+          sum(rate(http_server_requests_seconds_count{service="auth-ms",status=~"5.."}[{{.window}}]))
         total_query: |
-          sum(rate(http_server_requests_seconds_count{application="auth-ms"}[{{.window}}]))
+          sum(rate(http_server_requests_seconds_count{service="auth-ms"}[{{.window}}]))
     alerting:
       name: AuthMsAvailabilityBurn
-      page_alert: { labels: { severity: critical } }
-      ticket_alert: { labels: { severity: warning } }
+      annotations:
+        summary: "auth-ms availability error budget burning."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: identity }
+      ticket_alert:
+        labels: { severity: warning, team: identity }
 
-  - name: "jwt-validation-p99-5ms"
-    objective: 99
-    description: "JWT validation stays under 5ms"
+  # --------------------------------------------------------------------------
+  # Login P95 < 500ms objective 99.5%
+  # --------------------------------------------------------------------------
+  - name: "login-p95-500ms"
+    objective: 99.5
+    description: "99.5% des logins auth-ms doivent être sous 500ms (P95)."
+    labels:
+      sli_type: latency
+      endpoint: login
+      threshold_ms: "500"
     sli:
       events:
         error_query: |
-          sum(rate(jwt_validation_duration_seconds_count[{{.window}}]))
+          sum(rate(http_server_requests_seconds_count{service="auth-ms",uri="/login"}[{{.window}}]))
           -
-          sum(rate(jwt_validation_duration_seconds_bucket{le="0.005"}[{{.window}}]))
+          sum(rate(http_server_requests_seconds_bucket{service="auth-ms",uri="/login",le="0.5"}[{{.window}}]))
         total_query: |
-          sum(rate(jwt_validation_duration_seconds_count[{{.window}}]))
+          sum(rate(http_server_requests_seconds_count{service="auth-ms",uri="/login"}[{{.window}}]))
     alerting:
-      name: AuthMsJwtLatencyBurn
-      ticket_alert: { labels: { severity: warning } }
+      name: AuthMsLoginLatencyBurn
+      annotations:
+        summary: "auth-ms login P95 burning error budget (<500ms)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: identity }
+      ticket_alert:
+        labels: { severity: warning, team: identity }
+
+  # --------------------------------------------------------------------------
+  # JWT generation P99 < 100ms
+  # --------------------------------------------------------------------------
+  - name: "jwt-generation-p99-100ms"
+    objective: 99
+    description: "99% des générations JWT auth-ms doivent être sous 100ms (P99)."
+    labels:
+      sli_type: latency
+      operation: jwt_generate
+      threshold_ms: "100"
+    sli:
+      events:
+        error_query: |
+          sum(rate(auth_ms_jwt_generation_duration_seconds_count{service="auth-ms"}[{{.window}}]))
+          -
+          sum(rate(auth_ms_jwt_generation_duration_seconds_bucket{service="auth-ms",le="0.1"}[{{.window}}]))
+        total_query: |
+          sum(rate(auth_ms_jwt_generation_duration_seconds_count{service="auth-ms"}[{{.window}}]))
+    alerting:
+      name: AuthMsJwtGenerationBurn
+      annotations:
+        summary: "auth-ms JWT generation P99 burning error budget (<100ms)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: identity }
+      ticket_alert:
+        labels: { severity: warning, team: identity }

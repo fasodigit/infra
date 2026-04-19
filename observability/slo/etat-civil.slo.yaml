@@ -1,0 +1,66 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Sloth SLO definitions for etat-civil (plateforme documents critiques, future).
+# Schema: sloth.slok.dev/v1 (prometheus/v1).
+# RPO = 0 : aucune perte de document tolérée (sync replication + WAL fsync).
+version: "prometheus/v1"
+service: "etat-civil"
+labels:
+  project: faso-digitalisation
+  tier: sovereign
+  component: registry
+  rpo: "0"
+slos:
+  # --------------------------------------------------------------------------
+  # Certificate issuance P95 < 5s, 99%
+  # --------------------------------------------------------------------------
+  - name: "certificate-issuance-p95-5s"
+    objective: 99
+    description: "99% des émissions de certificats état civil doivent être sous 5s (P95)."
+    labels:
+      sli_type: latency
+      operation: certificate_issue
+      threshold_ms: "5000"
+    sli:
+      events:
+        error_query: |
+          sum(rate(etat_civil_certificate_issuance_duration_seconds_count{service="etat-civil"}[{{.window}}]))
+          -
+          sum(rate(etat_civil_certificate_issuance_duration_seconds_bucket{service="etat-civil",le="5"}[{{.window}}]))
+        total_query: |
+          sum(rate(etat_civil_certificate_issuance_duration_seconds_count{service="etat-civil"}[{{.window}}]))
+    alerting:
+      name: EtatCivilCertificateIssuanceBurn
+      annotations:
+        summary: "etat-civil certificate issuance P95 burning error budget (<5s)."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: sovereign }
+      ticket_alert:
+        labels: { severity: warning, team: sovereign }
+
+  # --------------------------------------------------------------------------
+  # RPO=0 — aucune perte de document (sync replication + fsync WAL garanti)
+  # SLI : toute écriture ayant retourné 200 est présente sur ≥ 2 répliques.
+  # --------------------------------------------------------------------------
+  - name: "rpo-zero-document-durability"
+    objective: 99.999
+    description: "Aucune perte de document état civil (RPO=0) — durabilité 99.999%."
+    labels:
+      sli_type: durability
+      rpo: "0"
+    sli:
+      events:
+        error_query: |
+          sum(rate(etat_civil_document_writes_not_replicated_total{service="etat-civil"}[{{.window}}]))
+        total_query: |
+          sum(rate(etat_civil_document_writes_total{service="etat-civil"}[{{.window}}]))
+    alerting:
+      name: EtatCivilRpoZeroBurn
+      annotations:
+        summary: "etat-civil RPO=0 violation — document non répliqué détecté."
+        runbook_url: "https://github.com/fasodigit/infra/blob/main/INFRA/observability/alertmanager/runbooks/slo-burn-rate.md"
+      page_alert:
+        labels: { severity: critical, team: sovereign, pager: always }
+      ticket_alert:
+        labels: { severity: warning, team: sovereign }
