@@ -28,6 +28,7 @@
     <module>common-models</module>
     <module>grpc-definitions</module>
     <module>event-bus-lib</module>
+    <module>spiffe-grpc</module>
   </modules>
 
   <properties>

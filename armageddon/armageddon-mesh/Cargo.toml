@@ -19,6 +19,7 @@ parking_lot = { workspace = true }
 subtle = { workspace = true }
 x509-parser = "0.15"
 tokio-stream = "0.1"
+tokio-rustls = "0.26"
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
 
@@ -26,3 +27,4 @@ armageddon-config = { workspace = true }
 tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 rustls-pemfile = { workspace = true }
 ring = { workspace = true }
+tokio-rustls = "0.26"

@@ -52,6 +52,7 @@
 //! // pass mesh.client_config() / mesh.server_config() to hyper/tonic connectors
 //! ```
 
+pub mod auto_mtls;
 pub mod error;
 pub mod rustls_config;
 pub mod spire_client;
@@ -60,6 +61,7 @@ pub mod svid_manager;
 #[cfg(test)]
 mod tests;
 
+pub use auto_mtls::{AutoMtlsDialer, ClusterTlsContext};
 pub use error::MeshError;
 pub use rustls_config::{SpiffeVerifier, TRUST_DOMAIN_PREFIX};
 pub use svid_manager::{RotationEvent, SvidManager};

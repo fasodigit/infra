@@ -20,11 +20,24 @@
 
 #[cfg(test)]
 pub(crate) mod tests {
-    use std::sync::Arc;
+    use std::sync::{Arc, Once};
 
     use arc_swap::ArcSwap;
     use subtle::ConstantTimeEq as _;
     use tokio::sync::broadcast;
+
+    // Install the `ring` CryptoProvider exactly once per test process.
+    // rustls 0.23 requires an explicit provider when multiple feature flags
+    // are active; this prevents the "Could not automatically determine the
+    // process-level CryptoProvider" panic in every test that constructs a
+    // TLS config.
+    static CRYPTO_INIT: Once = Once::new();
+
+    pub(crate) fn init_crypto() {
+        CRYPTO_INIT.call_once(|| {
+            let _ = rustls::crypto::ring::default_provider().install_default();
+        });
+    }
 
     use crate::error::MeshError;
     use crate::rustls_config::{rebuild_configs, SpiffeVerifier};
@@ -220,6 +233,7 @@ pub(crate) mod tests {
     /// `MeshError::PemDecode` is returned.
     #[test]
     fn test_parse_x509_pem_roundtrip() {
+        init_crypto();
         let (cert_der, key_der) =
             gen_self_signed_cert("spiffe://faso.gov.bf/ns/default/sa/kaya");
         let cert_pem = cert_der_to_pem(&cert_der);
@@ -247,6 +261,7 @@ pub(crate) mod tests {
     /// the configured expected SPIFFE ID within `faso.gov.bf`.
     #[test]
     fn test_spiffe_id_accept_faso_domain() {
+        init_crypto();
         let (cert_der, _) =
             gen_self_signed_cert("spiffe://faso.gov.bf/ns/default/sa/kaya");
         let cert_pki = rustls::pki_types::CertificateDer::from(cert_der);
@@ -276,6 +291,7 @@ pub(crate) mod tests {
     /// different trust domain (`other.example`).
     #[test]
     fn test_spiffe_id_reject_foreign_domain() {
+        init_crypto();
         let (foreign_der, _) =
             gen_self_signed_cert("spiffe://other.example/ns/default/sa/attacker");
         let (own_der, _) =
@@ -368,6 +384,7 @@ pub(crate) mod tests {
     /// allocated without recreating the `ArcSwap` cells.
     #[test]
     fn test_rotation_hot_swap() {
+        init_crypto();
         let (cert_der, key_der) =
             gen_self_signed_cert("spiffe://faso.gov.bf/ns/default/sa/kaya");
         let cert_pem = cert_der_to_pem(&cert_der);

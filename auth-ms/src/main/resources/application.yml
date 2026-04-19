@@ -68,8 +68,24 @@ grpc:
     port: 9801
     security:
       enabled: true
+      # When spiffe.enabled=true the cert-chain and private-key below are
+      # superseded by the SVID delivered by the SPIRE agent.  They remain as
+      # fallback for legacy TLS mode (spiffe.enabled=false).
       certificate-chain: ${GRPC_TLS_CERT_CHAIN:classpath:tls/server.crt}
       private-key: ${GRPC_TLS_PRIVATE_KEY:classpath:tls/server.key}
+
+# SPIFFE / SPIRE workload-identity configuration.
+# Set spiffe.enabled=true (and restart) to activate mTLS peer validation.
+# When false (default), legacy GRPC_SERVICE_TOKEN bearer auth is used.
+spiffe:
+  enabled: ${SPIFFE_ENABLED:false}
+  endpoint-socket: ${SPIFFE_ENDPOINT_SOCKET:unix:/run/spire/sockets/agent.sock}
+  trust-domain: faso.gov.bf
+  # Exhaustive list of SPIFFE IDs allowed to call this service over gRPC.
+  # Add or remove entries here; restart is required (no hot-reload yet).
+  authorized-peers:
+    - spiffe://faso.gov.bf/ns/default/sa/armageddon
+    - spiffe://faso.gov.bf/ns/default/sa/kaya
 
 # Ory Kratos
 kratos:
