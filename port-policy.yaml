@@ -1,0 +1,127 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — Centralized port allocation policy
+# Single source of truth for all port assignments across the monorepo.
+# Validator: bash INFRA/scripts/validate-ports.sh
+# Skill:     /ports
+version: 1
+updated: "2026-04-19"
+maintainer: platform-team
+
+# --------------------------------------------------------------------------
+# RESERVED RANGES — ports inside a range are ONLY for the owning tier.
+# Claiming a port inside a range not yours = CI-blocking violation.
+# --------------------------------------------------------------------------
+ranges:
+  frontend:           { start: 4800, end: 4899, owner: ui-team,       scope: public }
+  java-backend-http:  { start: 8800, end: 8899, owner: backend-team,  scope: public }
+  java-backend-grpc:  { start: 8700, end: 8799, owner: backend-team,  scope: mesh }
+  java-actuator:      { start: 9000, end: 9099, owner: backend-team,  scope: loopback }
+  rust-gateway:       { start: 8000, end: 8099, owner: platform-team, scope: public }
+  admin-api:          { start: 9900, end: 9999, owner: platform-team, scope: loopback }
+  infra-tls-ory:      { start: 4400, end: 4499, owner: platform-team, scope: loopback }
+  keto:               { start: 4460, end: 4479, owner: platform-team, scope: loopback }
+  observability:      { start: 3000, end: 3999, owner: sre-team,      scope: loopback }
+  kaya-family:        { start: 6380, end: 6399, owner: platform-team, scope: loopback }
+  postgres:           { start: 5432, end: 5439, owner: platform-team, scope: loopback }
+  consul-vault:       { start: 8200, end: 8599, owner: platform-team, scope: loopback }
+  dev-tools:          { start: 1000, end: 1099, owner: platform-team, scope: loopback }
+  mailhog-ui:         { start: 8020, end: 8029, owner: platform-team, scope: loopback }
+  xds:                { start: 18000, end: 18099, owner: platform-team, scope: mesh }
+  jaeger-ui:          { start: 16600, end: 16700, owner: sre-team,    scope: loopback }
+  pushgateway:        { start: 9090, end: 9099, owner: sre-team,      scope: loopback, conflict-risk: java-actuator }
+
+# --------------------------------------------------------------------------
+# ALLOCATIONS — individual service:port mappings.
+# Policy: every running process MUST have an entry here.
+# --------------------------------------------------------------------------
+allocations:
+  # Frontend / Edge
+  - { service: frontend-angular,   port: 4801,  protocol: http,  tier: frontend }
+  - { service: bff-nextjs,         port: 4800,  protocol: http,  tier: frontend }
+
+  # Rust gateway
+  - { service: armageddon-proxy,   port: 8080,  protocol: http,  tier: rust-gateway,   scope: public }
+  - { service: armageddon-quic,    port: 4433,  protocol: quic,  tier: infra-tls-ory,  scope: public, conflict: kratos-public, note: "QUIC and Kratos share 4433 in dev; mutually exclusive" }
+  - { service: armageddon-admin,   port: 9902,  protocol: http,  tier: admin-api,      scope: loopback }
+  - { service: armageddon-admin-api, port: 9903, protocol: http,  tier: admin-api,      scope: loopback, note: "Envoy-style admin API (stats/clusters/config_dump/runtime/server_info/listeners/logging). Loopback-only. Non-loopback binds REQUIRE ARMAGEDDON_ADMIN_TOKEN env var." }
+
+  # Java backends
+  - { service: auth-ms,            port: 8801,  protocol: http,  tier: java-backend-http }
+  - { service: auth-ms-grpc,       port: 8702,  protocol: grpc,  tier: java-backend-grpc,  scope: mesh }
+  - { service: auth-ms-actuator,   port: 9002,  protocol: http,  tier: java-actuator,      scope: loopback }
+  - { service: poulets-api,        port: 8901,  protocol: http,  tier: java-backend-http }
+  - { service: poulets-api-grpc,   port: 8702,  protocol: grpc,  tier: java-backend-grpc,  scope: mesh, note: "shared gRPC with auth-ms client" }
+  - { service: poulets-api-actuator, port: 9001, protocol: http, tier: java-actuator,      scope: loopback }
+  - { service: notifier-ms,        port: 8803,  protocol: http,  tier: java-backend-http }
+  - { service: notifier-ms-actuator, port: 9003, protocol: http, tier: java-actuator,      scope: loopback }
+  - { service: etat-civil-ms,      port: 8810,  protocol: http,  tier: java-backend-http,  status: planned }
+  - { service: sogesy-ms,          port: 8820,  protocol: http,  tier: java-backend-http,  status: planned }
+
+  # KAYA
+  - { service: kaya-resp3,         port: 6380,  protocol: resp3, tier: kaya-family }
+  - { service: kaya-grpc,          port: 6381,  protocol: grpc,  tier: kaya-family }
+  - { service: kaya-cluster-bus,   port: 6382,  protocol: raft,  tier: kaya-family, status: planned }
+
+  # xDS control-plane
+  - { service: xds-controller,     port: 18000, protocol: grpc,  tier: xds,        scope: mesh }
+
+  # Infra HashiCorp
+  - { service: postgres,           port: 5432,  protocol: postgres, tier: postgres }
+  - { service: vault,              port: 8200,  protocol: http,  tier: consul-vault }
+  - { service: consul,             port: 8500,  protocol: http,  tier: consul-vault }
+  - { service: consul-dns,         port: 8600,  protocol: dns,   tier: consul-vault,  scope: loopback }
+
+  # ORY
+  - { service: kratos-public,      port: 4433,  protocol: http,  tier: infra-tls-ory,  conflict: armageddon-quic }
+  - { service: kratos-admin,       port: 4434,  protocol: http,  tier: infra-tls-ory,  scope: loopback }
+  - { service: keto-read,          port: 4466,  protocol: http,  tier: keto }
+  - { service: keto-write,         port: 4467,  protocol: http,  tier: keto,           scope: loopback }
+
+  # Dev / observability
+  - { service: mailhog-smtp,       port: 1025,  protocol: smtp,  tier: dev-tools }
+  - { service: mailhog-ui,         port: 8025,  protocol: http,  tier: mailhog-ui }
+  - { service: grafana,            port: 3000,  protocol: http,  tier: observability }
+  - { service: growthbook,         port: 3100,  protocol: http,  tier: observability }
+  - { service: prometheus,         port: 9090,  protocol: http,  tier: pushgateway,    conflict-risk: java-actuator }
+  - { service: prometheus-pushgateway, port: 9091, protocol: http, tier: pushgateway }
+  - { service: loki,               port: 3101,  protocol: http,  tier: observability }
+  - { service: tempo,              port: 3200,  protocol: http,  tier: observability }
+  - { service: otel-collector,     port: 4317,  protocol: grpc,  tier: observability }
+  - { service: otel-http,          port: 4318,  protocol: http,  tier: observability }
+  - { service: jaeger-ui,          port: 16686, protocol: http,  tier: jaeger-ui }
+
+# --------------------------------------------------------------------------
+# KNOWN CONFLICTS — documented intentional overlaps.
+# Mutually exclusive; CI must not fail but ops must choose ONE per env.
+# --------------------------------------------------------------------------
+known-conflicts:
+  - ports: [4433]
+    services: [armageddon-quic, kratos-public]
+    resolution: "In dev use Kratos (HTTPS). In prod, QUIC preferred on 4433."
+  - ports: [9901]
+    services: [poulets-api-jmx-default, armageddon-admin-legacy]
+    resolution: "poulets-api JVM picks random port >9900 for JMX. armageddon-admin MUST use 9902. JMX should be pinned via -Dcom.sun.management.jmxremote.port=9001."
+
+# --------------------------------------------------------------------------
+# DEPRECATED — historical bindings kept for traceability.
+# --------------------------------------------------------------------------
+deprecated:
+  - { service: armageddon-admin-v1, port: 9901, replaced-by: armageddon-admin, since: "2026-04-18" }
+  - { service: armageddon-admin-api-default-9099, port: 9099, replaced-by: armageddon-admin-api, since: "2026-04-19", note: "Earlier default bound java-actuator range (9000-9099). Migrated to 9903 to respect R-02." }
+
+# --------------------------------------------------------------------------
+# POLICY RULES
+# --------------------------------------------------------------------------
+rules:
+  - id: R-01
+    description: "Any port listening without an entry in `allocations` = violation"
+    enforcement: "bash INFRA/scripts/validate-ports.sh"
+  - id: R-02
+    description: "A port in `ranges[].owner != service.tier.owner` = violation"
+    enforcement: "validator warns and CI fails on main branch"
+  - id: R-03
+    description: "Admin-api (9900-9999) MUST bind 127.0.0.1 only, never 0.0.0.0"
+    enforcement: "runtime check via /admin/health loopback-only probe"
+  - id: R-04
+    description: "When adding a service, reserve its port here FIRST, then code."
+    enforcement: "pre-commit hook blocks edits adding `port:` in YAML not in policy"
