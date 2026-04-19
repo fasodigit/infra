@@ -5,6 +5,38 @@
 <!-- NEVER manually delete published tags or entries -->
 
 
+## 1.0.0 (2026-04-19)
+
+> FASO DIGITALISATION — Licensed under AGPL-3.0
+> Breaking changes require migration — see RELEASE.md
+
+### Features
+
+* **faso-shared,workflow-engine:** mutualised libs + Temporal orchestrator ([d6c0cdd](https://github.com/fasodigit/infra/commit/d6c0cdd5e7e63a1cf2c2ebb3d87356c80c1434c5))
+* **frontend:** 7 MVP stubs for F4-F10 backlog (chat/PWA/KYC/escrow/push/geo/analytics) ([056cca0](https://github.com/fasodigit/infra/commit/056cca0abac335bd374ab98a617b35b58dc72cae))
+* **infra:** add podman-compose stacks for impression + Temporal ([72b6483](https://github.com/fasodigit/infra/commit/72b6483d2c59955168f8bae02013d9ceff532dbc))
+* **infra:** sovereign hardening wave — 20 automations + ARMAGEDDON Vague 1 + docs publiques ([ba81af7](https://github.com/fasodigit/infra/commit/ba81af749057008c1094e8cbe297372a67e33710))
+* **kaya:** implement HELLO 3 stateful + Frame::Null RESP3 encoder ([00a2dba](https://github.com/fasodigit/infra/commit/00a2dba635439f716748e6aa9953c2c4ff45ca25))
+* **observability:** Prometheus+Grafana+Loki+Tempo stack with Micrometer OTLP ([9351fa7](https://github.com/fasodigit/infra/commit/9351fa7580046eedf1c13bb639dcf65736e2722c))
+* **ory,compose:** swap Mailslurper -> Mailpit + fix Kratos cipher length ([0fb0490](https://github.com/fasodigit/infra/commit/0fb04909d2bc2bbff22165581ccdd33ca7c00e16))
+* **payments,i18n:** Mobile Money + SMS OTP + ngx-translate FR+MOS+DYU+EN ([21e895c](https://github.com/fasodigit/infra/commit/21e895c5abb3616eb75b0190e82fffe5b488230f))
+* **poulets-backend:** port ec-certificate-renderer + impression-service ([2770b21](https://github.com/fasodigit/infra/commit/2770b2173fcb11e963da4476e133c4a7b7bd6758))
+* **poulets-bff:** add /api/impression/* + /api/admin/workflows/* proxies ([28053f1](https://github.com/fasodigit/infra/commit/28053f1b75a3908866598385ee9c89b1e0fce3ed))
+* **poulets-frontend:** fix dark-mode contrast + refonte auth + animations ([020f836](https://github.com/fasodigit/infra/commit/020f83652c1407868e0bb59ab9ea09f051fc6dac)), closes [#0F172A](https://github.com/fasodigit/infra/issues/0F172A) [#475569](https://github.com/fasodigit/infra/issues/475569) [#D1D5DB](https://github.com/fasodigit/infra/issues/D1D5DB) [#2E7D32](https://github.com/fasodigit/infra/issues/2E7D32)
+* **tests-e2e:** add 100% UI Playwright harness with 49 acceptance tests ([b7f592c](https://github.com/fasodigit/infra/commit/b7f592c1a86c53d278d3e71806cdf98faa779db2))
+* **vault,podman:** integrate Vault+Consul secret management + rename to podman-compose ([ef1f27f](https://github.com/fasodigit/infra/commit/ef1f27fa116fab50bb353ef27784c31f4fafe2ff))
+* **vault:** switch to prod mode with Consul KV storage backend ([0a06eb9](https://github.com/fasodigit/infra/commit/0a06eb9572bd8dd79d39727c2ab2d6a9dd569786))
+
+### Bug Fixes
+
+* **bff:** /api/auth/session 401 avoid dual Cookie+X-Session-Token forward ([946a0d8](https://github.com/fasodigit/infra/commit/946a0d8bcfbd91dbd52dcb68336f65aa09d23719))
+* **frontend:** MFA + snackbars + headings unlock 7 Playwright tests ([c7880d3](https://github.com/fasodigit/infra/commit/c7880d3d4c96ee9af87f10cd0a94dcee08129e89))
+* **java,bff:** gracefully handle cache errors + env-configurable dev rate-limit ([121a14f](https://github.com/fasodigit/infra/commit/121a14f1fc869dc761a6b1af376e01ae490adf33)), closes [#11](https://github.com/fasodigit/infra/issues/11)
+
+### Documentation
+
+* **backlog:** 33 epics + 6-month roadmap + gh issues import script ([8a46788](https://github.com/fasodigit/infra/commit/8a467889295acbaba0f4662b993e9638e55040ed))
+
 ## 1.0.0 (2026-04-18)
 
 > FASO DIGITALISATION — Licensed under AGPL-3.0
