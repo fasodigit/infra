@@ -1,0 +1,153 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# © 2026 FASO DIGITALISATION — Burkina Faso
+#
+# i18n-lint.yml — Verify translation key coverage across all supported languages.
+# Warns (does NOT fail the build) if coverage < 80% for any language.
+# Fails hard only if a language file is completely missing.
+#
+# Triggered on: push/PR touching i18n assets or the lint workflow itself.
+
+name: i18n lint
+
+on:
+  push:
+    paths:
+      - 'frontend/src/assets/i18n/**'
+      - 'frontend/scripts/sync-i18n.sh'
+      - '.github/workflows/i18n-lint.yml'
+  pull_request:
+    paths:
+      - 'frontend/src/assets/i18n/**'
+      - 'frontend/scripts/sync-i18n.sh'
+      - '.github/workflows/i18n-lint.yml'
+
+jobs:
+  coverage-check:
+    name: Check i18n key coverage
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install jq
+        run: sudo apt-get install -y jq
+
+      - name: Verify all language files exist
+        run: |
+          LANGS=(en mos dyu ful)
+          MISSING=0
+          for lang in "${LANGS[@]}"; do
+            FILE="frontend/src/assets/i18n/${lang}.json"
+            if [[ ! -f "$FILE" ]]; then
+              echo "::error file=$FILE::Missing i18n file for language: $lang"
+              MISSING=1
+            else
+              echo "::notice::Found $FILE"
+            fi
+          done
+          if [[ $MISSING -eq 1 ]]; then exit 1; fi
+
+      - name: Check JSON validity
+        run: |
+          INVALID=0
+          for f in frontend/src/assets/i18n/*.json; do
+            if ! jq empty "$f" 2>/dev/null; then
+              echo "::error file=$f::Invalid JSON: $f"
+              INVALID=1
+            fi
+          done
+          if [[ $INVALID -eq 1 ]]; then exit 1; fi
+
+      - name: Coverage audit (warn if < 80%)
+        id: coverage
+        run: |
+          cd frontend
+          chmod +x scripts/sync-i18n.sh
+
+          # Flatten JSON keys using Node
+          flatten() {
+            node -e "
+          const fs = require('fs');
+          const obj = JSON.parse(fs.readFileSync('$1', 'utf8'));
+          function flat(o, p) {
+            const out = {};
+            for (const [k, v] of Object.entries(o)) {
+              const key = p ? p + '.' + k : k;
+              if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flat(v, key));
+              else out[key] = String(v ?? '');
+            }
+            return out;
+          }
+          for (const [k, v] of Object.entries(flat(obj, ''))) {
+            if (!k.startsWith('_meta.')) process.stdout.write(k + '\n');
+          }
+          " "$1"
+          }
+
+          FR_KEYS=$(flatten src/assets/i18n/fr.json | sort)
+          TOTAL=$(echo "$FR_KEYS" | wc -l)
+          WARN=0
+
+          for lang in en mos dyu ful; do
+            FILE="src/assets/i18n/${lang}.json"
+            # Keys with real values (not placeholder [LANG] prefix)
+            TRANSLATED=$(flatten "$FILE" | sort)
+            # Get keys present in both FR and LANG with non-placeholder values
+            LANG_WITH_VALUES=$(node -e "
+          const fs = require('fs');
+          const obj = JSON.parse(fs.readFileSync('$FILE', 'utf8'));
+          function flat(o, p) {
+            const out = {};
+            for (const [k, v] of Object.entries(o)) {
+              const key = p ? p + '.' + k : k;
+              if (v && typeof v === 'object' && !Array.isArray(v)) Object.assign(out, flat(v, key));
+              else out[key] = String(v ?? '');
+            }
+            return out;
+          }
+          const flat = flat(obj, '');
+          for (const [k, v] of Object.entries(flat)) {
+            if (k.startsWith('_meta.')) continue;
+            if (!v.startsWith('[')) process.stdout.write(k + '\n');
+          }
+          " | sort)
+
+            COVERED=$(comm -12 <(echo "$FR_KEYS") <(echo "$LANG_WITH_VALUES") | wc -l)
+            PCT=$(( COVERED * 100 / TOTAL ))
+
+            if [[ $PCT -lt 80 ]]; then
+              echo "::warning file=src/assets/i18n/${lang}.json::[$lang] Coverage ${PCT}% (${COVERED}/${TOTAL}) — below 80% threshold. Contact INSS Ouaga / Académie nationale des langues BF."
+              WARN=1
+            else
+              echo "::notice::[$lang] Coverage ${PCT}% (${COVERED}/${TOTAL}) OK"
+            fi
+
+            echo "| ${lang} | ${COVERED}/${TOTAL} | ${PCT}% |" >> "$GITHUB_STEP_SUMMARY"
+          done
+
+          # Write summary header
+          {
+            echo "## i18n Coverage Report"
+            echo ""
+            echo "| Language | Keys | Coverage |"
+            echo "|----------|------|----------|"
+          } >> "$GITHUB_STEP_SUMMARY.header"
+          cat "$GITHUB_STEP_SUMMARY.header" "$GITHUB_STEP_SUMMARY" > /tmp/summary.md || true
+          cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY" 2>/dev/null || true
+
+          echo "warn=$WARN" >> "$GITHUB_OUTPUT"
+
+      - name: Summary annotation
+        if: steps.coverage.outputs.warn == '1'
+        run: |
+          echo "::warning::One or more languages have < 80% i18n coverage. See step summary for details."
+          echo "Contact: INSS Ouaga — Institut National des Sciences des Sociétés"
+          echo "         Académie nationale des langues du Burkina Faso (ANLB)"
+          echo "         Email: fasodigitalisation@gmail.com"
+          # This does NOT fail the build — translators are external contributors

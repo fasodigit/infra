@@ -17,6 +17,8 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { TranslateModule, TranslateService } from '@ngx-translate/core';
 import { PublicDashboardComponent } from './public-dashboard.component';
+import { HeroAnimationComponent } from './sections/hero-animation.component';
+import { DemoReelComponent } from './sections/demo-reel.component';
 
 @Component({
   selector: 'app-landing',
@@ -30,6 +32,8 @@ import { PublicDashboardComponent } from './public-dashboard.component';
     MatToolbarModule,
     TranslateModule,
     PublicDashboardComponent,
+    HeroAnimationComponent,
+    DemoReelComponent,
   ],
   template: `
     <!-- ===== NAVBAR ===== -->
@@ -74,12 +78,33 @@ import { PublicDashboardComponent } from './public-dashboard.component';
     </nav>
 
     <!-- ===== HERO SECTION ===== -->
-    <section id="accueil" class="hero-section">
+    <section id="accueil" class="hero-section" [class.has-video]="heroVideoReady()">
       <div class="hero-bg-shapes">
         <div class="shape shape-1"></div>
         <div class="shape shape-2"></div>
         <div class="shape shape-3"></div>
       </div>
+
+      @if (heroVideoEnabled()) {
+        <video
+          class="hero-video"
+          autoplay
+          muted
+          loop
+          playsinline
+          preload="metadata"
+          aria-hidden="true"
+          [class.hero-video-visible]="heroVideoReady()"
+          (canplay)="onHeroVideoReady()"
+          (error)="onHeroVideoError()"
+        >
+          <source src="assets/video/hero-farm.webm" type="video/webm">
+          <source src="assets/video/hero-farm.mp4" type="video/mp4">
+        </video>
+      }
+      <div class="hero-video-overlay" aria-hidden="true"></div>
+      <div class="hero-atmosphere" aria-hidden="true"></div>
+
       <div class="hero-content">
         <div class="hero-text">
           <h1 class="hero-title">{{ 'landing.hero.title' | translate }}</h1>
@@ -96,75 +121,7 @@ import { PublicDashboardComponent } from './public-dashboard.component';
           </div>
         </div>
         <div class="hero-illustration">
-          <svg viewBox="0 0 400 350" xmlns="http://www.w3.org/2000/svg" class="hero-svg">
-            <!-- Farm scene -->
-            <defs>
-              <linearGradient id="skyGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#87CEEB" stop-opacity="0.3"/>
-                <stop offset="100%" stop-color="#FCD116" stop-opacity="0.15"/>
-              </linearGradient>
-              <linearGradient id="grassGrad" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#4CAF50"/>
-                <stop offset="100%" stop-color="#2E7D32"/>
-              </linearGradient>
-            </defs>
-            <!-- Sky -->
-            <rect x="0" y="0" width="400" height="350" fill="url(#skyGrad)" rx="16"/>
-            <!-- Sun -->
-            <circle cx="320" cy="60" r="35" fill="#FCD116" opacity="0.9"/>
-            <circle cx="320" cy="60" r="45" fill="#FCD116" opacity="0.2"/>
-            <!-- Clouds -->
-            <ellipse cx="80" cy="50" rx="40" ry="15" fill="white" opacity="0.7"/>
-            <ellipse cx="100" cy="45" rx="30" ry="12" fill="white" opacity="0.6"/>
-            <ellipse cx="220" cy="35" rx="35" ry="12" fill="white" opacity="0.5"/>
-            <!-- Ground -->
-            <ellipse cx="200" cy="310" rx="200" ry="60" fill="url(#grassGrad)" opacity="0.8"/>
-            <!-- Barn -->
-            <rect x="40" y="160" width="90" height="100" fill="#D32F2F" rx="4"/>
-            <polygon points="85,120 30,165 140,165" fill="#B71C1C"/>
-            <rect x="70" y="200" width="30" height="60" fill="#5D4037"/>
-            <rect x="50" y="180" width="20" height="20" fill="#FFF9C4" opacity="0.8" rx="2"/>
-            <rect x="100" y="180" width="20" height="20" fill="#FFF9C4" opacity="0.8" rx="2"/>
-            <!-- Fence -->
-            <line x1="150" y1="260" x2="360" y2="260" stroke="#8D6E63" stroke-width="3"/>
-            <line x1="150" y1="245" x2="360" y2="245" stroke="#8D6E63" stroke-width="2"/>
-            @for (i of [160,190,220,250,280,310,340]; track i) {
-              <line [attr.x1]="i" y1="235" [attr.x2]="i" y2="270" stroke="#8D6E63" stroke-width="3"/>
-            }
-            <!-- Chicken 1 -->
-            <g transform="translate(180, 220)">
-              <ellipse cx="0" cy="0" rx="18" ry="14" fill="#F5F5F5"/>
-              <circle cx="-14" cy="-8" r="8" fill="#F5F5F5"/>
-              <circle cx="-16" cy="-10" r="2" fill="#333"/>
-              <polygon points="-22,-8 -28,-6 -22,-5" fill="#FF8F00"/>
-              <polygon points="-12,-16 -10,-22 -8,-16 -6,-20 -4,-14" fill="#EF2B2D"/>
-              <line x1="6" y1="12" x2="4" y2="24" stroke="#FF8F00" stroke-width="2"/>
-              <line x1="-4" y1="12" x2="-6" y2="24" stroke="#FF8F00" stroke-width="2"/>
-              <line x1="12" y1="-2" x2="22" y2="4" stroke="#F5F5F5" stroke-width="4"/>
-              <polygon points="20,2 26,0 22,6" fill="#E0E0E0"/>
-            </g>
-            <!-- Chicken 2 -->
-            <g transform="translate(260, 230)">
-              <ellipse cx="0" cy="0" rx="16" ry="12" fill="#8D6E63"/>
-              <circle cx="12" cy="-6" r="7" fill="#8D6E63"/>
-              <circle cx="14" cy="-8" r="1.8" fill="#333"/>
-              <polygon points="19,-6 25,-4 19,-3" fill="#FF8F00"/>
-              <polygon points="10,-13 12,-18 14,-12 16,-16 18,-11" fill="#EF2B2D"/>
-              <line x1="-4" y1="10" x2="-6" y2="22" stroke="#FF8F00" stroke-width="2"/>
-              <line x1="4" y1="10" x2="2" y2="22" stroke="#FF8F00" stroke-width="2"/>
-            </g>
-            <!-- Chicken 3 (small chick) -->
-            <g transform="translate(320, 238)">
-              <ellipse cx="0" cy="0" rx="9" ry="8" fill="#FDD835"/>
-              <circle cx="-7" cy="-4" r="5" fill="#FDD835"/>
-              <circle cx="-8" cy="-5" r="1.3" fill="#333"/>
-              <polygon points="-12,-4 -16,-3 -12,-2" fill="#FF8F00"/>
-            </g>
-            <!-- Grain -->
-            @for (g of grainDots; track g.x) {
-              <circle [attr.cx]="g.x" [attr.cy]="g.y" r="1.5" fill="#8D6E63" opacity="0.5"/>
-            }
-          </svg>
+          <app-hero-animation></app-hero-animation>
         </div>
       </div>
       <div class="hero-stats" #statsBar>
@@ -209,6 +166,41 @@ import { PublicDashboardComponent } from './public-dashboard.component';
         </div>
       </div>
     </section>
+
+    <!-- ===== AVICULTURE REINVENTEE (glass pillars) ===== -->
+    <section id="aviculture-reinventee" class="reinvented-section">
+      <div class="reinvented-bg" aria-hidden="true">
+        <span class="blob blob-1"></span>
+        <span class="blob blob-2"></span>
+        <span class="blob blob-3"></span>
+      </div>
+      <div class="reinvented-container">
+        <header class="reinvented-head">
+          <span class="reinvented-eyebrow">{{ 'landing.reinvented.eyebrow' | translate }}</span>
+          <h2 class="reinvented-title">{{ 'landing.reinvented.title' | translate }}</h2>
+          <p class="reinvented-lead">{{ 'landing.reinvented.lead' | translate }}</p>
+        </header>
+        <div class="reinvented-grid">
+          @for (card of reinventedCards; track card.id) {
+            <article class="reinvented-card">
+              <div class="reinvented-icon" aria-hidden="true">
+                <mat-icon>{{ card.icon }}</mat-icon>
+              </div>
+              <h3 class="reinvented-card-title">{{ card.titleKey | translate }}</h3>
+              <p class="reinvented-card-desc">{{ card.descKey | translate }}</p>
+              <div class="reinvented-pills">
+                @for (pill of card.pills; track pill) {
+                  <span class="reinvented-pill">{{ pill | translate }}</span>
+                }
+              </div>
+            </article>
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== DEMO REEL SECTION ===== -->
+    <app-demo-reel></app-demo-reel>
 
     <!-- ===== FONCTIONNALITES SECTION ===== -->
     <section id="fonctionnalites" class="section section-alt">
@@ -321,24 +313,39 @@ import { PublicDashboardComponent } from './public-dashboard.component';
        =================================================================== */
     .landing-nav {
       position: fixed;
-      top: 0;
-      left: 0;
-      right: 0;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
       z-index: 1000;
-      padding: 0 24px;
-      height: 72px;
-      transition: background-color var(--transition), box-shadow var(--transition), backdrop-filter var(--transition);
-      background: transparent;
+      width: calc(100% - 32px);
+      max-width: 1180px;
+      height: 62px;
+      padding: 0 8px 0 20px;
+      border-radius: 999px;
+      background: rgba(20, 20, 20, 0.22);
+      backdrop-filter: blur(18px) saturate(150%);
+      -webkit-backdrop-filter: blur(18px) saturate(150%);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      box-shadow:
+        0 8px 32px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.12);
+      transition:
+        background 280ms ease,
+        border-color 280ms ease,
+        box-shadow 280ms ease,
+        top 280ms ease;
     }
 
     .landing-nav.nav-scrolled {
-      background: rgba(255, 255, 255, 0.97);
-      backdrop-filter: blur(12px);
-      box-shadow: 0 2px 20px rgba(0, 0, 0, 0.08);
+      background: rgba(255, 255, 255, 0.78);
+      border-color: rgba(0, 0, 0, 0.06);
+      box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.9);
     }
 
     .nav-inner {
-      max-width: 1280px;
+      max-width: 100%;
       margin: 0 auto;
       display: flex;
       align-items: center;
@@ -509,22 +516,31 @@ import { PublicDashboardComponent } from './public-dashboard.component';
 
     /* Mobile nav */
     @media (max-width: 900px) {
+      .landing-nav {
+        padding: 0 6px 0 16px;
+      }
+      .logo-text {
+        font-size: 1.1rem;
+      }
       .nav-links {
         position: fixed;
-        top: 72px;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(255, 255, 255, 0.98);
-        backdrop-filter: blur(12px);
+        top: 88px;
+        left: 12px;
+        right: 12px;
+        max-height: calc(100dvh - 104px);
+        background: #FFFFFF;
+        border: 1px solid rgba(0, 0, 0, 0.06);
+        border-radius: 22px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.22);
         flex-direction: column;
         align-items: stretch;
         justify-content: flex-start;
-        padding: 24px;
-        gap: 4px;
-        transform: translateX(100%);
+        padding: 14px;
+        gap: 2px;
+        transform: translateX(120%);
         transition: transform 0.35s cubic-bezier(0.4, 0, 0.2, 1);
         overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
       }
 
       .nav-links.nav-open {
@@ -600,14 +616,65 @@ import { PublicDashboardComponent } from './public-dashboard.component';
       justify-content: center;
       background: linear-gradient(135deg, var(--green-dark) 0%, var(--green) 40%, #2D8F3E 70%, #5CAB3C 100%);
       overflow: hidden;
-      padding-top: 72px;
+      padding-top: 96px;
     }
+
+    /* ==== Hero background video (cinematic) ==== */
+    .hero-video {
+      position: absolute;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      z-index: 0;
+      opacity: 0;
+      transition: opacity 1400ms ease-out;
+      pointer-events: none;
+    }
+    .hero-video.hero-video-visible {
+      opacity: 1;
+    }
+
+    .hero-video-overlay {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg,
+          rgba(10, 30, 15, 0.35) 0%,
+          rgba(10, 30, 15, 0.50) 55%,
+          rgba(15, 62, 30, 0.78) 100%);
+    }
+
+    /* Atmosphère cinématique : radial sweep doré qui respire
+       (visible en toutes circonstances, renforce l'ambiance golden-hour) */
+    .hero-atmosphere {
+      position: absolute;
+      inset: 0;
+      z-index: 0;
+      pointer-events: none;
+      background:
+        radial-gradient(ellipse at 80% 20%, rgba(252, 209, 22, 0.16) 0%, transparent 55%),
+        radial-gradient(ellipse at 15% 80%, rgba(252, 209, 22, 0.08) 0%, transparent 60%);
+      animation: hero-atmosphere-drift 18s ease-in-out infinite alternate;
+      mix-blend-mode: screen;
+    }
+    @keyframes hero-atmosphere-drift {
+      from { transform: translate3d(0, 0, 0) scale(1); }
+      to   { transform: translate3d(-1.5%, 1%, 0) scale(1.04); }
+    }
+
+    /* Assombrissement subtil des shapes quand une vidéo est active */
+    .hero-section.has-video .hero-bg-shapes { opacity: 0.35; }
 
     .hero-bg-shapes {
       position: absolute;
       inset: 0;
       pointer-events: none;
       overflow: hidden;
+      z-index: 0;
+      transition: opacity 900ms ease;
     }
 
     .shape {
@@ -658,19 +725,27 @@ import { PublicDashboardComponent } from './public-dashboard.component';
     }
 
     .hero-title {
-      font-size: 2.75rem;
-      font-weight: 800;
-      line-height: 1.15;
+      font-family: 'Fraunces', 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-optical-sizing: auto;
+      font-size: clamp(1.95rem, 5.5vw, 4.25rem);
+      font-weight: 500;
+      line-height: 1.08;
+      letter-spacing: -0.015em;
       margin: 0 0 20px;
-      letter-spacing: -0.5px;
+      color: #FFFFFF;
+      text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
     }
 
     .hero-subtitle {
-      font-size: 1.15rem;
-      line-height: 1.7;
+      font-family: 'Roboto', system-ui, -apple-system, sans-serif;
+      font-size: clamp(1rem, 1.4vw, 1.2rem);
+      font-weight: 400;
+      line-height: 1.55;
       margin: 0 0 36px;
-      opacity: 0.92;
-      max-width: 520px;
+      opacity: 0.88;
+      max-width: 540px;
+      letter-spacing: 0.005em;
     }
 
     .hero-ctas {
@@ -740,32 +815,52 @@ import { PublicDashboardComponent } from './public-dashboard.component';
       border-radius: 16px;
     }
 
-    /* Stats bar */
+    /* ==== Glass stat cards (style Viktor Oddy / claude.ai design) ==== */
     .hero-stats {
-      display: flex;
-      justify-content: center;
-      gap: 0;
-      background: rgba(255, 255, 255, 0.12);
-      backdrop-filter: blur(12px);
-      border-top: 1px solid rgba(255, 255, 255, 0.15);
       position: relative;
       z-index: 1;
+      display: flex;
+      justify-content: center;
+      align-items: stretch;
+      flex-wrap: wrap;
+      gap: 14px;
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 0 32px 48px;
     }
 
     .stat-item {
-      flex: 1;
+      flex: 1 1 220px;
       max-width: 280px;
-      text-align: center;
-      padding: 28px 16px;
+      min-width: 180px;
+      padding: 22px 26px;
       color: white;
-      border-right: 1px solid rgba(255, 255, 255, 0.1);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      background: rgba(255, 255, 255, 0.08);
+      backdrop-filter: blur(16px) saturate(140%);
+      -webkit-backdrop-filter: blur(16px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 20px;
+      box-shadow:
+        0 10px 30px rgba(0, 0, 0, 0.18),
+        inset 0 1px 0 rgba(255, 255, 255, 0.15);
       opacity: 0;
-      transform: translateY(20px);
-      transition: opacity 0.6s ease, transform 0.6s ease;
+      transform: translateY(18px);
+      transition:
+        opacity 520ms cubic-bezier(0.2, 0.0, 0.2, 1),
+        transform 520ms cubic-bezier(0.2, 0.0, 0.2, 1),
+        border-color 280ms ease,
+        box-shadow 280ms ease;
     }
 
-    .stat-item:last-child {
-      border-right: none;
+    .stat-item:hover {
+      transform: translateY(-3px);
+      border-color: rgba(255, 255, 255, 0.32);
+      box-shadow:
+        0 16px 44px rgba(0, 0, 0, 0.22),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22);
     }
 
     .stat-item.animate-stat {
@@ -773,36 +868,43 @@ import { PublicDashboardComponent } from './public-dashboard.component';
       transform: translateY(0);
     }
 
-    .stat-item:nth-child(2).animate-stat { transition-delay: 0.1s; }
-    .stat-item:nth-child(3).animate-stat { transition-delay: 0.2s; }
-    .stat-item:nth-child(4).animate-stat { transition-delay: 0.3s; }
+    .stat-item:nth-child(2).animate-stat { transition-delay: 0.08s; }
+    .stat-item:nth-child(3).animate-stat { transition-delay: 0.16s; }
+    .stat-item:nth-child(4).animate-stat { transition-delay: 0.24s; }
 
     .stat-number {
       display: block;
-      font-size: 2rem;
-      font-weight: 800;
-      letter-spacing: -0.5px;
+      font-family: 'Fraunces', 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-optical-sizing: auto;
+      font-size: clamp(2rem, 3.2vw, 2.85rem);
+      font-weight: 500;
+      line-height: 1;
+      letter-spacing: -0.02em;
+      color: var(--gold, #FCD116);
     }
 
     .stat-label {
       display: block;
-      font-size: 0.85rem;
-      opacity: 0.85;
-      margin-top: 4px;
+      font-family: 'Roboto', system-ui, sans-serif;
+      font-size: 0.72rem;
+      font-weight: 600;
+      opacity: 0.88;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.14em;
+      margin-top: 2px;
     }
 
     @media (max-width: 900px) {
+      .hero-section {
+        min-height: auto;
+        padding-top: 88px;
+      }
       .hero-content {
         grid-template-columns: 1fr;
-        padding: 40px 24px;
-        gap: 32px;
+        padding: 24px 20px 28px;
+        gap: 22px;
         text-align: center;
-      }
-
-      .hero-title {
-        font-size: 2rem;
       }
 
       .hero-subtitle {
@@ -816,30 +918,61 @@ import { PublicDashboardComponent } from './public-dashboard.component';
 
       .hero-illustration {
         order: -1;
+        max-width: 320px;
+        margin: 0 auto;
       }
 
-      .hero-svg {
-        max-width: 280px;
+      .hero-svg { max-width: 280px; }
+
+      .hero-stats {
+        gap: 10px;
+        padding: 0 16px 32px;
+      }
+      .stat-item {
+        flex: 1 1 calc(50% - 5px);
+        min-width: 140px;
+        padding: 16px 18px;
+      }
+      .stat-number { font-size: 1.85rem; }
+      .stat-label { font-size: 0.66rem; letter-spacing: 0.12em; }
+
+      .btn-primary, .btn-outline {
+        padding: 12px 22px;
+        font-size: 0.95rem;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .hero-section { padding-top: 84px; }
+      .hero-content { padding: 16px 16px 20px; gap: 18px; }
+      .hero-title { line-height: 1.1; letter-spacing: -0.01em; }
+      .hero-subtitle { font-size: 0.95rem; line-height: 1.5; margin-bottom: 26px; }
+      .hero-illustration { max-width: 280px; }
+
+      .hero-ctas { gap: 10px; width: 100%; }
+      .btn-primary, .btn-outline {
+        flex: 1 1 calc(50% - 5px);
+        justify-content: center;
+        padding: 11px 14px;
+        font-size: 0.9rem;
+        white-space: nowrap;
+      }
+      .btn-primary mat-icon, .btn-outline mat-icon {
+        font-size: 17px; width: 17px; height: 17px;
       }
 
       .hero-stats {
-        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 12px 28px;
       }
-
       .stat-item {
-        flex: 1 1 50%;
-        padding: 20px 12px;
-        border-right: none;
+        padding: 14px 14px;
+        border-radius: 16px;
+        flex: 1 1 calc(50% - 4px);
+        min-width: 0;
       }
-
-      .stat-item:nth-child(1),
-      .stat-item:nth-child(2) {
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-      }
-
-      .stat-number {
-        font-size: 1.5rem;
-      }
+      .stat-number { font-size: 1.55rem; }
+      .stat-label { font-size: 0.6rem; }
     }
 
     /* ===================================================================
@@ -1294,18 +1427,50 @@ import { PublicDashboardComponent } from './public-dashboard.component';
     /* ===================================================================
        GLOBAL RESPONSIVE TWEAKS
        =================================================================== */
+    @media (max-width: 900px) {
+      .reinvented-section {
+        padding: clamp(56px, 10vw, 80px) 20px;
+      }
+      .reinvented-head {
+        margin-bottom: 36px;
+      }
+      .reinvented-grid {
+        gap: 14px;
+      }
+      .reinvented-card {
+        padding: 26px 22px 22px;
+      }
+      .reinvented-card-title {
+        font-size: 1.35rem;
+      }
+      .reinvented-card-desc {
+        font-size: 0.9rem;
+      }
+    }
+
     @media (max-width: 600px) {
       .section {
-        padding: 56px 16px;
+        padding: 52px 16px;
       }
-
       .section-title {
         font-size: 1.75rem;
       }
-
       .section-subtitle {
         font-size: 1rem;
-        margin-bottom: 40px;
+        margin-bottom: 36px;
+      }
+      .reinvented-section {
+        padding: 56px 16px 48px;
+      }
+      .reinvented-title {
+        font-size: 1.9rem;
+      }
+      .reinvented-lead {
+        font-size: 0.95rem;
+      }
+      .reinvented-pill {
+        font-size: 0.68rem;
+        padding: 3px 8px;
       }
     }
 
@@ -1421,11 +1586,13 @@ import { PublicDashboardComponent } from './public-dashboard.component';
       animation-delay: 800ms;
     }
 
-    /* Navbar : entrée top-down */
+    /* Navbar : entrée top-down (translateX(-50%) conservé pour le centrage) */
+    @keyframes faso-nav-drop {
+      from { opacity: 0; transform: translate(-50%, -120%); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
     .landing-nav {
-      animation: faso-hero-rise 600ms cubic-bezier(0.2, 0.0, 0.2, 1) both;
-      animation-direction: reverse;
-      animation-duration: 0ms;
+      animation: faso-nav-drop 520ms cubic-bezier(0.2, 0.0, 0.2, 1) both;
     }
 
     /* Boost hover sur les fade-in-cards une fois visibles */
@@ -1437,6 +1604,177 @@ import { PublicDashboardComponent } from './public-dashboard.component';
       box-shadow: 0 16px 40px rgba(0, 0, 0, 0.12);
     }
 
+    /* ===================================================================
+       SECTION "L'AVICULTURE RÉINVENTÉE" — 3 piliers glass
+       (miroir de la section "Production evolved" — claude.ai design)
+       =================================================================== */
+    .reinvented-section {
+      position: relative;
+      padding: clamp(64px, 8vw, 120px) 24px;
+      background: linear-gradient(180deg, #0D1F12 0%, #1A3A22 55%, #2A4D30 100%);
+      overflow: hidden;
+      color: white;
+      isolation: isolate;
+    }
+
+    .reinvented-bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      overflow: hidden;
+      z-index: 0;
+    }
+    .reinvented-bg .blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(90px);
+      opacity: 0.55;
+      will-change: transform;
+      animation: reinvented-blob-float 22s ease-in-out infinite alternate;
+    }
+    .reinvented-bg .blob-1 {
+      width: 520px; height: 520px;
+      background: rgba(252, 209, 22, 0.28);
+      top: -180px; left: -120px;
+      animation-delay: 0s;
+    }
+    .reinvented-bg .blob-2 {
+      width: 560px; height: 560px;
+      background: rgba(0, 158, 73, 0.32);
+      bottom: -200px; right: -140px;
+      animation-delay: -8s;
+    }
+    .reinvented-bg .blob-3 {
+      width: 420px; height: 420px;
+      background: rgba(239, 43, 45, 0.22);
+      top: 35%; left: 50%; transform: translateX(-50%);
+      animation-delay: -14s;
+    }
+    @keyframes reinvented-blob-float {
+      from { transform: translate3d(0, 0, 0) scale(1); }
+      to   { transform: translate3d(4%, -3%, 0) scale(1.06); }
+    }
+
+    .reinvented-container {
+      position: relative;
+      z-index: 1;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    .reinvented-head {
+      text-align: center;
+      max-width: 720px;
+      margin: 0 auto 56px;
+    }
+    .reinvented-eyebrow {
+      display: inline-block;
+      font-family: 'Roboto', system-ui, sans-serif;
+      font-size: 0.75rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.16em;
+      color: var(--gold, #FCD116);
+      margin-bottom: 14px;
+    }
+    .reinvented-title {
+      font-family: 'Fraunces', 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-optical-sizing: auto;
+      font-weight: 500;
+      font-size: clamp(2rem, 4.5vw, 3.2rem);
+      line-height: 1.1;
+      letter-spacing: -0.015em;
+      margin: 0 0 18px;
+      text-shadow: 0 2px 24px rgba(0, 0, 0, 0.35);
+    }
+    .reinvented-lead {
+      font-family: 'Roboto', system-ui, sans-serif;
+      font-size: clamp(1rem, 1.3vw, 1.15rem);
+      line-height: 1.6;
+      opacity: 0.82;
+      margin: 0;
+    }
+
+    .reinvented-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 22px;
+    }
+    .reinvented-card {
+      position: relative;
+      padding: 32px 28px 28px;
+      background: rgba(255, 255, 255, 0.06);
+      backdrop-filter: blur(18px) saturate(140%);
+      -webkit-backdrop-filter: blur(18px) saturate(140%);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 22px;
+      box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.25),
+        inset 0 1px 0 rgba(255, 255, 255, 0.10);
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      transition:
+        transform 320ms cubic-bezier(0.2, 0.0, 0.2, 1),
+        border-color 320ms ease,
+        box-shadow 320ms ease;
+    }
+    .reinvented-card:hover {
+      transform: translateY(-6px);
+      border-color: rgba(255, 255, 255, 0.26);
+      box-shadow:
+        0 22px 60px rgba(0, 0, 0, 0.35),
+        inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+    .reinvented-icon {
+      width: 52px;
+      height: 52px;
+      display: grid;
+      place-items: center;
+      border-radius: 14px;
+      background: linear-gradient(135deg, rgba(252, 209, 22, 0.22), rgba(252, 209, 22, 0.06));
+      border: 1px solid rgba(252, 209, 22, 0.28);
+      color: var(--gold, #FCD116);
+      margin-bottom: 4px;
+    }
+    .reinvented-icon mat-icon {
+      font-size: 26px; width: 26px; height: 26px;
+    }
+    .reinvented-card-title {
+      font-family: 'Fraunces', 'Playfair Display', Georgia, serif;
+      font-style: italic;
+      font-weight: 500;
+      font-size: 1.55rem;
+      line-height: 1.2;
+      letter-spacing: -0.01em;
+      margin: 0;
+    }
+    .reinvented-card-desc {
+      font-family: 'Roboto', system-ui, sans-serif;
+      font-size: 0.95rem;
+      line-height: 1.55;
+      opacity: 0.82;
+      margin: 0;
+    }
+    .reinvented-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: auto;
+      padding-top: 10px;
+    }
+    .reinvented-pill {
+      font-family: 'Roboto', system-ui, sans-serif;
+      font-size: 0.72rem;
+      font-weight: 500;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      color: rgba(255, 255, 255, 0.88);
+      white-space: nowrap;
+    }
+
     /* Respect des préférences utilisateur */
     @media (prefers-reduced-motion: reduce) {
       .hero-section .hero-title,
@@ -1446,10 +1784,16 @@ import { PublicDashboardComponent } from './public-dashboard.component';
       .hero-bg-shapes .shape,
       .hero-svg g,
       .hero-svg circle,
-      .hero-stats {
+      .hero-stats,
+      .hero-atmosphere,
+      .hero-video,
+      .landing-nav,
+      .reinvented-bg .blob {
         animation: none !important;
       }
-      .fade-in-card.visible:hover {
+      .fade-in-card.visible:hover,
+      .reinvented-card:hover,
+      .stat-item:hover {
         transform: none !important;
       }
     }
@@ -1470,15 +1814,67 @@ export class LandingComponent implements OnInit, AfterViewInit, OnDestroy {
   readonly securityVisible = signal<boolean[]>(new Array(6).fill(false));
   readonly currentLang = signal(this.translate.currentLang || this.translate.defaultLang || 'fr');
 
+  // Hero video : opt-in, désactivé sous reduced-motion / save-data
+  readonly heroVideoEnabled = signal(this.computeHeroVideoEnabled());
+  readonly heroVideoReady = signal(false);
+
   private scrollListener: (() => void) | null = null;
   private observers: IntersectionObserver[] = [];
 
-  // SVG grain dots
-  readonly grainDots = [
-    { x: 200, y: 250 }, { x: 210, y: 255 }, { x: 195, y: 258 },
-    { x: 270, y: 252 }, { x: 265, y: 248 }, { x: 280, y: 255 },
-    { x: 310, y: 250 }, { x: 325, y: 252 },
+  // Trois piliers (section "L'aviculture réinventée")
+  readonly reinventedCards = [
+    {
+      id: 'halal',
+      icon: 'verified',
+      titleKey: 'landing.reinvented.cards.halal.title',
+      descKey: 'landing.reinvented.cards.halal.desc',
+      pills: [
+        'landing.reinvented.cards.halal.p1',
+        'landing.reinvented.cards.halal.p2',
+        'landing.reinvented.cards.halal.p3',
+      ],
+    },
+    {
+      id: 'payment',
+      icon: 'smartphone',
+      titleKey: 'landing.reinvented.cards.payment.title',
+      descKey: 'landing.reinvented.cards.payment.desc',
+      pills: [
+        'landing.reinvented.cards.payment.p1',
+        'landing.reinvented.cards.payment.p2',
+        'landing.reinvented.cards.payment.p3',
+      ],
+    },
+    {
+      id: 'delivery',
+      icon: 'local_shipping',
+      titleKey: 'landing.reinvented.cards.delivery.title',
+      descKey: 'landing.reinvented.cards.delivery.desc',
+      pills: [
+        'landing.reinvented.cards.delivery.p1',
+        'landing.reinvented.cards.delivery.p2',
+        'landing.reinvented.cards.delivery.p3',
+      ],
+    },
   ];
+
+  private computeHeroVideoEnabled(): boolean {
+    if (!isPlatformBrowser(this.platformId)) return false;
+    if (typeof window === 'undefined') return false;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const conn = (navigator as unknown as { connection?: { saveData?: boolean; effectiveType?: string } }).connection;
+    const saveData = !!conn?.saveData;
+    const slow = conn?.effectiveType === '2g' || conn?.effectiveType === 'slow-2g';
+    return !(reduced || saveData || slow);
+  }
+
+  onHeroVideoReady(): void {
+    this.heroVideoReady.set(true);
+  }
+  onHeroVideoError(): void {
+    this.heroVideoEnabled.set(false);
+    this.heroVideoReady.set(false);
+  }
 
   // Steps data
   readonly steps = [

@@ -18,6 +18,96 @@
       "stat_transactions": "Transactions",
       "stat_regions": "Regions"
     },
+    "reinvented": {
+      "eyebrow": "Three pillars",
+      "title": "Poultry, reimagined",
+      "lead": "Every link in the chain \u2014 from farm to buyer \u2014 designed for trust, traceability and simplicity.",
+      "cards": {
+        "halal": {
+          "title": "Halal certified",
+          "desc": "Every slaughtered batch is QR-traced and signed by a certified supervisor. Buyers scan and verify in 2 seconds.",
+          "p1": "Scannable QR",
+          "p2": "Certified supervisor",
+          "p3": "Blockchain audit"
+        },
+        "payment": {
+          "title": "Mobile payment",
+          "desc": "Orange Money, Moov Money or bank card. Instant settlement, held in escrow until delivery is confirmed.",
+          "p1": "Orange Money",
+          "p2": "Moov Money",
+          "p3": "Escrow"
+        },
+        "delivery": {
+          "title": "Tracked delivery",
+          "desc": "The farmer delivers directly or hands over to a partner carrier. Real-time geolocation, photo proof of delivery.",
+          "p1": "Real-time",
+          "p2": "Photo proof",
+          "p3": "Multi-carrier"
+        }
+      }
+    },
+    "heroAnim": {
+      "aria": "Animation: from chick to market-ready chicken",
+      "caption": "Four growth stages illustrated, from day 0 to day 45.",
+      "j0": "Chick",
+      "j21": "Growing",
+      "j35": "Fattening",
+      "j45": "Ready to sell"
+    },
+    "demoReel": {
+      "eyebrow": "Live demo",
+      "title": "A complete journey, from search to delivery",
+      "lead": "Hover to pause. Every step of the platform, shown live.",
+      "search": {
+        "query": "Sasso chicken, 2 kg, Ouagadougou",
+        "chipRace": "Breed: Sasso",
+        "chipRegion": "Region: Centre",
+        "cardSasso": "Sasso farm-raised",
+        "cardLocal": "Local chicken",
+        "cardKoki": "Organic Koki",
+        "cardFermier": "Free-range farm",
+        "cardBio": "Certified organic",
+        "cardPintade": "Local guinea fowl"
+      },
+      "listing": {
+        "halal": "Halal certified",
+        "vet": "Vet checked",
+        "local": "Burkina",
+        "title": "Sasso farm chicken \u2013 Ouaga North farmer",
+        "weight": "Weight",
+        "age": "Age",
+        "race": "Breed",
+        "cta": "Order now"
+      },
+      "payment": {
+        "title": "Choose your payment",
+        "card": "Bank card",
+        "product": "Product",
+        "delivery": "Delivery",
+        "total": "Total",
+        "secure": "Secure payment \u00b7 sovereign hosting"
+      },
+      "delivery": {
+        "step1": "Order confirmed",
+        "step2": "Picked up",
+        "step3": "On the way to you",
+        "step4": "Delivered"
+      },
+      "dashboard": {
+        "orders": "Orders",
+        "revenue": "Revenue (FCFA)",
+        "rating": "Rating",
+        "delivered": "Delivered",
+        "inTransit": "In transit"
+      },
+      "scenes": {
+        "search":    { "title": "Smart search",             "caption": "Filter by breed, weight, region and halal availability." },
+        "listing":   { "title": "Verified listing",         "caption": "Vet and halal badges, complete traceability." },
+        "payment":   { "title": "Mobile payment",           "caption": "Orange Money, Moov Money or card \u2014 fully secure." },
+        "delivery":  { "title": "Delivery tracking",        "caption": "Real-time driver geolocation." },
+        "dashboard": { "title": "Farmer dashboard",         "caption": "Manage your orders, revenue and reputation." }
+      }
+    },
     "presentation": {
       "title": "How does it work?",
       "subtitle": "Three simple steps to connect poultry supply and demand in Burkina Faso.",

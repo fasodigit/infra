@@ -18,6 +18,96 @@
       "stat_transactions": "Transactions",
       "stat_regions": "R\u00e9gions"
     },
+    "reinvented": {
+      "eyebrow": "Trois piliers",
+      "title": "L'aviculture, r\u00e9invent\u00e9e",
+      "lead": "Chaque maillon de la cha\u00eene \u2014 de l'\u00e9levage au client final \u2014 outill\u00e9 pour la confiance, la tra\u00e7abilit\u00e9 et la simplicit\u00e9.",
+      "cards": {
+        "halal": {
+          "title": "Halal certifi\u00e9",
+          "desc": "Chaque lot abattu est trac\u00e9 par QR code, sign\u00e9 par un superviseur agr\u00e9\u00e9. Les acheteurs scannent et v\u00e9rifient en 2 secondes.",
+          "p1": "QR scannable",
+          "p2": "Superviseur agr\u00e9\u00e9",
+          "p3": "Audit blockchain"
+        },
+        "payment": {
+          "title": "Paiement mobile",
+          "desc": "Orange Money, Moov Money ou carte bancaire. R\u00e8glement instantan\u00e9, s\u00e9questre jusqu'\u00e0 la livraison confirm\u00e9e.",
+          "p1": "Orange Money",
+          "p2": "Moov Money",
+          "p3": "S\u00e9questre"
+        },
+        "delivery": {
+          "title": "Livraison trac\u00e9e",
+          "desc": "L'\u00e9leveur livre lui-m\u00eame ou confie \u00e0 un transporteur partenaire. G\u00e9olocalisation temps r\u00e9el, preuve de livraison photo.",
+          "p1": "Temps r\u00e9el",
+          "p2": "Preuve photo",
+          "p3": "Multi-transporteur"
+        }
+      }
+    },
+    "heroAnim": {
+      "aria": "Animation d'\u00e9levage : du poussin au poulet pr\u00eat \u00e0 la vente",
+      "caption": "Quatre \u00e9tapes de croissance illustr\u00e9es, du jour 0 au jour 45.",
+      "j0": "Poussin",
+      "j21": "Croissance",
+      "j35": "Engraissement",
+      "j45": "Pr\u00eat \u00e0 vendre"
+    },
+    "demoReel": {
+      "eyebrow": "D\u00e9monstration",
+      "title": "Un parcours complet, de la recherche \u00e0 la livraison",
+      "lead": "Survolez pour mettre en pause. Chaque \u00e9tape de la plateforme, montr\u00e9e en direct.",
+      "search": {
+        "query": "Poulet Sasso, 2 kg, Ouagadougou",
+        "chipRace": "Race : Sasso",
+        "chipRegion": "R\u00e9gion : Centre",
+        "cardSasso": "Sasso fermier",
+        "cardLocal": "Poulet local",
+        "cardKoki": "Koki bio",
+        "cardFermier": "Fermier plein air",
+        "cardBio": "Label bio",
+        "cardPintade": "Pintade locale"
+      },
+      "listing": {
+        "halal": "Halal certifi\u00e9",
+        "vet": "V\u00e9t\u00e9rinaire",
+        "local": "Burkina",
+        "title": "Poulet Sasso fermier \u2013 \u00c9leveur Ouaga Nord",
+        "weight": "Poids",
+        "age": "\u00c2ge",
+        "race": "Race",
+        "cta": "Commander"
+      },
+      "payment": {
+        "title": "Choisissez votre paiement",
+        "card": "Carte bancaire",
+        "product": "Produit",
+        "delivery": "Livraison",
+        "total": "Total",
+        "secure": "Paiement s\u00e9curis\u00e9 \u00b7 h\u00e9bergement souverain"
+      },
+      "delivery": {
+        "step1": "Commande confirm\u00e9e",
+        "step2": "Prise en charge",
+        "step3": "En route vers vous",
+        "step4": "Livr\u00e9"
+      },
+      "dashboard": {
+        "orders": "Commandes",
+        "revenue": "Revenus (FCFA)",
+        "rating": "Note",
+        "delivered": "Livr\u00e9e",
+        "inTransit": "En route"
+      },
+      "scenes": {
+        "search":    { "title": "Recherche intelligente",  "caption": "Filtrez par race, poids, r\u00e9gion et disponibilit\u00e9 halal." },
+        "listing":   { "title": "Fiche annonce v\u00e9rifi\u00e9e", "caption": "Badges v\u00e9t\u00e9rinaire et halal, tra\u00e7abilit\u00e9 compl\u00e8te." },
+        "payment":   { "title": "Paiement mobile",          "caption": "Orange Money, Moov Money ou carte, en toute s\u00e9curit\u00e9." },
+        "delivery":  { "title": "Suivi de livraison",       "caption": "G\u00e9olocalisation du livreur en temps r\u00e9el." },
+        "dashboard": { "title": "Tableau de bord \u00e9leveur",  "caption": "Pilotez vos commandes, revenus et r\u00e9putation." }
+      }
+    },
     "presentation": {
       "title": "Comment \u00e7a marche ?",
       "subtitle": "Trois \u00e9tapes simples pour connecter l'offre et la demande de volailles au Burkina Faso.",
