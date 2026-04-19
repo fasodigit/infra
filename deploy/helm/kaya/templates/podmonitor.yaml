@@ -1,0 +1,21 @@
+{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- if .Values.podMonitor.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "kaya.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "kaya.labels" . | nindent 4 }}
+    # Label required for prometheus-operator to discover this PodMonitor
+    release: kube-prometheus-stack
+spec:
+  selector:
+    matchLabels:
+      {{- include "kaya.selectorLabels" . | nindent 6 }}
+  podMetricsEndpoints:
+    - port: metrics
+      interval: {{ .Values.podMonitor.interval }}
+      scrapeTimeout: {{ .Values.podMonitor.scrapeTimeout }}
+      path: /metrics
+{{- end }}

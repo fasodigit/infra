@@ -1,0 +1,104 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Helm chart lint-and-install CI — runs on every PR touching deploy/helm/
+name: Helm Lint & Install
+
+on:
+  pull_request:
+    paths:
+      - 'deploy/helm/**'
+      - 'deploy/.github/workflows/helm-lint.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'deploy/helm/**'
+
+permissions:
+  contents: read
+
+jobs:
+  helm-lint:
+    name: ct lint-and-install
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.16.4
+
+      - name: Set up Python (for chart-testing)
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install chart-testing (ct)
+        uses: helm/chart-testing-action@v2.6.1
+
+      - name: Run ct list-changed
+        id: list-changed
+        run: |
+          changed=$(ct list-changed --config deploy/.github/ct.yaml)
+          if [[ -n "$changed" ]]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run ct lint
+        if: steps.list-changed.outputs.changed == 'true'
+        run: ct lint --config deploy/.github/ct.yaml
+
+      - name: Create kind cluster
+        if: steps.list-changed.outputs.changed == 'true'
+        uses: helm/kind-action@v1.10.0
+        with:
+          cluster_name: faso-test
+          config: deploy/.github/kind-config.yaml
+
+      - name: Install CRDs required by charts
+        if: steps.list-changed.outputs.changed == 'true'
+        run: |
+          # cert-manager CRDs
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.16.0/cert-manager.crds.yaml
+          # Prometheus Operator CRDs (for PodMonitor)
+          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.79.2/example/prometheus-operator-crd/monitoring.coreos.com_podmonitors.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.79.2/example/prometheus-operator-crd/monitoring.coreos.com_prometheuses.yaml
+          kubectl apply --server-side -f https://raw.githubusercontent.com/prometheus-operator/prometheus-operator/v0.79.2/example/prometheus-operator-crd/monitoring.coreos.com_servicemonitors.yaml
+          # ExternalSecrets CRDs
+          kubectl apply -f https://raw.githubusercontent.com/external-secrets/external-secrets/v0.10.4/deploy/crds/bundle.yaml
+          # Argo Rollouts CRDs
+          kubectl apply -f https://github.com/argoproj/argo-rollouts/releases/latest/download/install.yaml --server-side
+          kubectl wait --for=condition=established --timeout=60s crd --all
+
+      - name: Run ct lint-and-install
+        if: steps.list-changed.outputs.changed == 'true'
+        run: ct lint-and-install --config deploy/.github/ct.yaml
+
+      - name: Helm template smoke test (all charts)
+        run: |
+          for chart in deploy/helm/*/; do
+            echo "=== Templating: ${chart} ==="
+            helm template test "${chart}" --dry-run > /dev/null
+          done
+
+  helm-security-scan:
+    name: Checkov Helm security scan
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Checkov on Helm charts
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: deploy/helm
+          framework: helm
+          output_format: cli
+          soft_fail: false
+          check: >-
+            CKV_K8S_8,CKV_K8S_9,CKV_K8S_10,CKV_K8S_11,
+            CKV_K8S_13,CKV_K8S_14,CKV_K8S_15,CKV_K8S_16,
+            CKV_K8S_20,CKV_K8S_22,CKV_K8S_28,CKV_K8S_30

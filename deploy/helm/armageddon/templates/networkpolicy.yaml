@@ -1,0 +1,105 @@
+{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "armageddon.fullname" . }}-deny-all
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "armageddon.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "armageddon.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow ingress from nginx-ingress controller
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "armageddon.fullname" . }}-allow-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "armageddon.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "armageddon.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-nginx
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: ingress-nginx
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+# Allow egress to kaya, auth-ms, poulets-api, notifier-ms
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "armageddon.fullname" . }}-allow-upstream
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "armageddon.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "armageddon.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              faso.gov.bf/tier: app
+      ports:
+        - protocol: TCP
+          port: 8080
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kaya
+      ports:
+        - protocol: TCP
+          port: 6380
+    # DNS
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+---
+# Allow Prometheus scrape
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "armageddon.fullname" . }}-allow-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "armageddon.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "armageddon.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
+{{- end }}

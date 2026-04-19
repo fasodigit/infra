@@ -1,0 +1,21 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+apiVersion: v2
+name: kaya
+description: KAYA sovereign in-memory database — FASO DIGITALISATION
+type: application
+version: 1.0.0
+appVersion: "0.9.0"
+keywords:
+  - database
+  - in-memory
+  - redis-compatible
+  - sovereign
+home: https://github.com/fasodigitalisation/kaya
+sources:
+  - https://github.com/fasodigitalisation/kaya
+maintainers:
+  - name: FASO DIGITALISATION
+    email: fasodigitalisation@gmail.com
+annotations:
+  category: Database
+  license: AGPL-3.0-only

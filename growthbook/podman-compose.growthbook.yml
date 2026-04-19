@@ -1,39 +1,64 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
-# GrowthBook feature-flag service. Compose override : `podman-compose -f docker-compose.yml -f docker-compose.growthbook.yml up -d growthbook`.
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# GrowthBook feature-flag service (+ MongoDB persistent store).
+# Usage (compose override) :
+#   podman-compose -f INFRA/docker/compose/podman-compose.yml \
+#                  -f INFRA/growthbook/podman-compose.growthbook.yml up -d
+#
+# Port choisi : 3100 (évite la collision avec Grafana sur 3000).
+# Secrets (JWT_SECRET, ENCRYPTION_KEY, GROWTHBOOK_API_KEY) injectés via Vault
+# Agent (kv faso/growthbook/*) — cf. INFRA/vault/scripts/seed-secrets.sh.
 name: faso-growthbook
+
 services:
-  growthbook-mongo:
-    image: mongo:7.0@sha256:a4b95cec5735ca8b40f5bde54eb85d2d68b5c7968e1d4b9b086b5e1b6f0f2cd1
+  faso-growthbook-mongo:
+    image: mongo:7
     container_name: faso-growthbook-mongo
     restart: unless-stopped
     volumes:
-      - growthbook-mongo-data:/data/db
-    networks: [faso-network]
+      - faso-growthbook-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+    networks: [faso-net]
 
-  growthbook:
-    image: growthbook/growthbook:3.7.0
+  faso-growthbook:
+    image: growthbook/growthbook:latest
     container_name: faso-growthbook
     restart: unless-stopped
-    depends_on: [growthbook-mongo]
+    depends_on:
+      faso-growthbook-mongo:
+        condition: service_healthy
     environment:
-      MONGODB_URI: mongodb://growthbook-mongo:27017/growthbook
+      MONGODB_URI: mongodb://faso-growthbook-mongo:27017/growthbook
       APP_ORIGIN: ${GROWTHBOOK_APP_ORIGIN:-http://localhost:3100}
-      API_HOST: ${GROWTHBOOK_API_HOST:-http://localhost:3100}
-      NODE_ENV: production
-    secrets: [growthbook_jwt_secret, growthbook_encryption_key]
+      API_HOST:   ${GROWTHBOOK_API_HOST:-http://localhost:3100}
+      NODE_ENV:   production
+      # Injectés depuis Vault par podman-compose (envsubst) : kv faso/growthbook/*
+      JWT_SECRET:        ${GROWTHBOOK_JWT_SECRET:?JWT_SECRET manquant (vault kv get faso/growthbook/jwt)}
+      ENCRYPTION_KEY:    ${GROWTHBOOK_ENCRYPTION_KEY:?ENCRYPTION_KEY manquant}
+      # Optionnel : clef d'accès admin auto-provisionnée au premier démarrage
+      GROWTHBOOK_API_KEY: ${GROWTHBOOK_API_KEY:-}
     ports:
       - "127.0.0.1:3100:3100"
-    networks: [faso-network]
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3100/healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    volumes:
+      - faso-growthbook-uploads:/usr/local/src/app/packages/back-end/uploads
+    networks: [faso-net]
 
 volumes:
-  growthbook-mongo-data:
-
-secrets:
-  growthbook_jwt_secret:
-    file: ./secrets/growthbook_jwt_secret.txt
-  growthbook_encryption_key:
-    file: ./secrets/growthbook_encryption_key.txt
+  faso-growthbook-mongo-data:
+  faso-growthbook-uploads:
 
 networks:
-  faso-network:
+  faso-net:
     external: true

@@ -1,0 +1,96 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Default values for kaya chart
+
+replicaCount: 3
+
+image:
+  repository: registry.faso.gov.bf/faso/kaya
+  pullPolicy: IfNotPresent
+  tag: ""  # defaults to .Chart.AppVersion
+
+imagePullSecrets:
+  - name: faso-registry-credentials
+
+nameOverride: ""
+fullnameOverride: ""
+
+serviceAccount:
+  create: true
+  annotations: {}
+  name: ""
+
+podAnnotations:
+  prometheus.io/scrape: "true"
+  prometheus.io/port: "6381"
+  prometheus.io/path: "/metrics"
+
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 9000
+  fsGroup: 9000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  capabilities:
+    drop:
+      - ALL
+  readOnlyRootFilesystem: true
+
+service:
+  type: ClusterIP
+  respPort: 6380
+  metricsPort: 6381
+
+persistence:
+  storageClass: "csi-ovh-block"
+  size: 50Gi
+  accessMode: ReadWriteOnce
+
+resources:
+  requests:
+    cpu: "500m"
+    memory: "1Gi"
+  limits:
+    cpu: "2000m"
+    memory: "4Gi"
+
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+podMonitor:
+  enabled: true
+  interval: "30s"
+  scrapeTimeout: "10s"
+
+livenessProbe:
+  tcpSocket:
+    port: 6380
+  initialDelaySeconds: 30
+  periodSeconds: 15
+  failureThreshold: 3
+
+readinessProbe:
+  exec:
+    command: ["/usr/local/bin/kaya-cli", "PING"]
+  initialDelaySeconds: 10
+  periodSeconds: 10
+  failureThreshold: 2
+
+affinity:
+  podAntiAffinity:
+    requiredDuringSchedulingIgnoredDuringExecution:
+      - labelSelector:
+          matchLabels:
+            app.kubernetes.io/name: kaya
+        topologyKey: kubernetes.io/hostname
+
+nodeSelector:
+  topology.kubernetes.io/region: eu-west
+
+tolerations: []
+
+networkPolicy:
+  enabled: true

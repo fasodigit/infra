@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Criterion benchmark CI — runs on every PR and on push to main.
+# Results are uploaded to bencher.dev (project: faso-kaya).
+# A PR is failed if throughput or latency regresses > 5 % vs the base branch.
+
+name: Criterion Benchmarks
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+  push:
+    branches:
+      - main
+
+# Cancel any in-progress run for the same PR / branch so we never queue up
+# stale benchmark results that could flip the regression check.
+concurrency:
+  group: criterion-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # sccache shared cache directory (survives runner restarts via cache action).
+  SCCACHE_DIR: /var/tmp/faso-cache/sccache
+  RUSTC_WRAPPER: sccache
+
+jobs:
+  bench:
+    name: bench / ${{ matrix.bench }}
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        bench:
+          - commands
+          - datatypes
+          - persistence
+          - pubsub
+          - streams
+
+    steps:
+      # -----------------------------------------------------------------------
+      # 1. Checkout
+      # -----------------------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0          # full history for bencher.dev base comparison
+
+      # -----------------------------------------------------------------------
+      # 2. Rust stable toolchain
+      # -----------------------------------------------------------------------
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      # -----------------------------------------------------------------------
+      # 3. sccache (compile-time cache — shared key per bench matrix leg)
+      # -----------------------------------------------------------------------
+      - name: Cache sccache directory
+        uses: actions/cache@v4
+        with:
+          path: /var/tmp/faso-cache/sccache
+          key: sccache-bench-${{ matrix.bench }}-${{ runner.os }}-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            sccache-bench-${{ matrix.bench }}-${{ runner.os }}-
+            sccache-bench-${{ runner.os }}-
+
+      - name: Install sccache
+        uses: mozilla-actions/sccache-action@v0.0.5
+
+      # -----------------------------------------------------------------------
+      # 4. Run the benchmark and capture output in Bencher JSON format
+      # -----------------------------------------------------------------------
+      - name: Run criterion bench — ${{ matrix.bench }}
+        working-directory: kaya
+        run: |
+          cargo bench \
+            --bench ${{ matrix.bench }} \
+            -p kaya-bench \
+            -- \
+            --output-format bencher \
+            --noplot \
+          | tee ${{ matrix.bench }}.txt
+
+      # -----------------------------------------------------------------------
+      # 5. Upload results to bencher.dev
+      #
+      #    The `bencher run` command compares against the base branch and fails
+      #    the job when the configured threshold (5 %) is exceeded.
+      #    Set BENCHER_API_TOKEN in the repository's Actions secrets.
+      # -----------------------------------------------------------------------
+      - name: Upload to bencher.dev
+        uses: bencherdev/bencher@main
+        with:
+          project: faso-kaya
+          token: ${{ secrets.BENCHER_API_TOKEN }}
+          testbed: github-actions
+          adapter: rust_criterion
+          # Fail this step (and therefore the PR) when regression is detected.
+          err: true
+          # Point to the file produced above.
+          file: kaya/${{ matrix.bench }}.txt
+
+      # -----------------------------------------------------------------------
+      # 6. Preserve raw results as a build artifact (30-day retention)
+      # -----------------------------------------------------------------------
+      - name: Upload raw bench output
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-${{ matrix.bench }}-${{ github.run_id }}
+          path: kaya/${{ matrix.bench }}.txt
+          retention-days: 30

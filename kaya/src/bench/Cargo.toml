@@ -11,6 +11,26 @@ path = "src/main.rs"
 name = "kaya-bench-uring"
 path = "src/uring_bench.rs"
 
+[[bench]]
+name = "commands"
+harness = false
+
+[[bench]]
+name = "datatypes"
+harness = false
+
+[[bench]]
+name = "persistence"
+harness = false
+
+[[bench]]
+name = "pubsub"
+harness = false
+
+[[bench]]
+name = "streams"
+harness = false
+
 [features]
 default = []
 io_uring = ["kaya-network/io_uring"]
@@ -27,3 +47,17 @@ bytes = { workspace = true }
 kaya-sdk = { workspace = true }
 kaya-protocol = { workspace = true }
 kaya-network = { workspace = true }
+
+[[test]]
+name = "wal_replay"
+path = "tests/wal_replay.rs"
+
+[dev-dependencies]
+criterion = { version = "0.5", features = ["html_reports"] }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tempfile = "3"
+bytes = { workspace = true }
+kaya-store = { workspace = true }
+kaya-compress = { workspace = true }
+kaya-pubsub = { workspace = true }
+kaya-streams = { workspace = true }

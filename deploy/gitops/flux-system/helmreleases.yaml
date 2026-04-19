@@ -1,0 +1,153 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Flux HelmRelease resources — one per chart
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: kaya
+  namespace: flux-system
+spec:
+  interval: 5m
+  targetNamespace: kaya
+  createNamespace: true
+  chart:
+    spec:
+      chart: kaya
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: faso-charts
+        namespace: flux-system
+  values:
+    replicaCount: 3
+  upgrade:
+    remediation:
+      retries: 3
+  rollback:
+    timeout: 5m
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: armageddon
+  namespace: flux-system
+spec:
+  interval: 5m
+  targetNamespace: gateway
+  createNamespace: true
+  chart:
+    spec:
+      chart: armageddon
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: faso-charts
+        namespace: flux-system
+  upgrade:
+    remediation:
+      retries: 3
+  rollback:
+    timeout: 5m
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: auth-ms
+  namespace: flux-system
+spec:
+  interval: 5m
+  targetNamespace: apps
+  createNamespace: true
+  chart:
+    spec:
+      chart: auth-ms
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: faso-charts
+        namespace: flux-system
+  upgrade:
+    remediation:
+      retries: 3
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: poulets-api
+  namespace: flux-system
+spec:
+  interval: 5m
+  targetNamespace: apps
+  chart:
+    spec:
+      chart: poulets-api
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: faso-charts
+        namespace: flux-system
+  upgrade:
+    remediation:
+      retries: 3
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: notifier-ms
+  namespace: flux-system
+spec:
+  interval: 5m
+  targetNamespace: apps
+  chart:
+    spec:
+      chart: notifier-ms
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: faso-charts
+        namespace: flux-system
+  upgrade:
+    remediation:
+      retries: 3
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: ory-stack
+  namespace: flux-system
+spec:
+  interval: 5m
+  targetNamespace: ory-stack
+  createNamespace: true
+  chart:
+    spec:
+      chart: ory-stack
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: faso-charts
+        namespace: flux-system
+  upgrade:
+    remediation:
+      retries: 3
+---
+apiVersion: helm.toolkit.fluxcd.io/v2beta2
+kind: HelmRelease
+metadata:
+  name: observability
+  namespace: flux-system
+spec:
+  interval: 5m
+  targetNamespace: observability
+  createNamespace: true
+  chart:
+    spec:
+      chart: observability
+      version: "1.x.x"
+      sourceRef:
+        kind: HelmRepository
+        name: faso-charts
+        namespace: flux-system
+  upgrade:
+    remediation:
+      retries: 3

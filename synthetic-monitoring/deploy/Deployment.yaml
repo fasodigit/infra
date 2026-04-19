@@ -1,0 +1,159 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Kubernetes resources for the FASO synthetic monitoring runner.
+# Runs every 5 minutes as a CronJob, executing the full suite of Playwright
+# flows against production and pushing metrics to the Pushgateway.
+#
+# Secrets are mounted via Vault AppRole (vault-agent-injector annotations).
+
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-monitoring
+    app.kubernetes.io/part-of: faso-digitalisation
+    pod-security.kubernetes.io/enforce: restricted
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: synthetic-monitoring
+  namespace: synthetic-monitoring
+  annotations:
+    vault.hashicorp.com/role: synthetic-monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: synthetic-monitoring-config
+  namespace: synthetic-monitoring
+data:
+  FASO_PROD_URL: "https://www.faso.gov.bf"
+  FASO_ENV: "prod"
+  PROM_PUSHGATEWAY_URL: "http://pushgateway.observability.svc.cluster.local:9091"
+  ETAT_CIVIL_READY: "false"
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: synthetic-monitoring
+  namespace: synthetic-monitoring
+  labels:
+    app.kubernetes.io/name: synthetic-monitoring
+    app.kubernetes.io/component: cronjob
+spec:
+  schedule: "*/5 * * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 120
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      ttlSecondsAfterFinished: 3600
+      activeDeadlineSeconds: 240
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: synthetic-monitoring
+          annotations:
+            vault.hashicorp.com/agent-inject: "true"
+            vault.hashicorp.com/role: "synthetic-monitoring"
+            vault.hashicorp.com/agent-inject-secret-user: "faso/synthetic-monitoring/user"
+            vault.hashicorp.com/agent-inject-template-user: |
+              {{- with secret "faso/synthetic-monitoring/user" -}}
+              export SYNTHETIC_USER_EMAIL="{{ .Data.data.email }}"
+              export SYNTHETIC_USER_PASSWORD="{{ .Data.data.password }}"
+              {{- end -}}
+        spec:
+          restartPolicy: Never
+          serviceAccountName: synthetic-monitoring
+          automountServiceAccountToken: true
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            runAsGroup: 10001
+            fsGroup: 10001
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: runner
+              image: ghcr.io/faso-digitalisation/synthetic-monitoring:latest
+              imagePullPolicy: IfNotPresent
+              # Single-shot: CronJob supplies the scheduling, container runs
+              # all flows once, pushes metrics, exits 0.
+              command: ["/bin/bash", "-lc"]
+              args:
+                - |
+                  set -e
+                  source /vault/secrets/user
+                  for flow in auth poulets-order etat-civil; do
+                    npx playwright test "playwright/flows/${flow}.spec.ts" \
+                      --reporter=list || echo "flow=${flow} failed (metrics pushed)"
+                  done
+              envFrom:
+                - configMapRef:
+                    name: synthetic-monitoring-config
+              env:
+                - name: FASO_REGION
+                  valueFrom:
+                    fieldRef:
+                      fieldPath: metadata.labels['topology.kubernetes.io/region']
+              resources:
+                requests:
+                  cpu: "200m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: false
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: workspace
+                  mountPath: /opt/synthetic-monitoring/test-results
+          volumes:
+            - name: tmp
+              emptyDir: { sizeLimit: 256Mi }
+            - name: workspace
+              emptyDir: { sizeLimit: 256Mi }
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: synthetic-monitoring-egress
+  namespace: synthetic-monitoring
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: synthetic-monitoring
+  policyTypes: ["Egress"]
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              name: observability
+      ports:
+        - { protocol: TCP, port: 9091 }
+    # DNS
+    - to:
+        - namespaceSelector: {}
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - { protocol: UDP, port: 53 }
+        - { protocol: TCP, port: 53 }
+    # Public prod (HTTPS) — no restriction on external hosts.
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - { protocol: TCP, port: 443 }

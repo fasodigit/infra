@@ -1,0 +1,152 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# ORY Stack umbrella chart values
+
+kratos:
+  enabled: true
+  replicaCount: 2
+  image:
+    tag: "v1.3.0"
+  deployment:
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 100
+      fsGroup: 65534
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+  resources:
+    requests:
+      cpu: "200m"
+      memory: "256Mi"
+    limits:
+      cpu: "500m"
+      memory: "512Mi"
+  kratos:
+    config:
+      dsn: >-
+        postgres://kratos:$(KRATOS_DB_PASSWORD)@ory-stack-postgresql:5432/kratos?sslmode=require
+      serve:
+        public:
+          base_url: https://id.faso.gov.bf
+          cors:
+            enabled: true
+            allowed_origins:
+              - https://faso.gov.bf
+        admin:
+          base_url: http://kratos-admin
+      selfservice:
+        default_browser_return_url: https://faso.gov.bf/
+        flows:
+          registration:
+            ui_url: https://id.faso.gov.bf/registration
+          login:
+            ui_url: https://id.faso.gov.bf/login
+      courier:
+        smtp:
+          connection_uri: smtps://$(SMTP_USER):$(SMTP_PASSWORD)@smtp.faso.gov.bf:465
+      identity:
+        default_schema_id: default
+        schemas:
+          - id: default
+            url: file:///etc/kratos/schemas/identity.schema.json
+    automigration:
+      enabled: true
+  secret:
+    nameOverride: "kratos-secrets"
+  extraEnv:
+    - name: KRATOS_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: ory-postgresql-credentials
+          key: kratos-password
+
+keto:
+  enabled: true
+  replicaCount: 2
+  image:
+    tag: "v0.14.0"
+  deployment:
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 100
+      fsGroup: 65534
+      seccompProfile:
+        type: RuntimeDefault
+    securityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: true
+  resources:
+    requests:
+      cpu: "100m"
+      memory: "128Mi"
+    limits:
+      cpu: "300m"
+      memory: "256Mi"
+  keto:
+    config:
+      dsn: >-
+        postgres://keto:$(KETO_DB_PASSWORD)@ory-stack-postgresql:5432/keto?sslmode=require
+      namespaces:
+        - id: 0
+          name: faso_resources
+      serve:
+        read:
+          port: 4466
+        write:
+          port: 4467
+    automigration:
+      enabled: true
+  extraEnv:
+    - name: KETO_DB_PASSWORD
+      valueFrom:
+        secretKeyRef:
+          name: ory-postgresql-credentials
+          key: keto-password
+
+postgresql:
+  enabled: true
+  auth:
+    existingSecret: "ory-postgresql-credentials"
+    secretKeys:
+      adminPasswordKey: "postgres-password"
+  primary:
+    podSecurityContext:
+      runAsNonRoot: true
+      runAsUser: 1001
+      fsGroup: 1001
+      seccompProfile:
+        type: RuntimeDefault
+    containerSecurityContext:
+      allowPrivilegeEscalation: false
+      capabilities:
+        drop:
+          - ALL
+      readOnlyRootFilesystem: false  # postgres needs writable data dir
+    persistence:
+      enabled: true
+      storageClass: "csi-ovh-block"
+      size: 20Gi
+    resources:
+      requests:
+        cpu: "250m"
+        memory: "512Mi"
+      limits:
+        cpu: "1000m"
+        memory: "2Gi"
+  initdb:
+    scripts:
+      init.sql: |
+        CREATE DATABASE kratos;
+        CREATE DATABASE keto;
+        CREATE USER kratos WITH ENCRYPTED PASSWORD 'placeholder';
+        CREATE USER keto WITH ENCRYPTED PASSWORD 'placeholder';
+        GRANT ALL PRIVILEGES ON DATABASE kratos TO kratos;
+        GRANT ALL PRIVILEGES ON DATABASE keto TO keto;

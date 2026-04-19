@@ -1,0 +1,194 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPIRE Agent — DaemonSet
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-agent
+  namespace: spire
+automountServiceAccountToken: true
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-agent-cluster-role
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "nodes", "nodes/proxy"]
+    verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-agent-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spire-agent-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: spire-agent
+    namespace: spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-agent-config
+  namespace: spire
+data:
+  agent.conf: |
+    agent {
+      data_dir = "/run/spire/data"
+      log_level = "INFO"
+      server_address = "spire-server"
+      server_port = "8081"
+      socket_path = "/run/spire/sockets/agent.sock"
+      trust_bundle_path = "/run/spire/bundle/bundle.crt"
+      trust_domain = "faso.gov.bf"
+    }
+    plugins {
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          cluster = "faso-kube"
+          token_path = "/run/secrets/tokens/spire-agent"
+        }
+      }
+      KeyManager "memory" {
+        plugin_data {}
+      }
+      WorkloadAttestor "k8s" {
+        plugin_data {
+          skip_kubelet_verification = true
+        }
+      }
+    }
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
+    }
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: spire-agent
+  namespace: spire
+  labels:
+    app: spire-agent
+    app.kubernetes.io/name: spire-agent
+    app.kubernetes.io/part-of: faso-digitalisation
+spec:
+  selector:
+    matchLabels:
+      app: spire-agent
+  updateStrategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: spire-agent
+        app.kubernetes.io/name: spire-agent
+    spec:
+      serviceAccountName: spire-agent
+      hostPID: true
+      hostNetwork: false
+      dnsPolicy: ClusterFirstWithHostNet
+      initContainers:
+        - name: init-bundle
+          image: ghcr.io/spiffe/spire-server:1.9.6
+          imagePullPolicy: IfNotPresent
+          command:
+            - /bin/sh
+            - -c
+            - |
+              until kubectl -n spire get configmap spire-bundle -o jsonpath='{.data.bundle\.crt}' > /run/spire/bundle/bundle.crt 2>/dev/null && [ -s /run/spire/bundle/bundle.crt ]; do
+                echo "Waiting for SPIRE bundle..."
+                sleep 5
+              done
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            runAsUser: 1000
+          volumeMounts:
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+      containers:
+        - name: spire-agent
+          image: ghcr.io/spiffe/spire-agent:1.9.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-config"
+            - "/run/spire/config/agent.conf"
+          ports:
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+            runAsNonRoot: false  # Agent requires root for PSAT attestation
+            runAsUser: 0
+            seccompProfile:
+              type: RuntimeDefault
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "64Mi"
+            limits:
+              cpu: "200m"
+              memory: "256Mi"
+          volumeMounts:
+            - name: spire-config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: spire-bundle
+              mountPath: /run/spire/bundle
+              readOnly: true
+            - name: spire-sockets
+              mountPath: /run/spire/sockets
+            - name: spire-data
+              mountPath: /run/spire/data
+            - name: spire-token
+              mountPath: /run/secrets/tokens
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-agent-config
+        - name: spire-bundle
+          configMap:
+            name: spire-bundle
+            optional: true
+        - name: spire-sockets
+          hostPath:
+            path: /run/spire/sockets
+            type: DirectoryOrCreate
+        - name: spire-data
+          emptyDir: {}
+        - name: spire-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: spire-agent
+                  expirationSeconds: 7200
+                  audience: spire-server

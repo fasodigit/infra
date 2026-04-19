@@ -15,29 +15,6 @@
 * **faso-shared,workflow-engine:** mutualised libs + Temporal orchestrator ([d6c0cdd](https://github.com/fasodigit/infra/commit/d6c0cdd5e7e63a1cf2c2ebb3d87356c80c1434c5))
 * **infra:** add podman-compose stacks for impression + Temporal ([72b6483](https://github.com/fasodigit/infra/commit/72b6483d2c59955168f8bae02013d9ceff532dbc))
 * **infra:** sovereign hardening wave — 20 automations + ARMAGEDDON Vague 1 + docs publiques ([ba81af7](https://github.com/fasodigit/infra/commit/ba81af749057008c1094e8cbe297372a67e33710))
-* **kaya:** implement HELLO 3 stateful + Frame::Null RESP3 encoder ([00a2dba](https://github.com/fasodigit/infra/commit/00a2dba635439f716748e6aa9953c2c4ff45ca25))
-* **ory,compose:** swap Mailslurper -> Mailpit + fix Kratos cipher length ([0fb0490](https://github.com/fasodigit/infra/commit/0fb04909d2bc2bbff22165581ccdd33ca7c00e16))
-* **poulets-backend:** port ec-certificate-renderer + impression-service ([2770b21](https://github.com/fasodigit/infra/commit/2770b2173fcb11e963da4476e133c4a7b7bd6758))
-* **poulets-bff:** add /api/impression/* + /api/admin/workflows/* proxies ([28053f1](https://github.com/fasodigit/infra/commit/28053f1b75a3908866598385ee9c89b1e0fce3ed))
-* **poulets-frontend:** fix dark-mode contrast + refonte auth + animations ([020f836](https://github.com/fasodigit/infra/commit/020f83652c1407868e0bb59ab9ea09f051fc6dac)), closes [#0F172A](https://github.com/fasodigit/infra/issues/0F172A) [#475569](https://github.com/fasodigit/infra/issues/475569) [#D1D5DB](https://github.com/fasodigit/infra/issues/D1D5DB) [#2E7D32](https://github.com/fasodigit/infra/issues/2E7D32)
-* **tests-e2e:** add 100% UI Playwright harness with 49 acceptance tests ([b7f592c](https://github.com/fasodigit/infra/commit/b7f592c1a86c53d278d3e71806cdf98faa779db2))
-* **vault,podman:** integrate Vault+Consul secret management + rename to podman-compose ([ef1f27f](https://github.com/fasodigit/infra/commit/ef1f27fa116fab50bb353ef27784c31f4fafe2ff))
-* **vault:** switch to prod mode with Consul KV storage backend ([0a06eb9](https://github.com/fasodigit/infra/commit/0a06eb9572bd8dd79d39727c2ab2d6a9dd569786))
-
-### Bug Fixes
-
-* **java,bff:** gracefully handle cache errors + env-configurable dev rate-limit ([121a14f](https://github.com/fasodigit/infra/commit/121a14f1fc869dc761a6b1af376e01ae490adf33)), closes [#11](https://github.com/fasodigit/infra/issues/11)
-
-## 1.0.0 (2026-04-18)
-
-> FASO DIGITALISATION — Licensed under AGPL-3.0
-> Breaking changes require migration — see RELEASE.md
-
-### Features
-
-* **faso-shared,workflow-engine:** mutualised libs + Temporal orchestrator ([d6c0cdd](https://github.com/fasodigit/infra/commit/d6c0cdd5e7e63a1cf2c2ebb3d87356c80c1434c5))
-* **infra:** add podman-compose stacks for impression + Temporal ([72b6483](https://github.com/fasodigit/infra/commit/72b6483d2c59955168f8bae02013d9ceff532dbc))
-* **infra:** sovereign hardening wave — 20 automations + ARMAGEDDON Vague 1 + docs publiques ([ba81af7](https://github.com/fasodigit/infra/commit/ba81af749057008c1094e8cbe297372a67e33710))
 * **poulets-backend:** port ec-certificate-renderer + impression-service ([2770b21](https://github.com/fasodigit/infra/commit/2770b2173fcb11e963da4476e133c4a7b7bd6758))
 * **poulets-bff:** add /api/impression/* + /api/admin/workflows/* proxies ([28053f1](https://github.com/fasodigit/infra/commit/28053f1b75a3908866598385ee9c89b1e0fce3ed))
 * **poulets-frontend:** fix dark-mode contrast + refonte auth + animations ([020f836](https://github.com/fasodigit/infra/commit/020f83652c1407868e0bb59ab9ea09f051fc6dac)), closes [#0F172A](https://github.com/fasodigit/infra/issues/0F172A) [#475569](https://github.com/fasodigit/infra/issues/475569) [#D1D5DB](https://github.com/fasodigit/infra/issues/D1D5DB) [#2E7D32](https://github.com/fasodigit/infra/issues/2E7D32)

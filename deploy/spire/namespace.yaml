@@ -1,0 +1,9 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: spire
+  labels:
+    kubernetes.io/metadata.name: spire
+    pod-security.kubernetes.io/enforce: restricted
+    pod-security.kubernetes.io/enforce-version: latest

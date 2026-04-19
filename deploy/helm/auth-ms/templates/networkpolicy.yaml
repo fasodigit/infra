@@ -1,0 +1,85 @@
+{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- if .Values.networkPolicy.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "auth-ms.fullname" . }}-deny-all
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "auth-ms.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "auth-ms.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "auth-ms.fullname" . }}-allow-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "auth-ms.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "auth-ms.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              faso.gov.bf/tier: gateway
+      ports:
+        - protocol: TCP
+          port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: observability
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - protocol: TCP
+          port: 8080
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "auth-ms.fullname" . }}-allow-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "auth-ms.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "auth-ms.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ory-stack
+      ports:
+        - protocol: TCP
+          port: 4434
+        - protocol: TCP
+          port: 4433
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kaya
+      ports:
+        - protocol: TCP
+          port: 6380
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

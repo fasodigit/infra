@@ -1,0 +1,32 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+apiVersion: v2
+name: ory-stack
+description: ORY Kratos + Keto + PostgreSQL umbrella chart — FASO DIGITALISATION
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - identity
+  - authentication
+  - authorization
+  - ory
+  - sovereign
+maintainers:
+  - name: FASO DIGITALISATION
+    email: fasodigitalisation@gmail.com
+annotations:
+  category: Security
+  license: AGPL-3.0-only
+dependencies:
+  - name: kratos
+    version: "0.41.x"
+    repository: "https://k8s.ory.sh/helm/charts"
+    condition: kratos.enabled
+  - name: keto
+    version: "0.41.x"
+    repository: "https://k8s.ory.sh/helm/charts"
+    condition: keto.enabled
+  - name: postgresql
+    version: "15.x.x"
+    repository: "https://charts.bitnami.com/bitnami"
+    condition: postgresql.enabled

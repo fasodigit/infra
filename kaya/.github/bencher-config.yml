@@ -1,0 +1,139 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Bencher.dev threshold configuration for the KAYA sovereign database.
+# Project: faso-kaya  —  https://bencher.dev/console/projects/faso-kaya
+#
+# Thresholds are expressed as maximum allowed relative regression
+# (positive = allowed degradation).  Values are chosen so that normal
+# measurement noise from Criterion (~2-3 %) does not trip the CI gate.
+#
+# Reference:
+#   https://bencher.dev/docs/explanation/thresholds/
+
+version: 1
+
+project: faso-kaya
+
+# Default testbed used by the GitHub Actions workflow.
+testbed: github-actions
+
+# ---------------------------------------------------------------------------
+# Per-benchmark thresholds
+# ---------------------------------------------------------------------------
+thresholds:
+
+  # -- commands ---------------------------------------------------------------
+  # SET/GET/INCR/MSET/MGET/DEL are pure in-process operations; noise is low.
+  - benchmark: "SET/**"
+    measure: latency       # ns/iter (Criterion wall-clock)
+    statistic: p99
+    upper_boundary: 0.05   # 5 % regression threshold
+
+  - benchmark: "GET/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "INCR"
+    measure: latency
+    statistic: p50
+    upper_boundary: 0.05
+
+  - benchmark: "MSET/**"
+    measure: throughput    # elem/s
+    statistic: p50
+    lower_boundary: -0.05  # throughput: allow 5 % drop
+
+  - benchmark: "MGET/**"
+    measure: throughput
+    statistic: p50
+    lower_boundary: -0.05
+
+  - benchmark: "DEL/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  # -- datatypes --------------------------------------------------------------
+  - benchmark: "SADD/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "SMEMBERS/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "ZADD/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "ZRANGE/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "ZRANGEBYSCORE/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  # -- persistence ------------------------------------------------------------
+  # WAL encode is pure CPU; 5 % threshold appropriate.
+  - benchmark: "WAL/encode/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "WAL/encode_batch/**"
+    measure: throughput
+    statistic: p50
+    lower_boundary: -0.05
+
+  # Snapshot scan involves memory traversal — slightly more variance.
+  - benchmark: "Snapshot/scan/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.08   # 8 % — higher tolerance due to OS memory pressure
+
+  # -- pubsub -----------------------------------------------------------------
+  # Pub/Sub publish involves channel sends; slightly higher noise than pure
+  # in-memory ops due to the Tokio mpsc queue.
+  - benchmark: "PUBLISH/fanout/**"
+    measure: throughput
+    statistic: p50
+    lower_boundary: -0.05
+
+  - benchmark: "PUBLISH/payload_size/**"
+    measure: throughput
+    statistic: p50
+    lower_boundary: -0.05
+
+  - benchmark: "SUBSCRIBE/UNSUBSCRIBE_roundtrip"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  # -- streams ----------------------------------------------------------------
+  - benchmark: "XADD/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "XADD/bulk/**"
+    measure: throughput
+    statistic: p50
+    lower_boundary: -0.05
+
+  - benchmark: "XREAD/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.05
+
+  - benchmark: "XREADGROUP/**"
+    measure: latency
+    statistic: p99
+    upper_boundary: 0.08   # 8 % — consumer-group bookkeeping has more variance

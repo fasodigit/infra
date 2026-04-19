@@ -1,0 +1,189 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Argo Rollouts — Canary strategy 1%→10%→50%→100% with Prometheus analysis
+---
+# AnalysisTemplate — checks p99 latency and error rate during canary steps
+apiVersion: argoproj.io/v1alpha1
+kind: AnalysisTemplate
+metadata:
+  name: armageddon-success-rate
+  namespace: gateway
+spec:
+  args:
+    - name: service-name
+  metrics:
+    - name: success-rate
+      interval: 1m
+      successCondition: result[0] >= 0.99
+      failureLimit: 3
+      provider:
+        prometheus:
+          address: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+          query: |
+            sum(rate(http_server_requests_seconds_count{
+              service="{{args.service-name}}",
+              status!~"5.."
+            }[2m]))
+            /
+            sum(rate(http_server_requests_seconds_count{
+              service="{{args.service-name}}"
+            }[2m]))
+    - name: p99-latency
+      interval: 1m
+      successCondition: result[0] <= 0.5
+      failureLimit: 3
+      provider:
+        prometheus:
+          address: http://kube-prometheus-stack-prometheus.observability.svc.cluster.local:9090
+          query: |
+            histogram_quantile(0.99, sum(rate(
+              http_server_requests_seconds_bucket{
+                service="{{args.service-name}}"
+              }[2m]
+            )) by (le))
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Rollout
+metadata:
+  name: armageddon
+  namespace: gateway
+  labels:
+    app: armageddon
+    app.kubernetes.io/name: armageddon
+    app.kubernetes.io/part-of: faso-digitalisation
+spec:
+  replicas: 3
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: armageddon
+  template:
+    metadata:
+      labels:
+        app: armageddon
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/actuator/prometheus"
+    spec:
+      serviceAccountName: armageddon
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: armageddon
+          image: registry.faso.gov.bf/faso/armageddon:1.0.0
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "256Mi"
+            limits:
+              cpu: "1000m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+  strategy:
+    canary:
+      # Stable service (100% traffic before rollout)
+      stableService: armageddon-stable
+      # Canary service (traffic shifted to new pods)
+      canaryService: armageddon-canary
+      trafficRouting:
+        nginx:
+          stableIngress: armageddon
+      steps:
+        - setWeight: 1
+        - pause:
+            duration: 2m
+        - analysis:
+            templates:
+              - templateName: armageddon-success-rate
+            args:
+              - name: service-name
+                value: armageddon-canary
+        - setWeight: 10
+        - pause:
+            duration: 5m
+        - analysis:
+            templates:
+              - templateName: armageddon-success-rate
+            args:
+              - name: service-name
+                value: armageddon-canary
+        - setWeight: 50
+        - pause:
+            duration: 10m
+        - analysis:
+            templates:
+              - templateName: armageddon-success-rate
+            args:
+              - name: service-name
+                value: armageddon-canary
+        - setWeight: 100
+      autoPromotionEnabled: false
+      scaleDownDelaySeconds: 60
+---
+# Stable Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: armageddon-stable
+  namespace: gateway
+  labels:
+    app: armageddon
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: armageddon
+---
+# Canary Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: armageddon-canary
+  namespace: gateway
+  labels:
+    app: armageddon
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    app: armageddon

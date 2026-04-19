@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# chart-testing configuration
+remote: origin
+target-branch: main
+chart-dirs:
+  - deploy/helm
+chart-repos:
+  - bitnami=https://charts.bitnami.com/bitnami
+  - ory=https://k8s.ory.sh/helm/charts
+  - prometheus-community=https://prometheus-community.github.io/helm-charts
+  - grafana=https://grafana.github.io/helm-charts
+helm-extra-args: --timeout 600s
+validate-maintainers: true
+check-version-increment: true
+excluded-charts:
+  - ory-stack
+  - observability

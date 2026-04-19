@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# Flux CD GitRepository — points to this repo
+apiVersion: source.toolkit.fluxcd.io/v1
+kind: GitRepository
+metadata:
+  name: faso-infra
+  namespace: flux-system
+spec:
+  interval: 1m
+  url: https://github.com/fasodigitalisation/infra
+  ref:
+    branch: main
+  secretRef:
+    name: flux-github-credentials
+  ignore: |
+    .git/
+    *.md
+    .github/

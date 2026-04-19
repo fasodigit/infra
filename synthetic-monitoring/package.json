@@ -1,0 +1,22 @@
+{
+  "name": "faso-synthetic-monitoring",
+  "version": "0.2.0",
+  "description": "FASO DIGITALISATION — Playwright synthetic monitoring for production flows (auth, poulets, etat-civil). Metrics pushed to Prometheus Pushgateway.",
+  "license": "AGPL-3.0-or-later",
+  "private": true,
+  "scripts": {
+    "test": "playwright test",
+    "test:auth": "playwright test playwright/flows/auth.spec.ts",
+    "test:poulets": "playwright test playwright/flows/poulets-order.spec.ts",
+    "test:etat-civil": "playwright test playwright/flows/etat-civil.spec.ts",
+    "test:headed": "playwright test --headed",
+    "test:dry-run": "playwright test --list",
+    "install:browsers": "playwright install chromium --with-deps",
+    "report": "playwright show-report"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.48.0",
+    "@types/node": "22.5.0",
+    "typescript": "5.5.4"
+  }
+}

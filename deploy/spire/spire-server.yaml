@@ -1,0 +1,208 @@
+# SPDX-License-Identifier: AGPL-3.0-only
+# SPIRE Server — StatefulSet + ConfigMap + RBAC
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: spire-server
+  namespace: spire
+automountServiceAccountToken: false
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: spire-server-cluster-role
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: spire-server-cluster-role-binding
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: spire-server-cluster-role
+subjects:
+  - kind: ServiceAccount
+    name: spire-server
+    namespace: spire
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-server-config
+  namespace: spire
+data:
+  server.conf: |
+    server {
+      bind_address = "0.0.0.0"
+      bind_port = "8081"
+      socket_path = "/run/spire/sockets/server.sock"
+      trust_domain = "faso.gov.bf"
+      data_dir = "/run/spire/data"
+      log_level = "INFO"
+      default_x509_svid_ttl = "1h"
+      ca_ttl = "24h"
+      ca_subject {
+        country = ["BF"]
+        organization = ["FASO DIGITALISATION"]
+        common_name = ""
+      }
+    }
+    plugins {
+      DataStore "sql" {
+        plugin_data {
+          database_type = "sqlite3"
+          connection_string = "/run/spire/data/datastore.sqlite3"
+        }
+      }
+      NodeAttestor "k8s_psat" {
+        plugin_data {
+          clusters = {
+            "faso-kube" = {
+              service_account_allow_list = ["spire:spire-agent"]
+              audience = ["spire-server"]
+            }
+          }
+        }
+      }
+      KeyManager "memory" {
+        plugin_data = {}
+      }
+      Notifier "k8sbundle" {
+        plugin_data {
+          namespace = "spire"
+          config_map = "spire-bundle"
+        }
+      }
+    }
+    health_checks {
+      listener_enabled = true
+      bind_address = "0.0.0.0"
+      bind_port = "8080"
+      live_path = "/live"
+      ready_path = "/ready"
+    }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: spire-server
+  namespace: spire
+  labels:
+    app: spire-server
+    app.kubernetes.io/name: spire-server
+    app.kubernetes.io/part-of: faso-digitalisation
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: spire-server
+  serviceName: spire-server
+  template:
+    metadata:
+      labels:
+        app: spire-server
+        app.kubernetes.io/name: spire-server
+    spec:
+      serviceAccountName: spire-server
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+        seccompProfile:
+          type: RuntimeDefault
+      shareProcessNamespace: false
+      containers:
+        - name: spire-server
+          image: ghcr.io/spiffe/spire-server:1.9.6
+          imagePullPolicy: IfNotPresent
+          args:
+            - "-config"
+            - "/run/spire/config/server.conf"
+          ports:
+            - name: grpc
+              containerPort: 8081
+              protocol: TCP
+            - name: health
+              containerPort: 8080
+              protocol: TCP
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            readOnlyRootFilesystem: true
+          livenessProbe:
+            httpGet:
+              path: /live
+              port: 8080
+            initialDelaySeconds: 15
+            periodSeconds: 20
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: 8080
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "500m"
+              memory: "512Mi"
+          volumeMounts:
+            - name: spire-config
+              mountPath: /run/spire/config
+              readOnly: true
+            - name: spire-data
+              mountPath: /run/spire/data
+            - name: spire-sockets
+              mountPath: /run/spire/sockets
+      volumes:
+        - name: spire-config
+          configMap:
+            name: spire-server-config
+        - name: spire-sockets
+          emptyDir: {}
+  volumeClaimTemplates:
+    - metadata:
+        name: spire-data
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: csi-ovh-block
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: spire-server
+  namespace: spire
+  labels:
+    app: spire-server
+spec:
+  type: ClusterIP
+  ports:
+    - name: grpc
+      port: 8081
+      targetPort: grpc
+      protocol: TCP
+  selector:
+    app: spire-server
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: spire-bundle
+  namespace: spire
