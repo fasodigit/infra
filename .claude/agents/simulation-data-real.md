@@ -41,7 +41,7 @@ The frontend is Angular 19 with Material Design. The BFF is Next.js. The backend
 2. **Start services if needed**:
    ```bash
    cd /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/docker/compose
-   docker compose up -d postgres kratos keto kaya
+   podman-compose -f podman-compose.yml up -d postgres kratos keto kaya
    ```
 
    For the frontend (Angular):

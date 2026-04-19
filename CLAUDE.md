@@ -25,6 +25,12 @@ licence open-source Red Hat stable) ; cohérence avec l'environnement cible
 Kubernetes où les conteneurs tournent sous runtime OCI (CRI-O / containerd),
 pas Docker Engine.
 
+**Commandes conteneur individuelles** : utiliser `podman exec`, `podman run`,
+`podman ps`, `podman logs`, `podman network` — **jamais** `docker exec`/`run`
+dans la documentation. Sur une machine contributeur sans `podman` CLI installé,
+`docker exec` fonctionne en compat (mêmes conteneurs, même API), mais tout
+nouveau doc/runbook doit être écrit avec `podman`.
+
 Fichiers compose canoniques (au 2026-04-17) :
 
 | Chemin | Rôle |
@@ -134,10 +140,53 @@ future : `openbao` (fork Vault) si stable.
 
 - MCP servers actifs : `context7` (doc libraries), `serena` (IDE-assistant)
 - Hook `PostToolUse` cargo check après édition Rust dans `INFRA/kaya/`
-- Skill `kaya-implementation` pour routage agents spécialisés
 - Agents persistants : `kaya-rust-implementer`, `distributed-systems-rust`,
   `database-internals-rust`, `prompt-engineer`
 
+### Skills custom FASO
+
+| Skill | Usage |
+|-------|-------|
+| `/ports` | Rapport port-policy + conflits (lit `INFRA/port-policy.yaml`) |
+| `/stack-up [rust\|java\|ui]` | Boot séquence complète (containers → Vault → Java → Rust → UI) |
+| `/stack-down [soft]` | Arrêt propre (kill safe sans `pkill -f`) |
+| `/restart-impacted [since 15m]` | Rebuild + restart services dont le code a été modifié |
+| `/status-faso` | Dashboard opérationnel (ports + HTTP + logs + Docker) |
+| `/cycle-fix` | Boucle start/stop/fix jusqu'à stack healthy |
+| `/kaya-implementation` | Routage agents KAYA spécialisés |
+
+## 8. Port policy (source de vérité)
+
+`INFRA/port-policy.yaml` — TOUS les ports du stack y sont déclarés.
+
+- Avant d'ajouter un service, **réserver le port ICI d'abord**, puis coder
+- Validator CI : `bash INFRA/scripts/validate-ports.sh`
+- Les plages sont **owned** par tier ; un service qui squatte un port
+  hors de sa plage = violation bloquante
+- Plages clés :
+  - `4800-4899` frontend / BFF
+  - `8800-8899` Java HTTP (8801 auth-ms, 8901 poulets-api, 8803 notifier)
+  - `8000-8099` Rust gateway (8080 ARMAGEDDON)
+  - `9000-9099` Java actuator (loopback)
+  - `9900-9999` admin API (loopback only)
+  - `6380-6399` KAYA family
+
+## 9. Discipline post-coding (automatique)
+
+Après toute modification de code source, AVANT de rendre la main :
+1. `/restart-impacted` pour relancer les services obsolètes
+2. `/ports` pour vérifier les conflits
+3. `/status-faso` pour valider la santé
+
+**Ne JAMAIS `pkill -f <pattern>`** (tue le shell Claude Code). Toujours :
+```bash
+PIDS=$(ps -eo pid,cmd | grep '<pattern>' | grep -v grep | awk '{print $1}')
+[[ -n "$PIDS" ]] && kill -TERM $PIDS
+```
+
+Si un `/cycle-fix` tourne dans une autre instance, **ne pas lancer**
+`/restart-impacted` concurremment — attendre fin du cycle-fix.
+
 ---
 
-*Dernière mise à jour : 2026-04-17*
+*Dernière mise à jour : 2026-04-18*

@@ -90,7 +90,7 @@ public byte[] decryptPii(String ciphertext) {
 ROLE_ID=$(vault read -field=role_id auth/approle/role/faso-auth-ms/role-id)
 SECRET_ID=$(vault write -f -field=secret_id auth/approle/role/faso-auth-ms/secret-id)
 
-# Inject into docker-compose.yml environment:
+# Inject into podman-compose.yml environment:
 #   VAULT_ROLE_ID: ${ROLE_ID}
 #   VAULT_SECRET_ID: ${SECRET_ID}
 ```

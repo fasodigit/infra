@@ -25,7 +25,7 @@
 cd INFRA/docker/compose
 echo "$(openssl rand -base64 32)" > secrets/growthbook_jwt_secret.txt
 echo "$(openssl rand -base64 32)" > secrets/growthbook_encryption_key.txt
-podman-compose -f docker-compose.yml -f ../../growthbook/docker-compose.growthbook.yml \
+podman-compose -f podman-compose.yml -f ../../growthbook/podman-compose.growthbook.yml \
   up -d growthbook-mongo growthbook
 
 open http://localhost:3100   # bootstrap admin account

@@ -42,7 +42,7 @@ GithubEventConsumer
 
 ```bash
 # Start dependencies
-podman-compose -f INFRA/docker/compose/docker-compose.yml up -d \
+podman-compose -f INFRA/docker/compose/podman-compose.yml up -d \
   postgres kaya redpanda mailhog
 
 # Run notifier-ms

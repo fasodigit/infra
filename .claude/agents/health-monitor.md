@@ -25,7 +25,7 @@ You check all services periodically and report ONLY pertinent information.
 | Kratos | `curl -s http://localhost:4433/health/alive` | {"status":"ok"} |
 | Keto | `curl -s http://localhost:4466/health/alive` | {"status":"ok"} |
 | Jaeger | `curl -s -o /dev/null -w "%{http_code}" http://localhost:16686/` | 200 |
-| PostgreSQL | `docker exec faso-postgres pg_isready` | accepting connections |
+| PostgreSQL | `podman exec faso-postgres pg_isready` | accepting connections |
 
 ## Checks to perform
 

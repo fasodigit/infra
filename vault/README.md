@@ -160,10 +160,10 @@ tokens bruts).
 
 ```bash
 # Snapshot Consul (Vault uses Consul backend)
-docker exec faso-consul consul snapshot save /consul/backups/$(date +%Y%m%d-%H%M).snap
+podman exec faso-consul consul snapshot save /consul/backups/$(date +%Y%m%d-%H%M).snap
 
 # Restore
-docker exec faso-consul consul snapshot restore /consul/backups/XXXX.snap
+podman exec faso-consul consul snapshot restore /consul/backups/XXXX.snap
 ```
 
 ## Sécurité production (checklist)
