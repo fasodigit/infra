@@ -44,6 +44,8 @@ docker/compose/secrets/*
 !docker/compose/secrets/.gitkeep
 !docker/compose/secrets/.gitignore
 !docker/compose/secrets/README.md
+# Top-level secrets/ holds Vault unseal keys / dev backups — NEVER commit.
+secrets/
 *.secret.*
 *.pem
 *.key
@@ -51,6 +53,13 @@ docker/compose/secrets/*
 **/spire/data/
 **/spire/**/*.crt
 **/spire/**/*.key
+
+# BFG Repo-Cleaner scan reports (history-rewrite artefacts; noisy, not source).
+..bfg-report/
+bfg-report/
+
+# TypeScript incremental build cache.
+*.tsbuildinfo
 
 # Generated
 *.txt.bak
