@@ -1,0 +1,21 @@
+[package]
+name = "armageddon-ratelimit"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+tokio = { workspace = true }
+async-trait = { workspace = true }
+serde = { workspace = true }
+tracing = { workspace = true }
+thiserror = { workspace = true }
+parking_lot = { workspace = true }
+dashmap = { workspace = true }
+prometheus = { workspace = true }
+armageddon-common = { workspace = true }
+armageddon-nexus = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }

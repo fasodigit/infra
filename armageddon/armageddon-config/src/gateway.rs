@@ -1,6 +1,6 @@
 //! Gateway (proxy) configuration: listeners, routes, clusters, TLS.
 
-use armageddon_common::types::{AuthMode, Cluster, CorsConfig, JwtConfig, KratosConfig, Route};
+use armageddon_common::types::{AdminApiConfig, AuthMode, Cluster, CorsConfig, JwtConfig, KratosConfig, RateLimitConfig, Route};
 use serde::{Deserialize, Serialize};
 
 /// Full gateway configuration replacing Envoy.
@@ -70,6 +70,11 @@ pub struct GatewayConfig {
     #[serde(default)]
     pub admin: Option<AdminConfig>,
 
+    /// Envoy-style admin API (stats, clusters, config_dump, health, logging).
+    /// Loopback-only by default on port 9099. Omit to disable.
+    #[serde(default)]
+    pub admin_api: Option<AdminApiConfig>,
+
     /// Enable WebSocket + raw TCP L4 proxying.
     #[serde(default)]
     pub websocket_enabled: bool,
@@ -77,6 +82,11 @@ pub struct GatewayConfig {
     /// Enable gRPC-Web transcoding filter.
     #[serde(default)]
     pub grpc_web_enabled: bool,
+
+    /// Rate limiting configuration.  Omit (or set `enabled: false`) to
+    /// disable rate limiting entirely — zero overhead on the hot path.
+    #[serde(default)]
+    pub rate_limit: Option<RateLimitConfig>,
 }
 
 fn default_auth_mode() -> AuthMode {
@@ -291,6 +301,14 @@ fn default_quic_max_streams() -> u64 {
 }
 
 /// SPIFFE/SPIRE mTLS mesh configuration.
+///
+/// This struct is the gateway-config facade for `SpiffeConfig` in
+/// `armageddon-common`.  It is intentionally kept thin so that the
+/// `armageddon-mesh` crate drives the actual lifecycle.
+///
+/// Relationship to `SpiffeConfig`:
+///   `MeshConfig` → converted to `SpiffeConfig` by the startup code in
+///   `armageddon` (the binary) before being passed to `Mesh::new`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MeshConfig {
@@ -303,8 +321,25 @@ pub struct MeshConfig {
     pub ca_bundle_pem: Option<String>,
 
     /// Expected peer SPIFFE ID.
+    ///
+    /// Kept for single-peer backwards compat.  When `authorized_ids` is
+    /// non-empty it takes precedence and this field is ignored.
     #[serde(default = "default_mesh_peer_id")]
     pub peer_id: String,
+
+    /// Exhaustive whitelist of SPIFFE IDs allowed to connect to this workload.
+    ///
+    /// Each entry must be a full URI, e.g.
+    /// `spiffe://faso.gov.bf/ns/default/sa/kaya`.  An empty list falls back
+    /// to accepting only `peer_id`.
+    #[serde(default)]
+    pub authorized_ids: Vec<String>,
+
+    /// SPIFFE trust domain (without `spiffe://` prefix).  Used to validate
+    /// that every incoming peer cert URI SAN belongs to our trust domain
+    /// before matching against `authorized_ids`.
+    #[serde(default = "default_mesh_trust_domain")]
+    pub trust_domain: String,
 }
 
 impl Default for MeshConfig {
@@ -313,6 +348,8 @@ impl Default for MeshConfig {
             socket_path: default_mesh_socket(),
             ca_bundle_pem: None,
             peer_id: default_mesh_peer_id(),
+            authorized_ids: Vec::new(),
+            trust_domain: default_mesh_trust_domain(),
         }
     }
 }
@@ -323,6 +360,10 @@ fn default_mesh_socket() -> String {
 
 fn default_mesh_peer_id() -> String {
     "spiffe://faso.gov.bf/ns/default/sa/armageddon".to_string()
+}
+
+fn default_mesh_trust_domain() -> String {
+    "faso.gov.bf".to_string()
 }
 
 /// Active xDS ADS consumer configuration.

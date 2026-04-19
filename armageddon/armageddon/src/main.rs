@@ -30,14 +30,19 @@
 //! Usage:
 //!   armageddon --config config/armageddon.yaml
 
+mod admin_providers;
 mod pipeline;
+#[cfg(feature = "numa")]
+mod numa;
 
 use anyhow::Context;
 use armageddon_admin::{AdminConfig as AdminServerConfig, AdminServer, AdminState};
+use armageddon_admin_api::AdminApi;
 use armageddon_cache::{CachePolicy, InMemoryKv, ResponseCache};
 use armageddon_common::context::RequestContext;
 use armageddon_common::decision::Action;
 use armageddon_common::types::{AuthMode, ConnectionInfo, HttpRequest, HttpResponse, HttpVersion, Protocol};
+use armageddon_aegis::graphql_limits::{extract_gql_query, GqlLimitError, GraphQLLimiter};
 use armageddon_forge::cors::CorsHandler;
 use armageddon_forge::jwt::JwtValidator;
 use armageddon_forge::kafka_producer::RedpandaProducer;
@@ -49,7 +54,7 @@ use armageddon_lb::{
 };
 use armageddon_mesh::Mesh;
 use armageddon_quic::{Http3Server, QuicListenerConfig, RequestHandler as QuicRequestHandler};
-use armageddon_retry::{RetryBudget, RetryPolicy};
+use armageddon_retry::{execute_with_retry, RetryBudget, RetryPolicy, RetryableRequest};
 use armageddon_xds::{AdsClient, XdsCallback};
 use armageddon_xds::proto::{
     cluster::Cluster as XdsCluster,
@@ -102,8 +107,8 @@ impl Args {
 
 /// Shared state passed to each request handler.
 struct GatewayState {
-    pipeline: pipeline::Pentagon,
-    forge: armageddon_forge::ForgeServer,
+    pipeline: Arc<pipeline::Pentagon>,
+    forge: Arc<armageddon_forge::ForgeServer>,
     veil: armageddon_veil::Veil,
     auth_mode: AuthMode,
     /// GitHub webhook handler (bypasses Pentagon pipeline).
@@ -120,6 +125,11 @@ struct GatewayState {
     cache: Option<Arc<ResponseCache>>,
     /// mTLS mesh (present when SPIRE is configured and reachable).
     mesh: Option<Arc<Mesh>>,
+    /// GraphQL depth/complexity/introspection limiter.
+    /// `None` when disabled in config.
+    gql_limiter: Option<Arc<GraphQLLimiter>>,
+    /// Counter for requests denied before reaching upstream (labeled by reason).
+    requests_denied: Arc<prometheus::IntCounterVec>,
 }
 
 // ---------------------------------------------------------------------------
@@ -178,11 +188,40 @@ impl XdsCallback for LoggingXdsCallback {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime bootstrap
+// ---------------------------------------------------------------------------
+
+/// Entry point.
+///
+/// When the `numa` feature is enabled **and** the machine is multi-socket, a
+/// NUMA-pinned Tokio runtime is built (one worker per NUMA node, each
+/// thread bound to its node's CPU set via `sched_setaffinity`).
+///
+/// On single-NUMA machines, non-Linux platforms, or when the feature is off,
+/// the standard `multi_thread` runtime is used transparently.
+fn main() -> anyhow::Result<()> {
+    #[cfg(feature = "numa")]
+    let runtime = {
+        let nodes: Vec<usize> = numa::detect_topology()
+            .map(|t| t.nodes.iter().map(|n| n.id).collect())
+            .unwrap_or_default();
+        numa::spawn_numa_pinned_runtime(nodes)
+    };
+
+    #[cfg(not(feature = "numa"))]
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("Tokio runtime must build");
+
+    runtime.block_on(async_main())
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> anyhow::Result<()> {
+async fn async_main() -> anyhow::Result<()> {
     // -- 1. Parse CLI args
     let args = Args::parse();
 
@@ -216,7 +255,7 @@ async fn main() -> anyhow::Result<()> {
         .map(|e| (e.platform.clone(), e.config.clone()))
         .collect();
 
-    let forge = armageddon_forge::ForgeServer::new(
+    let forge = Arc::new(armageddon_forge::ForgeServer::new_with_rate_limit(
         config.gateway.listeners.clone(),
         config.gateway.routes.clone(),
         config.gateway.clusters.clone(),
@@ -224,14 +263,42 @@ async fn main() -> anyhow::Result<()> {
         config.gateway.kratos.clone(),
         cors_configs,
         config.gateway.ext_authz.clone(),
-    );
+        config.gateway.rate_limit.as_ref(),
+        &registry,
+    ));
+
+    // Counter for requests denied by the rate limiter.
+    // Label: reason="rate_limit"
+    let rl_denied_counter = prometheus::register_int_counter_vec_with_registry!(
+        prometheus::opts!(
+            "armageddon_forge_requests_denied_total",
+            "Total requests denied before reaching upstream"
+        ),
+        &["reason"],
+        registry
+    )
+    .unwrap_or_else(|_| {
+        // If already registered (e.g. in tests), use the default registry fallback.
+        prometheus::IntCounterVec::new(
+            prometheus::opts!(
+                "armageddon_forge_requests_denied_total_fallback",
+                "Total requests denied (fallback)"
+            ),
+            &["reason"],
+        )
+        .expect("counter must build")
+    });
+    let rl_denied_counter = Arc::new(rl_denied_counter);
 
     // -- 6. Build VEIL
     let veil = armageddon_veil::Veil::new(config.security.veil.clone());
 
     // -- 7. Initialize Pentagon pipeline
-    let mut pentagon = pipeline::Pentagon::new(&config)?;
-    pentagon.init().await?;
+    let pentagon = {
+        let mut p = pipeline::Pentagon::new(&config)?;
+        p.init().await?;
+        Arc::new(p)
+    };
     tracing::info!("Pentagon pipeline initialized — all 5 engines ready");
 
     // -- 8. Start ForgeServer health checks
@@ -329,10 +396,34 @@ async fn main() -> anyhow::Result<()> {
     // -- 15. Auth mode
     let auth_mode = config.gateway.auth_mode.clone();
 
+    // -- 15b. GraphQL limiter (built from security config)
+    let gql_limiter: Option<Arc<GraphQLLimiter>> = {
+        let cfg = &config.security.graphql_limits;
+        if cfg.enabled {
+            let limiter = GraphQLLimiter {
+                max_depth: cfg.max_depth,
+                max_complexity: cfg.max_complexity,
+                max_aliases: cfg.max_aliases,
+                max_directives: cfg.max_directives,
+                introspection_enabled: cfg.introspection_enabled,
+            };
+            tracing::info!(
+                max_depth = cfg.max_depth,
+                max_complexity = cfg.max_complexity,
+                introspection = cfg.introspection_enabled,
+                "GraphQL limiter enabled",
+            );
+            Some(Arc::new(limiter))
+        } else {
+            tracing::info!("GraphQL limiter disabled in config");
+            None
+        }
+    };
+
     // -- 16. Shared gateway state
     let state = Arc::new(GatewayState {
-        pipeline: pentagon,
-        forge,
+        pipeline: Arc::clone(&pentagon),
+        forge: Arc::clone(&forge),
         veil,
         auth_mode,
         github_webhook,
@@ -342,6 +433,8 @@ async fn main() -> anyhow::Result<()> {
         retry_budget,
         cache,
         mesh: mesh.clone(),
+        gql_limiter,
+        requests_denied: rl_denied_counter,
     });
 
     // -- 17. Shutdown broadcast channel
@@ -391,6 +484,53 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
             tracing::info!(port = admin_cfg.port, "admin API task spawned");
+        }
+    }
+
+    // -- 20b. Spawn Envoy-style Admin API (loopback :9099 by default).
+    if let Some(admin_api_cfg) = config.gateway.admin_api.clone() {
+        if admin_api_cfg.enabled {
+            let stats = Arc::new(admin_providers::ForgePrometheusStatsProvider::from_registry(
+                Arc::new(registry.clone()),
+            ));
+            let clusters_provider = Arc::new(admin_providers::RuntimeClusterProvider::new(
+                Arc::clone(&forge),
+                Arc::clone(&config),
+            ));
+            let config_dumper = Arc::new(admin_providers::GatewayConfigDumper::new(
+                Arc::clone(&config),
+            ));
+            let runtime_provider = Arc::new(
+                admin_providers::StaticRuntimeProvider::from_config(config.as_ref()),
+            );
+            let health_provider = Arc::new(admin_providers::PentagonHealthProvider::new(
+                Arc::clone(&pentagon),
+            ));
+
+            match AdminApi::build(
+                admin_api_cfg,
+                stats,
+                clusters_provider,
+                config_dumper,
+                runtime_provider,
+                health_provider,
+            ) {
+                Ok(api) => {
+                    let bind = api.bind_addr();
+                    tracing::info!("Admin API listening on {bind}");
+                    let rx = shutdown_tx.subscribe();
+                    tokio::spawn(async move {
+                        if let Err(e) = api.run(rx).await {
+                            tracing::error!(err = %e, "admin-api exited with error");
+                        }
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!(err = %e, "admin-api disabled (build failed)");
+                }
+            }
+        } else {
+            tracing::info!("admin-api disabled in config");
         }
     }
 
@@ -599,6 +739,10 @@ async fn handle_request(
     build_hyper_response(resp)
 }
 
+/// Static body returned by the internal `/armageddon/healthz` endpoint.
+/// Kept as a `&'static str` so the hot path is zero-allocation.
+const ARMAGEDDON_HEALTHZ_BODY: &str = r#"{"status":"ok","version":"1.1.0"}"#;
+
 /// Core request handler shared by HTTP/1 (hyper) and HTTP/3 (QUIC) paths.
 async fn handle_http_request(
     http_req: HttpRequest,
@@ -608,6 +752,20 @@ async fn handle_http_request(
     let method = http_req.method.clone();
     let path = http_req.path.clone();
     let headers = http_req.headers.clone();
+
+    // --- Internal /armageddon/healthz (bypass WAF, Pentagon, proxy) ---
+    // Matched BEFORE CORS/Aho-Corasick WAF/load balancer for p95 < 50 ms
+    // on OVH Scale A7 2026. Zero-allocation: returns a static string.
+    if path == "/armageddon/healthz" {
+        let mut h = HashMap::new();
+        h.insert("content-type".to_string(), "application/json".to_string());
+        h.insert("cache-control".to_string(), "no-store".to_string());
+        return HttpResponse {
+            status: 200,
+            headers: h,
+            body: Some(ARMAGEDDON_HEALTHZ_BODY.as_bytes().to_vec()),
+        };
+    }
 
     // --- CORS preflight ---
     if CorsHandler::is_preflight(&method, &headers) {
@@ -664,6 +822,42 @@ async fn handle_http_request(
         Protocol::Http
     };
 
+    // --- GraphQL depth/complexity limiter ---
+    // Applied before auth and the Pentagon pipeline so malformed or oversized
+    // GraphQL documents are rejected cheaply at the edge.
+    if protocol == Protocol::GraphQL {
+        if let Some(limiter) = &state.gql_limiter {
+            let content_type = headers.get("content-type").map(|s| s.as_str());
+            let body_slice = http_req.body.as_deref().unwrap_or(&[]);
+            if let Some(query_str) = extract_gql_query(content_type, body_slice) {
+                if let Err(e) = limiter.validate_query(&query_str) {
+                    let (status, code, msg) = match &e {
+                        GqlLimitError::IntrospectionDisabled => (
+                            403u16,
+                            "gql_introspection_disabled",
+                            e.to_string(),
+                        ),
+                        GqlLimitError::DepthExceeded { .. }
+                        | GqlLimitError::ComplexityExceeded { .. }
+                        | GqlLimitError::AliasesExceeded { .. }
+                        | GqlLimitError::DirectivesExceeded { .. } => (
+                            400,
+                            "gql_limit_exceeded",
+                            e.to_string(),
+                        ),
+                        GqlLimitError::Parse(_) => (400, "gql_parse_error", e.to_string()),
+                    };
+                    tracing::warn!(
+                        path = %path,
+                        error = %e,
+                        "GraphQL request rejected by limiter",
+                    );
+                    return error_response(status, code, &msg);
+                }
+            }
+        }
+    }
+
     let conn_info = ConnectionInfo {
         client_ip: peer_addr.ip(),
         client_port: peer_addr.port(),
@@ -671,6 +865,7 @@ async fn handle_http_request(
         server_port: 0,
         tls: None,
         ja3_fingerprint: None,
+        ja4_fingerprint: None,
     };
 
     let mut ctx = RequestContext::new(http_req.clone(), conn_info, protocol);
@@ -740,6 +935,46 @@ async fn handle_http_request(
         Action::Forward => {}
     }
 
+    // --- Rate limit check (before upstream) ---
+    // Point d'intégration: armageddon/src/main.rs, juste avant select_endpoint.
+    // Le filter est None quand rate_limit absent ou disabled dans la config.
+    if let Some(rl_filter) = state.forge.rate_limit_filter() {
+        use armageddon_ratelimit::RateLimitDecision;
+        match rl_filter.check(&http_req).await {
+            RateLimitDecision::Allow => {
+                // Continue normally.
+            }
+            RateLimitDecision::Deny { retry_after_secs } => {
+                state.requests_denied.with_label_values(&["rate_limit"]).inc();
+                tracing::warn!(
+                    request_id = %ctx.request_id,
+                    path = %path,
+                    retry_after = retry_after_secs,
+                    "rate limit exceeded — returning 429",
+                );
+                let body = serde_json::json!({
+                    "error": "rate_limit_exceeded",
+                    "retry_after": retry_after_secs,
+                })
+                .to_string()
+                .into_bytes();
+                let mut h = std::collections::HashMap::new();
+                h.insert("content-type".to_string(), "application/json".to_string());
+                h.insert("retry-after".to_string(), retry_after_secs.to_string());
+                return HttpResponse { status: 429, headers: h, body: Some(body) };
+            }
+            RateLimitDecision::Shadow { retry_after_secs } => {
+                // Shadow mode: over-limit but forward anyway (dry-run).
+                tracing::warn!(
+                    request_id = %ctx.request_id,
+                    path = %path,
+                    retry_after = retry_after_secs,
+                    "rate limit shadow: would deny, forwarding anyway",
+                );
+            }
+        }
+    }
+
     // --- Proxy to upstream via LB ---
     let endpoint = match select_endpoint(&state, &cluster_name) {
         Some(ep) => ep,
@@ -762,20 +997,51 @@ async fn handle_http_request(
     let mut header_pairs: Vec<(String, String)> = headers.into_iter().collect();
     armageddon_veil::Veil::inject_identity_headers(&mut header_pairs, &ctx);
 
+    // Mesh active → flag upstream for mTLS-aware backends.
+    if state.mesh.is_some() {
+        header_pairs.push(("x-faso-mesh".to_string(), "active".to_string()));
+    }
+
     let body_option = http_req
         .body
         .as_ref()
         .map(|b| Bytes::copy_from_slice(b));
 
-    let proxy_result = armageddon_forge::proxy::forward_request(
-        &endpoint,
-        &method,
-        &path,
-        &header_pairs,
-        body_option,
+    // Wrap upstream call in the retry loop (budget + backoff + jitter).
+    let fwd_req = ForwardReq {
+        endpoint: endpoint.clone(),
+        method: method.clone(),
+        path: path.clone(),
+        headers: header_pairs.clone(),
+        body: body_option.clone(),
         timeout_ms,
+    };
+    let proxy_result = execute_with_retry(
+        &state.retry_policy,
+        &state.retry_budget,
+        fwd_req,
+        |r| async move {
+            armageddon_forge::proxy::forward_request(
+                &r.endpoint,
+                &r.method,
+                &r.path,
+                &r.headers,
+                r.body.clone(),
+                r.timeout_ms,
+            )
+            .await
+        },
     )
-    .await;
+    .await
+    .map_err(|retry_err| {
+        tracing::warn!(
+            request_id = %ctx.request_id,
+            cluster = %cluster_name,
+            error = %retry_err,
+            "retry loop terminated",
+        );
+        armageddon_common::error::ArmageddonError::UpstreamConnection(retry_err.to_string())
+    });
 
     // Record circuit breaker result
     if let Some(breaker) = state.forge.circuit_breakers().get(&cluster_name) {
@@ -829,6 +1095,53 @@ async fn handle_http_request(
             );
             error_response(502, "upstream_error", "Bad gateway")
         }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Retryable upstream request (wraps forward_request args for execute_with_retry)
+// ---------------------------------------------------------------------------
+
+#[derive(Clone)]
+struct ForwardReq {
+    endpoint: armageddon_common::types::Endpoint,
+    method: String,
+    path: String,
+    headers: Vec<(String, String)>,
+    body: Option<Bytes>,
+    timeout_ms: u64,
+}
+
+impl RetryableRequest for ForwardReq {
+    type Response = armageddon_forge::proxy::ProxyResponse;
+    type Error = armageddon_common::error::ArmageddonError;
+
+    fn clone_for_retry(&self) -> Self {
+        self.clone()
+    }
+
+    fn is_retryable_error(e: &Self::Error) -> bool {
+        use armageddon_common::error::ArmageddonError;
+        matches!(
+            e,
+            ArmageddonError::UpstreamTimeout(_) | ArmageddonError::UpstreamConnection(_)
+        )
+    }
+
+    fn retryable_status(resp: &Self::Response) -> Option<u16> {
+        // 5xx and 429 are treated as upstream-signalled retry-worthy.
+        if resp.status == 429 || (500..=599).contains(&resp.status) {
+            Some(resp.status)
+        } else {
+            None
+        }
+    }
+
+    fn retry_after(resp: &Self::Response) -> Option<Duration> {
+        resp.headers
+            .iter()
+            .find(|(k, _)| k.eq_ignore_ascii_case("retry-after"))
+            .and_then(|(_, v)| RetryPolicy::parse_retry_after(v))
     }
 }
 

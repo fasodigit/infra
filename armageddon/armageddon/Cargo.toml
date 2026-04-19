@@ -7,10 +7,21 @@ edition.workspace = true
 name = "armageddon"
 path = "src/main.rs"
 
+[features]
+# NUMA-aware worker pinning (Linux only, requires hwloc system library).
+# Not enabled by default — opt in with --features numa.
+numa = ["dep:hwloc", "dep:libc"]
+
 [dependencies]
+# Optional NUMA deps (activated only by the `numa` feature)
+hwloc     = { workspace = true, optional = true }
+libc      = { workspace = true, optional = true }
+thiserror = { workspace = true }
+
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
 armageddon-forge = { workspace = true }
+armageddon-ratelimit = { workspace = true }
 armageddon-sentinel = { workspace = true }
 armageddon-arbiter = { workspace = true }
 armageddon-oracle = { workspace = true }
@@ -26,6 +37,7 @@ armageddon-lb = { workspace = true }
 armageddon-retry = { workspace = true }
 armageddon-cache = { workspace = true }
 armageddon-admin = { workspace = true }
+armageddon-admin-api = { workspace = true }
 tokio = { workspace = true }
 hyper = { workspace = true }
 hyper-util = { workspace = true }
@@ -37,6 +49,7 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
 redis = { workspace = true }
 prometheus = { workspace = true }
 async-trait = { workspace = true }

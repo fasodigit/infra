@@ -9,6 +9,7 @@
 
 use std::collections::HashMap;
 use std::time::Duration;
+use rand::Rng;
 
 // -- constants --
 
@@ -26,6 +27,24 @@ pub const DEFAULT_BACKOFF_BASE_MS: u64 = 25;
 
 /// Default backoff cap: 2 s.
 pub const DEFAULT_BACKOFF_CAP_MS: u64 = 2_000;
+
+// -- JitterMode --
+
+/// Jitter strategy applied to exponential back-off, matching Envoy semantics.
+///
+/// - `None`  : no randomisation; pure exponential back-off.
+/// - `Full`  : delay = rand(0, cap)  — spreads retries maximally.
+/// - `Equal` : delay = cap/2 + rand(0, cap/2)  — keeps a minimum floor.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum JitterMode {
+    /// No jitter (deterministic).
+    #[default]
+    None,
+    /// Full jitter: uniform in [0, computed_delay].
+    Full,
+    /// Equal jitter: half deterministic + half random → [cap/2, cap].
+    Equal,
+}
 
 // -- RetryOn --
 
@@ -74,6 +93,12 @@ pub struct RetryPolicy {
     pub backoff_base: Duration,
     /// Upper cap for exponential back-off.
     pub backoff_cap: Duration,
+    /// Jitter mode applied to each computed back-off interval.
+    pub jitter: JitterMode,
+    /// When `true`, fire a hedged request after `per_try_timeout` elapses on
+    /// the first attempt.  The hedge is directed to a *different* host; the
+    /// caller must supply host selection via the `hedged` helper in `hedged.rs`.
+    pub hedge_on_per_try_timeout: bool,
 }
 
 impl Default for RetryPolicy {
@@ -85,6 +110,8 @@ impl Default for RetryPolicy {
             retry_on: RetryOn::default(),
             backoff_base: Duration::from_millis(DEFAULT_BACKOFF_BASE_MS),
             backoff_cap: Duration::from_millis(DEFAULT_BACKOFF_CAP_MS),
+            jitter: JitterMode::Full,
+            hedge_on_per_try_timeout: false,
         }
     }
 }
@@ -116,16 +143,41 @@ impl RetryPolicy {
 
     /// Compute exponential back-off duration for the given retry number (1-based).
     ///
-    /// `delay = min(backoff_base * 2^(attempt-1), backoff_cap)`
+    /// Base delay: `min(backoff_base * 2^(attempt-1), backoff_cap)`
+    ///
+    /// Jitter is then applied according to `self.jitter`:
+    /// - `JitterMode::None`  → pure exponential, no randomisation.
+    /// - `JitterMode::Full`  → `rand(0, base_delay)`.
+    /// - `JitterMode::Equal` → `base_delay/2 + rand(0, base_delay/2)`.
     pub fn backoff_for(&self, attempt: u32) -> Duration {
         let shift = attempt.saturating_sub(1).min(63) as u32;
         let factor = 1u64.checked_shl(shift).unwrap_or(u64::MAX);
-        let ms = self
+        let base_ms = self
             .backoff_base
             .as_millis()
             .saturating_mul(factor as u128)
             .min(self.backoff_cap.as_millis()) as u64;
-        Duration::from_millis(ms)
+
+        let jittered_ms = match self.jitter {
+            JitterMode::None => base_ms,
+            JitterMode::Full => {
+                if base_ms == 0 {
+                    0
+                } else {
+                    rand::thread_rng().gen_range(0..=base_ms)
+                }
+            }
+            JitterMode::Equal => {
+                let half = base_ms / 2;
+                if half == 0 {
+                    base_ms
+                } else {
+                    half + rand::thread_rng().gen_range(0..=half)
+                }
+            }
+        };
+
+        Duration::from_millis(jittered_ms)
     }
 
     /// Parse a `Retry-After` header value (seconds integer) and clamp it to `backoff_cap`.
@@ -167,9 +219,11 @@ mod tests {
 
     #[test]
     fn backoff_doubles_each_attempt() {
+        // Use JitterMode::None for deterministic assertions.
         let p = RetryPolicy {
             backoff_base: Duration::from_millis(100),
             backoff_cap: Duration::from_secs(10),
+            jitter: JitterMode::None,
             ..Default::default()
         };
         assert_eq!(p.backoff_for(1), Duration::from_millis(100));
@@ -182,8 +236,48 @@ mod tests {
         let p = RetryPolicy {
             backoff_base: Duration::from_millis(500),
             backoff_cap: Duration::from_millis(1000),
+            jitter: JitterMode::None,
             ..Default::default()
         };
         assert_eq!(p.backoff_for(3), Duration::from_millis(1000));
+    }
+
+    #[test]
+    fn jitter_full_stays_in_range() {
+        let p = RetryPolicy {
+            backoff_base: Duration::from_millis(100),
+            backoff_cap: Duration::from_millis(1_000),
+            jitter: JitterMode::Full,
+            ..Default::default()
+        };
+        for attempt in 1..=5 {
+            let d = p.backoff_for(attempt);
+            assert!(d <= Duration::from_millis(1_000),
+                "attempt {attempt}: full jitter {d:?} exceeded cap");
+        }
+    }
+
+    #[test]
+    fn jitter_equal_stays_in_range() {
+        let p = RetryPolicy {
+            backoff_base: Duration::from_millis(200),
+            backoff_cap: Duration::from_millis(1_000),
+            jitter: JitterMode::Equal,
+            ..Default::default()
+        };
+        // For attempt 1: base = 200ms, equal jitter → [100, 200]
+        for _ in 0..20 {
+            let d = p.backoff_for(1);
+            assert!(d >= Duration::from_millis(100),
+                "equal jitter below floor: {d:?}");
+            assert!(d <= Duration::from_millis(200),
+                "equal jitter above base: {d:?}");
+        }
+    }
+
+    #[test]
+    fn hedge_flag_default_off() {
+        let p = RetryPolicy::default();
+        assert!(!p.hedge_on_per_try_timeout);
     }
 }

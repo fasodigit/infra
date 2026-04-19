@@ -115,6 +115,20 @@ impl Pentagon {
         Ok(verdict)
     }
 
+    /// Return readiness per engine as `(name, is_ready)` tuples.
+    ///
+    /// Used by the admin-api `/health` endpoint to aggregate engine state.
+    pub fn engine_readiness(&self) -> Vec<(&'static str, bool)> {
+        vec![
+            ("sentinel", self.sentinel.is_ready()),
+            ("arbiter", self.arbiter.is_ready()),
+            ("oracle", self.oracle.is_ready()),
+            ("aegis", self.aegis.is_ready()),
+            ("ai", self.ai.is_ready()),
+            ("wasm", self.wasm.is_ready()),
+        ]
+    }
+
     /// Shut down all engines.
     pub async fn shutdown(&self) -> Result<()> {
         let _ = tokio::join!(

@@ -17,13 +17,15 @@ pub mod budget;
 pub mod error;
 pub mod hedged;
 pub mod layer;
+pub mod metrics;
 pub mod policy;
 
 pub use budget::{RequestGuard, RetryBudget};
 pub use error::RetryError;
 pub use hedged::hedged;
 pub use layer::{RetryLayer, RetryService};
-pub use policy::{RetryOn, RetryPolicy};
+pub use metrics::RetryMetrics;
+pub use policy::{JitterMode, RetryOn, RetryPolicy};
 
 use std::future::Future;
 use std::time::Duration;
@@ -401,6 +403,7 @@ mod tests {
             backoff_base: Duration::from_millis(1),
             backoff_cap: Duration::from_millis(5),
             retry_on: RetryOn { timeout: true, ..Default::default() },
+            ..Default::default()
         };
 
         let result = execute_with_retry(
@@ -436,6 +439,7 @@ mod tests {
             backoff_base: Duration::from_millis(1),
             backoff_cap: Duration::from_millis(5),
             retry_on: RetryOn { timeout: true, ..Default::default() },
+            ..Default::default()
         };
 
         let result = execute_with_retry(

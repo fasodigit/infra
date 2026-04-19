@@ -6,7 +6,16 @@ edition.workspace = true
 [dependencies]
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
+armageddon-mesh = { workspace = true }
+armageddon-oracle = { workspace = true }
+armageddon-ratelimit = { workspace = true }
+tokio-rustls = "0.26"
 tokio = { workspace = true }
+
+# OpenTelemetry (needed by otel_middleware)
+opentelemetry = { workspace = true }
+opentelemetry_sdk = { workspace = true }
+
 hyper = { workspace = true }
 hyper-util = { workspace = true }
 http-body-util = { workspace = true }
@@ -23,6 +32,7 @@ anyhow = { workspace = true }
 async-trait = { workspace = true }
 dashmap = { workspace = true }
 arc-swap = { workspace = true }
+blake3 = { workspace = true }
 jsonwebtoken = { workspace = true }
 ring = { workspace = true }
 serde = { workspace = true }
@@ -37,13 +47,41 @@ subtle = { workspace = true }
 hex = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
+parking_lot = { workspace = true }
+brotli = { workspace = true }
+zstd = { workspace = true }
+flate2 = { workspace = true }
+tower = { workspace = true }
 
 # Optional rdkafka backend; enable with feature "rdkafka-backend"
 rdkafka = { workspace = true, optional = true }
 
+# Optional io_uring backend; Linux only; enable with feature "io_uring"
+tokio-uring = { version = "0.5", optional = true }
+
+# Optional Pingora-based proxy backend; enable with feature "pingora"
+pingora = { workspace = true, optional = true }
+pingora-core = { workspace = true, optional = true }
+pingora-proxy = { workspace = true, optional = true }
+
+# Zero-copy splice: Linux only, always linked when targeting linux
+[target.'cfg(target_os = "linux")'.dependencies]
+nix = { workspace = true }
+libc = { workspace = true }
+
 [features]
+default = []
 rdkafka-backend = ["dep:rdkafka"]
+io_uring = ["dep:tokio-uring"]
+pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy"]
 
 [dev-dependencies]
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
+
+[dev-dependencies.criterion]
+workspace = true
+
+[[bench]]
+name = "proxy_compare"
+harness = false

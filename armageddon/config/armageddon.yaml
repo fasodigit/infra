@@ -311,6 +311,15 @@ gateway:
       topic: github.events.v1
       rate_limit_per_ip_per_min: 1000
 
+  # Envoy-style admin API (stats/clusters/config_dump/logging).
+  # Loopback-only by default. Non-loopback binds REQUIRE the env var
+  # referenced by token_env_var to be set to a non-empty bearer token.
+  admin_api:
+    enabled: true
+    bind_addr: "127.0.0.1:9903"
+    token_env_var: "ARMAGEDDON_ADMIN_TOKEN"
+    cors_allowed_origins: []
+
 security:
   sentinel:
     enabled: true

@@ -18,8 +18,15 @@ members = [
     "armageddon-mesh",
     "armageddon-cache",
     "armageddon-admin",
+    "armageddon-admin-api",
     "armageddon-lb",
     "armageddon-retry",
+    "armageddon-bench",
+    "armageddon-ebpf",
+    "armageddon-ratelimit",
+]
+exclude = [
+    "armageddon-ebpf-programs",
 ]
 
 [workspace.package]
@@ -46,8 +53,11 @@ armageddon-xds = { path = "armageddon-xds" }
 armageddon-mesh = { path = "armageddon-mesh" }
 armageddon-cache = { path = "armageddon-cache" }
 armageddon-admin = { path = "armageddon-admin" }
+armageddon-admin-api = { path = "armageddon-admin-api" }
 armageddon-lb = { path = "armageddon-lb" }
 armageddon-retry = { path = "armageddon-retry" }
+armageddon-ratelimit = { path = "armageddon-ratelimit" }
+armageddon-ebpf-programs = { path = "armageddon-ebpf-programs" }
 
 # Vague 1 external deps
 quinn = "0.11"
@@ -152,8 +162,52 @@ async-trait = "0.1"
 # Arc swap for hot-reload
 arc-swap = "1"
 
+# Lazy static globals
+lazy_static = "1"
+
+# Test helpers
+tempfile = "3"
+wat = "1"
+
 # Dashmap for concurrent maps
 dashmap = "6"
+
+# C bindings (zero-copy splice, NUMA pinning)
+libc = "0.2"
+
+# NUMA topology detection via hwloc (used by armageddon `numa` feature)
+hwloc = "0.5"
+
+# GraphQL query parser (for depth/complexity limiting in AEGIS)
+async-graphql-parser = "7.0"
+
+# io_uring async runtime (Linux only; enable with feature "io_uring" in consumer crates)
+tokio-uring = "0.5"
+
+# OpenTelemetry
+opentelemetry = { version = "0.27", features = ["trace"] }
+opentelemetry_sdk = { version = "0.27", features = ["trace", "rt-tokio"] }
+opentelemetry-otlp = { version = "0.27", features = ["grpc-tonic", "trace"] }
+opentelemetry-http = { version = "0.27" }
+opentelemetry-stdout = { version = "0.27" }
+tracing-opentelemetry = "0.28"
+
+# Compression codecs (response compression middleware)
+brotli = "8"
+zstd = "0.13"
+flate2 = "1"
+
+# POSIX / Linux syscall bindings (zero-copy splice)
+nix = { version = "0.29", features = ["zerocopy"] }
+
+# Criterion benchmarking
+criterion = { version = "0.5", features = ["html_reports"] }
+
+# Pingora — optional alternative proxy backend (armageddon-forge feature "pingora")
+# Enable with: cargo build --release --features pingora
+pingora = "0.3"
+pingora-core = "0.3"
+pingora-proxy = "0.3"
 
 [profile.release]
 lto = true

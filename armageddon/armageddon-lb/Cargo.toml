@@ -13,6 +13,7 @@ tracing = { workspace = true }
 blake3 = { workspace = true }
 rand = { workspace = true }
 armageddon-common = { workspace = true }
+prometheus = { workspace = true }
 
 [dev-dependencies]
-tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }

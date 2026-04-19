@@ -13,6 +13,8 @@ tower = { workspace = true }
 tower-http = { workspace = true }
 parking_lot = { workspace = true }
 armageddon-common = { workspace = true }
+prometheus = { workspace = true }
+rand = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["macros", "rt-multi-thread", "test-util"] }
