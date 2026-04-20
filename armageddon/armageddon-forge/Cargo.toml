@@ -4,6 +4,7 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+armageddon-aegis = { workspace = true }
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
 armageddon-mesh = { workspace = true }
@@ -86,4 +87,12 @@ workspace = true
 
 [[bench]]
 name = "proxy_compare"
+harness = false
+
+# Micro-benchmark for the ForgeFilter chain walker (synchronous part only).
+# Requires the `pingora` feature at invocation time:
+#   cargo bench -p armageddon-forge --bench pingora_filter_chain_micro --features pingora
+# See: armageddon-forge/BENCH-METHODOLOGY.md
+[[bench]]
+name = "pingora_filter_chain_micro"
 harness = false
