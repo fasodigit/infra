@@ -2,6 +2,126 @@
 
 ARMAGEDDON-FORGE Vague 2 B1 — Pingora feature-gated proxy backend.
 
+Master tracker: [#108](https://github.com/faso-digitalisation/armageddon/issues/108).
+Current gate: [#101 — M0](https://github.com/faso-digitalisation/armageddon/issues/101).
+
+## M0 — Scaffolding (completed)
+
+Gate [#101](https://github.com/faso-digitalisation/armageddon/issues/101)
+introduces the Pingora module tree, filter trait surface, per-request
+context and runtime bridge.  **No hyper-path behaviour is ported** — every
+filter / upstream / engine / protocol sub-module is a stub that compiles
+and is wired into the chain so that M1 – M5 can land content without
+further refactoring.
+
+### New module tree
+
+Located under `armageddon-forge/src/pingora/`:
+
+```text
+pingora/
+├── mod.rs              — feature-gated entry point, re-exports
+├── ctx.rs              — RequestCtx with all forward-compatible fields
+├── gateway.rs          — PingoraGateway + ProxyHttp impl + filter chain
+├── server.rs           — build_server() bootstrap
+├── runtime.rs          — isolated tokio Runtime on a dedicated OS thread
+├── RUNTIME.md          — Option A design rationale (this dir)
+├── filters/
+│   ├── mod.rs          — ForgeFilter trait + Decision enum
+│   ├── router.rs       — stub (M1 #95)
+│   ├── cors.rs         — stub (M1 #96)
+│   ├── jwt.rs          — stub (M1 #97)
+│   ├── feature_flag.rs — stub (M1 #98)
+│   ├── otel.rs         — stub (M1 #99)
+│   └── veil.rs         — stub (M1 #100)
+├── upstream/
+│   ├── mod.rs
+│   ├── selector.rs     — stub (M2 #103)
+│   ├── mtls.rs         — stub (M2)
+│   ├── circuit_breaker.rs — stub (M2)
+│   ├── health.rs       — stub (M2)
+│   ├── lb.rs           — stub (M2)
+│   └── retry.rs        — stub (M2)
+├── engines/
+│   ├── mod.rs
+│   └── pipeline.rs     — SecurityEngine evaluate() no-op (M3 #104)
+└── protocols/
+    ├── mod.rs
+    ├── grpc_web.rs     — stub (M4)
+    ├── websocket.rs    — stub (M4)
+    ├── compression.rs  — stub (M4)
+    └── traffic_split.rs — stub (M4)
+```
+
+The 471-line `src/pingora_backend.rs` file has been removed; its public
+types (`PingoraGateway`, `PingoraGatewayConfig`, `UpstreamRegistry`,
+`build_server`) are re-exported through a backward-compat shim
+(`pub mod pingora_backend { pub use crate::pingora::… }`) so internal
+benches and external callers keep compiling.
+
+### `ForgeFilter` trait + `Decision` enum
+
+The filter trait (in `pingora::filters::mod.rs`) defines four hooks
+mapped 1:1 onto Pingora's `ProxyHttp` callbacks:
+
+| `ProxyHttp` hook           | `ForgeFilter` method     |
+|----------------------------|--------------------------|
+| `request_filter`           | `on_request`             |
+| `upstream_request_filter`  | `on_upstream_request`    |
+| `response_filter`          | `on_response`            |
+| `logging`                  | `on_logging`             |
+
+Each hook returns a `Decision`:
+
+```rust
+pub enum Decision {
+    Continue,
+    ShortCircuit(Box<pingora::http::ResponseHeader>),
+    Deny(u16),
+}
+```
+
+The `PingoraGateway` walks the filter chain in registration order at
+every hook; the first non-`Continue` decision aborts the chain.
+`on_logging` fans out to **all** filters regardless (access-log phase).
+
+### Runtime bridge
+
+Pingora's scheduler is not a tokio runtime.  Tokio-native code paths
+(security engines, KAYA RESP3, xDS gRPC, SPIFFE certs) run on a
+dedicated multi-threaded tokio runtime spawned on first access to
+`pingora::runtime::tokio_handle()`.
+
+See `src/pingora/RUNTIME.md` for the full design, call pattern and
+forbidden pitfalls (never `block_on()` from inside a `ProxyHttp` async
+method).
+
+### Tests ported / added
+
+- `test_gateway_init_with_defaults`
+- `test_gateway_init_custom_config`
+- `test_upstream_registry_resolves_healthy`
+- `test_upstream_registry_all_unhealthy_returns_none`
+- `test_upstream_registry_unknown_cluster`
+- `test_upstream_registry_hot_reload`
+- `test_hop_by_hop_list_does_not_strip_content_type`
+- `test_hop_by_hop_list_contains_connection`
+- `test_build_server_constructs_without_panic`
+- **new** `test_pingora_gateway_accepts_filter_chain` — verifies the
+  `PingoraGateway` accepts and stores a `Vec<Arc<dyn ForgeFilter>>` in
+  registration order and produces a populated `RequestCtx` from
+  `new_ctx`.
+
+### Follow-up gates
+
+| Gate | Issue   | Scope                                                |
+|------|---------|------------------------------------------------------|
+| M1   | #95–#100| Port router / CORS / JWT / FF / OTEL / VEIL filters  |
+| M2   | #103    | Upstream selector, mTLS, CB, health, LB, retry       |
+| M3   | #104    | Security-engine pipeline (SENTINEL → AI)             |
+| M4   | #105    | gRPC-Web, WebSocket, compression, traffic-split      |
+| M5   | #107    | Graceful drain + bridge cooperative shutdown         |
+
 ## Decision matrix
 
 | Criterion | hyper 1.x (default) | Pingora 0.3 (feature) |

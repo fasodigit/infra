@@ -14,8 +14,24 @@
 // -- optional feature-gated backends --
 
 /// Pingora-based proxy backend (compiled only with `--features pingora`).
+///
+/// M0 scaffold — see `PINGORA-MIGRATION.md` and `pingora/RUNTIME.md`.
 #[cfg(feature = "pingora")]
-pub mod pingora_backend;
+pub mod pingora;
+
+/// Legacy alias for pre-M0 callers that imported from `pingora_backend::`.
+///
+/// The module has been reorganised into a tree under [`pingora`]; this
+/// shim re-exports the subset of types that used to live at
+/// `pingora_backend::` so that internal benches / tests keep compiling.
+#[cfg(feature = "pingora")]
+pub mod pingora_backend {
+    //! Backward-compat re-exports — see [`super::pingora`].
+    pub use crate::pingora::gateway::{
+        PingoraGateway, PingoraGatewayConfig, UpstreamRegistry,
+    };
+    pub use crate::pingora::server::build_server;
+}
 
 /// io_uring-based backend (Linux only, compiled with `--features io_uring`).
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
