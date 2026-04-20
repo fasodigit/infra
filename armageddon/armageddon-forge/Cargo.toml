@@ -78,6 +78,8 @@ pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy"]
 [dev-dependencies]
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
+# Enable ServiceExt::oneshot & service_fn for feature_flag_filter unit tests
+tower = { workspace = true, features = ["util"] }
 
 [dev-dependencies.criterion]
 workspace = true

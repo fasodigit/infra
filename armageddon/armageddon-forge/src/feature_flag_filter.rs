@@ -145,6 +145,13 @@ where
     }
 
     fn call(&mut self, mut req: Request<B>) -> Self::Future {
+        // Security: strip any client-supplied `X-Faso-Features` header before
+        // any branching. This header is a gateway-issued attestation — we must
+        // never let an inbound value leak to upstream, even on bypass paths
+        // (no user id, KAYA miss, empty flags, parse failure). If KAYA has
+        // flags to inject, the `insert` below re-adds a trusted value.
+        req.headers_mut().remove(FEATURE_HEADER);
+
         let source = Arc::clone(&self.source);
         // Clone l'inner pour satisfaire les contraintes de lifetime sur la future boxée.
         let clone = self.inner.clone();
@@ -212,7 +219,7 @@ mod tests {
         }
     }
 
-    fn echo_service() -> impl Service<Request<()>, Response = Response<String>, Error = Infallible> + Clone {
+    fn echo_service() -> impl Service<Request<()>, Response = Response<String>, Error = Infallible, Future = impl Send + 'static> + Clone + Send + 'static {
         service_fn(|req: Request<()>| async move {
             let features = req
                 .headers()
@@ -310,5 +317,82 @@ mod tests {
             .unwrap();
         let res = svc.oneshot(req).await.unwrap();
         assert_eq!(res.body(), "auth.webauthn-beta,etat-civil.pdf-v2");
+    }
+
+    // ---------------------------------------------------------------- security
+    //
+    // Regression tests : un client ne doit JAMAIS pouvoir forger le header
+    // `X-Faso-Features` lui-même. Le filtre doit scrubber l'entrée avant
+    // toute décision d'injection, et seules les valeurs issues de KAYA
+    // doivent atteindre l'upstream.
+
+    #[tokio::test]
+    async fn scrubs_client_supplied_header_when_no_user_id() {
+        let source = Arc::new(MockSource::new(Some(r#"{"x":true}"#)));
+        let svc = FeatureFlagLayer::new(source.clone()).layer(echo_service());
+
+        // Pas de X-User-Id → branche "early skip". Le header spoofé doit
+        // tout de même être retiré.
+        let req = Request::builder()
+            .uri("/api/x")
+            .header(FEATURE_HEADER, "spoofed")
+            .body(())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(
+            res.body().is_empty(),
+            "client-supplied X-Faso-Features must be stripped, got {:?}",
+            res.body()
+        );
+        assert_eq!(
+            source.hits.lock().unwrap().len(),
+            0,
+            "KAYA ne doit pas être appelée sans X-User-Id"
+        );
+    }
+
+    #[tokio::test]
+    async fn scrubs_client_supplied_header_on_kaya_miss() {
+        // KAYA simule un miss / unreachable : aucun payload à injecter.
+        let source = Arc::new(MockSource::new(None));
+        let svc = FeatureFlagLayer::new(source).layer(echo_service());
+
+        let req = Request::builder()
+            .uri("/api/x")
+            .header(USER_ID_HEADER, "u-miss")
+            .header(FEATURE_HEADER, "spoofed,evil.flag")
+            .body(())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        assert!(
+            res.body().is_empty(),
+            "sur miss KAYA, le header spoofé doit être supprimé, got {:?}",
+            res.body()
+        );
+    }
+
+    #[tokio::test]
+    async fn scrubs_then_reinjects_on_happy_path() {
+        // KAYA a des flags → le spoof doit être écrasé par la valeur signée.
+        let source = Arc::new(MockSource::new(Some(
+            r#"{"poulets.new-checkout":true,"etat-civil.pdf-v2":true}"#,
+        )));
+        let svc = FeatureFlagLayer::new(source).layer(echo_service());
+
+        let req = Request::builder()
+            .uri("/api/x")
+            .header(USER_ID_HEADER, "eleveur-42")
+            .header(FEATURE_HEADER, "poulets.admin-tools,auth.bypass-mfa")
+            .body(())
+            .unwrap();
+
+        let res = svc.oneshot(req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        // L'upstream ne doit voir QUE la valeur dérivée de KAYA, triée.
+        assert_eq!(res.body(), "etat-civil.pdf-v2,poulets.new-checkout");
     }
 }

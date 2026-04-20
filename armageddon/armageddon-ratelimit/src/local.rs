@@ -140,14 +140,41 @@ impl BucketState {
 #[derive(Clone)]
 pub struct LocalTokenBucket {
     buckets: Arc<DashMap<String, BucketState>>,
+    /// When `true`, unknown descriptors are **denied** (fail-closed) instead of
+    /// allowed.  Defaults to `false` for backwards compatibility; should be
+    /// enabled in hardened deployments to prevent descriptor-spoofing bypass.
+    strict_mode: bool,
 }
 
 impl LocalTokenBucket {
-    /// Create a new empty token bucket manager.
+    /// Create a new empty token bucket manager (non-strict, fail-open).
     pub fn new() -> Self {
         Self {
             buckets: Arc::new(DashMap::new()),
+            strict_mode: false,
         }
+    }
+
+    /// Create a new bucket manager with an explicit strict-mode flag.
+    ///
+    /// In strict mode, `try_acquire` on an unknown descriptor returns `false`
+    /// (deny).  Use this once all expected descriptors have been pre-registered
+    /// via `add_rule` to close the "fail-open on spoofed descriptor" hole.
+    pub fn with_strict_mode(strict: bool) -> Self {
+        Self {
+            buckets: Arc::new(DashMap::new()),
+            strict_mode: strict,
+        }
+    }
+
+    /// Toggle strict mode on an existing bucket (useful for runtime config reload).
+    pub fn set_strict_mode(&mut self, strict: bool) {
+        self.strict_mode = strict;
+    }
+
+    /// Whether the bucket is operating in strict (fail-closed) mode.
+    pub fn is_strict(&self) -> bool {
+        self.strict_mode
     }
 
     /// Register a rate limit rule for a descriptor.
@@ -165,11 +192,16 @@ impl LocalTokenBucket {
     /// Try to acquire `n` tokens for `descriptor`.
     ///
     /// Returns `true` if within limit, `false` if rate-limited.
-    /// If no rule exists for the descriptor, the request is **allowed**
-    /// (fail-open for unknown descriptors — callers must add rules explicitly).
+    ///
+    /// Behaviour on unknown descriptors:
+    /// - **Non-strict** (default): allowed (fail-open).  Callers must add rules
+    ///   explicitly.
+    /// - **Strict**: denied (fail-closed).  Prevents descriptor-spoofing
+    ///   bypass attacks where a malicious client crafts a header to produce a
+    ///   descriptor that has no matching rule.
     pub fn try_acquire(&self, descriptor: &str, n: u64) -> bool {
         match self.buckets.get(descriptor) {
-            None => true, // no rule → allow
+            None => !self.strict_mode, // no rule → allow unless strict
             Some(state) => state.try_acquire(n),
         }
     }
@@ -283,6 +315,21 @@ mod tests {
     fn test_unknown_descriptor_allows() {
         let bucket = LocalTokenBucket::new();
         assert!(bucket.try_acquire("unknown:descriptor", 1));
+    }
+
+    /// Strict mode: unknown descriptor → fail-closed (deny).
+    #[test]
+    fn test_unknown_descriptor_denies_in_strict_mode() {
+        let bucket = LocalTokenBucket::with_strict_mode(true);
+        assert!(!bucket.try_acquire("unknown:descriptor", 1));
+    }
+
+    /// Strict mode: known descriptor still works normally.
+    #[test]
+    fn test_known_descriptor_allows_in_strict_mode() {
+        let bucket = LocalTokenBucket::with_strict_mode(true);
+        bucket.add_rule("known", 10, 10);
+        assert!(bucket.try_acquire("known", 1));
     }
 
     /// Remaining tokens decrease after acquire.

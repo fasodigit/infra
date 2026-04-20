@@ -26,6 +26,7 @@ pub mod io_uring_backend;
 pub mod circuit_breaker;
 pub mod compression;
 pub mod cors;
+pub mod feature_flag_filter;
 pub mod feature_flags;
 pub mod grpc_web;
 pub mod health;

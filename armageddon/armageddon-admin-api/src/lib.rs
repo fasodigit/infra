@@ -208,32 +208,24 @@ fn default_log_level() -> &'static str {
 
 /// Build the admin API router. Public so tests and integrations can drive
 /// it via `tower::ServiceExt::oneshot`.
+///
+/// ## CORS
+///
+/// The admin API is NOT browser-driven: it is consumed by `curl`, Prometheus
+/// scrapers and SDK clients that do not enforce CORS. We deliberately do NOT
+/// install any CORS layer here — no `Access-Control-Allow-Origin` header is
+/// ever emitted. This prevents a malicious website (visited by an operator
+/// whose workstation has the admin API bound on loopback without a token)
+/// from reading `/config_dump`, `/clusters`, `/server_info`, or mutating
+/// `/logging` via a simple `fetch()` call.
+///
+/// The `cors_allowed_origins` field on [`AdminApiConfig`] is therefore
+/// intentionally ignored here and kept only for YAML backwards-compatibility.
 pub fn build_router(
     state: Arc<AdminApiState>,
     auth: Arc<AuthState>,
-    cfg: &AdminApiConfig,
+    _cfg: &AdminApiConfig,
 ) -> Router {
-    use tower_http::cors::{Any, CorsLayer};
-
-    let mut cors = CorsLayer::new()
-        .allow_methods([
-            http::Method::GET,
-            http::Method::POST,
-            http::Method::OPTIONS,
-        ])
-        .allow_headers(Any);
-
-    cors = if cfg.cors_allowed_origins.is_empty() {
-        cors.allow_origin(Any)
-    } else {
-        let origins: Vec<http::HeaderValue> = cfg
-            .cors_allowed_origins
-            .iter()
-            .filter_map(|o| o.parse().ok())
-            .collect();
-        cors.allow_origin(origins)
-    };
-
     Router::new()
         .route("/stats", get(routes::get_stats))
         .route("/clusters", get(routes::get_clusters))
@@ -252,6 +244,5 @@ pub fn build_router(
             Arc::clone(&auth),
             auth::bearer_auth,
         ))
-        .layer(cors)
         .with_state(state)
 }

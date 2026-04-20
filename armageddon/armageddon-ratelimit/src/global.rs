@@ -181,6 +181,11 @@ pub struct GlobalRuleConfig {
 pub struct GlobalRateLimiter {
     backend: Arc<dyn RateLimitBackend>,
     rules: HashMap<String, GlobalRuleConfig>,
+    /// When `true`, unknown descriptors are denied (fail-closed).  Default
+    /// `false` for backwards compatibility.  Strict mode closes the
+    /// descriptor-spoofing bypass: a crafted `X-Tenant-Id` that yields a key
+    /// with no matching rule no longer defaults to Allowed.
+    strict_mode: bool,
 }
 
 impl GlobalRateLimiter {
@@ -188,6 +193,7 @@ impl GlobalRateLimiter {
         Self {
             backend,
             rules: HashMap::new(),
+            strict_mode: false,
         }
     }
 
@@ -196,18 +202,37 @@ impl GlobalRateLimiter {
         self.rules.insert(descriptor.to_string(), rule);
     }
 
+    /// Toggle strict mode.  In strict mode, `check()` on an unknown descriptor
+    /// returns `Denied` rather than `Allowed`.  Enable once all expected
+    /// descriptors have been declared.
+    pub fn set_strict_mode(&mut self, strict: bool) {
+        self.strict_mode = strict;
+    }
+
+    /// Whether the limiter operates in strict (fail-closed) mode.
+    pub fn is_strict(&self) -> bool {
+        self.strict_mode
+    }
+
     /// Check and increment the counter for `descriptor`.
     ///
     /// Returns:
     /// - `Ok(RateLimitResult::Allowed)` — counter was below limit.
-    /// - `Ok(RateLimitResult::Denied)`  — counter exceeded limit.
+    /// - `Ok(RateLimitResult::Denied)`  — counter exceeded limit, or descriptor
+    ///   unknown and strict mode is enabled.
     /// - `Err(BackendError)` — KAYA unreachable; caller applies fallback.
     pub async fn check(
         &self,
         descriptor: &str,
     ) -> Result<RateLimitResult, BackendError> {
         let rule = match self.rules.get(descriptor) {
-            None => return Ok(RateLimitResult::Allowed { count: 0 }), // no rule → allow
+            None => {
+                // Unknown descriptor: strict → deny, otherwise allow (legacy).
+                if self.strict_mode {
+                    return Ok(RateLimitResult::Denied { retry_after_secs: 1 });
+                }
+                return Ok(RateLimitResult::Allowed { count: 0 });
+            }
             Some(r) => r,
         };
 
@@ -270,6 +295,18 @@ mod tests {
         let (limiter, _) = make_limiter(5, 60);
         let r = limiter.check("unknown").await.unwrap();
         assert!(matches!(r, RateLimitResult::Allowed { count: 0 }));
+    }
+
+    #[tokio::test]
+    async fn test_unknown_descriptor_denies_in_strict_mode() {
+        let (mut limiter, _) = make_limiter(5, 60);
+        limiter.set_strict_mode(true);
+        let r = limiter.check("unknown").await.unwrap();
+        assert!(
+            matches!(r, RateLimitResult::Denied { .. }),
+            "strict mode must deny unknown descriptor, got {:?}",
+            r
+        );
     }
 
     #[tokio::test]
