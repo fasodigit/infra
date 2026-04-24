@@ -143,6 +143,40 @@ future : `openbao` (fork Vault) si stable.
 - Agents persistants : `kaya-rust-implementer`, `distributed-systems-rust`,
   `database-internals-rust`, `prompt-engineer`
 
+### Discipline CWD pour les slash-commands
+
+Toujours démarrer Claude Code **depuis `INFRA/`** (pas depuis le parent
+`DEVELOPMENT-CLAUDE/`). Les slash-commands cloud (ex : `/ultrareview`,
+`/security-review` quand il délègue au web-runner) utilisent le primary
+working directory du processus, **pas** le CWD de la Bash tool.
+
+```bash
+cd /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA
+claude   # (ou ta commande de launch)
+```
+
+Sinon tu obtiens `Could not find merge-base with main. Make sure you're
+in a git repo with a main branch.` — symptôme d'un CWD qui n'est pas
+un git repo, pas d'un vrai problème de branche.
+
+### `/ultrareview` — prérequis branche
+
+`/ultrareview` (web-runner, ~5-10 min, $5-20 USD) compare `HEAD` vs
+`main` via `git merge-base`. Il faut donc :
+1. Être dans INFRA/ (cf. discipline CWD ci-dessus).
+2. Être sur une **branche qui diverge de `main`** (topic branch /
+   feature branch). Si HEAD = main, le command refuse parce qu'il n'y
+   a rien à reviewer.
+3. Workflow recommandé : topic branch `feature/<x>` → code → commits →
+   `/ultrareview` avant merge → fix findings → merge vers main.
+
+### `poulets-platform/frontend/twitter-mcp` — submodule externe
+
+Tracked comme gitlink (pointeur de commit vers un repo twitter-mcp
+externe). Apparaît souvent en `m` dans `git status` (modifs uploadées
+au repo externe, pas encore reflétées dans le pointeur) — **ignorer**
+tant qu'il n'y a pas besoin de bump explicite.
+
 ### Skills custom FASO
 
 | Skill | Usage |
