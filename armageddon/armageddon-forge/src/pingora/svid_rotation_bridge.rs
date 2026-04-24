@@ -40,10 +40,14 @@
 //! | Channel lagged (> 64 queued events) | Bridge logs an error, continues from next event |
 //! | Expired SVID before renewal | New TLS handshakes fail at rustls layer; SPIRE monitoring alerts |
 
+use std::sync::Arc;
+
 use tracing::{error, info, warn};
 use tokio::sync::broadcast;
 
 use armageddon_mesh::RotationEvent;
+
+use crate::pingora::metrics::PingoraMetrics;
 
 // ---------------------------------------------------------------------------
 // SvidRotationBridge
@@ -69,9 +73,13 @@ impl SvidRotationBridge {
     ///
     /// This is a free function so the handle to `Mesh` stays outside, avoiding
     /// circular Arc ownership.
+    ///
+    /// Pass `metrics` to enable Prometheus counters.  When `None`, events are
+    /// still logged via tracing but no counters are updated.
     pub async fn run(
         mut rotations: broadcast::Receiver<RotationEvent>,
         mut shutdown: broadcast::Receiver<()>,
+        metrics: Option<Arc<PingoraMetrics>>,
     ) {
         loop {
             tokio::select! {
@@ -94,7 +102,7 @@ impl SvidRotationBridge {
                             // Mesh::run before this event fired.  New outbound
                             // connections via AutoMtlsDialer::connect_tls will
                             // use the new ClientConfig transparently.
-                            increment_rotation_counter();
+                            increment_rotation_counter(&ev.spiffe_id, metrics.as_deref());
                         }
                         Err(broadcast::error::RecvError::Lagged(n)) => {
                             error!(
@@ -102,6 +110,12 @@ impl SvidRotationBridge {
                                 "SvidRotationBridge: rotation receiver lagged \
                                  — potential gap in cert rotation observability"
                             );
+                            // Record the lag as a fetch error.
+                            if let Some(m) = &metrics {
+                                m.mesh_svid_fetch_errors_total
+                                    .with_label_values(&["channel_lagged"])
+                                    .inc();
+                            }
                         }
                         Err(broadcast::error::RecvError::Closed) => {
                             warn!("SvidRotationBridge: rotation channel closed");
@@ -122,24 +136,52 @@ impl SvidRotationBridge {
 ///
 /// `rotations` — receiver obtained from `SvidManager::watch_rotations()`.
 /// `shutdown`  — fires when the gateway is stopping.
+/// `metrics`   — optional Prometheus bundle; pass `None` in tests.
 ///
 /// Returns a `JoinHandle` that resolves when the bridge exits.
 pub fn spawn_svid_rotation_bridge(
     rotations: broadcast::Receiver<RotationEvent>,
     shutdown: broadcast::Receiver<()>,
+    metrics: Option<Arc<PingoraMetrics>>,
 ) -> tokio::task::JoinHandle<()> {
     crate::pingora::runtime::tokio_handle()
-        .spawn(SvidRotationBridge::run(rotations, shutdown))
+        .spawn(SvidRotationBridge::run(rotations, shutdown, metrics))
 }
 
 // ---------------------------------------------------------------------------
-// Metrics
+// Metrics helpers
 // ---------------------------------------------------------------------------
 
-fn increment_rotation_counter() {
-    // TODO(M6): wire into shared Prometheus registry when full registry wiring
-    // is complete.  For now exposed via tracing only.
-    tracing::debug!("armageddon_svid_rotations_total += 1");
+/// Increment `armageddon_mesh_svid_rotations_total{spiffe_id}`.
+fn increment_rotation_counter(spiffe_id: &str, metrics: Option<&PingoraMetrics>) {
+    tracing::debug!(spiffe_id, "armageddon_mesh_svid_rotations_total += 1");
+    if let Some(m) = metrics {
+        m.mesh_svid_rotations_total
+            .with_label_values(&[spiffe_id])
+            .inc();
+    }
+}
+
+/// Record `armageddon_mesh_svid_fetch_errors_total{reason}`.
+///
+/// Call when a non-lagged retriable error occurs (e.g. SPIRE socket drop).
+pub fn record_svid_fetch_error(reason: &str, metrics: Option<&PingoraMetrics>) {
+    tracing::debug!(reason, "armageddon_mesh_svid_fetch_errors_total += 1");
+    if let Some(m) = metrics {
+        m.mesh_svid_fetch_errors_total
+            .with_label_values(&[reason])
+            .inc();
+    }
+}
+
+/// Update `armageddon_mesh_svid_expires_seconds{spiffe_id}` with a Unix
+/// timestamp representing when the current SVID expires.
+pub fn record_svid_expiry(spiffe_id: &str, expires_unix_secs: i64, metrics: Option<&PingoraMetrics>) {
+    if let Some(m) = metrics {
+        m.mesh_svid_expires_seconds
+            .with_label_values(&[spiffe_id])
+            .set(expires_unix_secs);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -163,7 +205,7 @@ mod tests {
         // Keep a separate receiver to assert observed events.
         let mut rx_assert = tx.subscribe();
 
-        tokio::spawn(SvidRotationBridge::run(rx_bridge, shutdown_rx));
+        tokio::spawn(SvidRotationBridge::run(rx_bridge, shutdown_rx, None));
 
         tokio::time::sleep(Duration::from_millis(5)).await;
 
@@ -190,7 +232,7 @@ mod tests {
         let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
         let mut rx_assert = tx.subscribe();
 
-        tokio::spawn(SvidRotationBridge::run(rx_bridge, shutdown_rx));
+        tokio::spawn(SvidRotationBridge::run(rx_bridge, shutdown_rx, None));
         tokio::time::sleep(Duration::from_millis(5)).await;
 
         for i in 0..3u32 {
@@ -219,7 +261,7 @@ mod tests {
         let (_tx, rx_bridge) = broadcast::channel::<RotationEvent>(64);
         let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
 
-        let handle = tokio::spawn(SvidRotationBridge::run(rx_bridge, shutdown_rx));
+        let handle = tokio::spawn(SvidRotationBridge::run(rx_bridge, shutdown_rx, None));
 
         tokio::time::sleep(Duration::from_millis(5)).await;
         let _ = shutdown_tx.send(());
@@ -242,5 +284,91 @@ mod tests {
         // Simulate Mesh::apply_rotation swapping in new config.
         store.store(Arc::new(2u32));
         assert_eq!(**store.load(), 2u32, "new config visible after store");
+    }
+
+    // ── Metrics wiring ─────────────────────────────────────────────────────
+
+    /// Rotation events increment `mesh_svid_rotations_total`.
+    #[tokio::test]
+    async fn rotation_events_increment_metrics() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+
+        let (tx, rx_bridge) = broadcast::channel::<RotationEvent>(64);
+        let (shutdown_tx, shutdown_rx) = broadcast::channel::<()>(1);
+
+        tokio::spawn(SvidRotationBridge::run(
+            rx_bridge,
+            shutdown_rx,
+            Some(Arc::clone(&m)),
+        ));
+        tokio::time::sleep(Duration::from_millis(5)).await;
+
+        let spiffe_id = "spiffe://faso.gov.bf/ns/armageddon/sa/gateway";
+        tx.send(RotationEvent { spiffe_id: spiffe_id.to_string() }).expect("send ok");
+        tx.send(RotationEvent { spiffe_id: spiffe_id.to_string() }).expect("send ok");
+
+        tokio::time::sleep(Duration::from_millis(30)).await;
+        let _ = shutdown_tx.send(());
+
+        let families = r.gather();
+        let fam = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_mesh_svid_rotations_total")
+            .expect("rotations counter must exist");
+        let total: f64 = fam.get_metric().iter()
+            .map(|m| m.get_counter().get_value())
+            .sum();
+        assert_eq!(total, 2.0, "two rotation events should be counted");
+    }
+
+    /// `record_svid_fetch_error` increments the errors counter.
+    #[test]
+    fn record_fetch_error_increments_counter() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+
+        record_svid_fetch_error("timeout", Some(&m));
+        record_svid_fetch_error("spire_unavailable", Some(&m));
+
+        let families = r.gather();
+        let fam = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_mesh_svid_fetch_errors_total")
+            .expect("errors counter must exist");
+        let total: f64 = fam.get_metric().iter()
+            .map(|m| m.get_counter().get_value())
+            .sum();
+        assert_eq!(total, 2.0, "two fetch errors should be counted");
+    }
+
+    /// `record_svid_expiry` sets the expiry gauge.
+    #[test]
+    fn record_svid_expiry_sets_gauge() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+
+        let spiffe_id = "spiffe://faso.gov.bf/ns/armageddon/sa/gateway";
+        record_svid_expiry(spiffe_id, 1_999_999_999, Some(&m));
+
+        let families = r.gather();
+        let fam = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_mesh_svid_expires_seconds")
+            .expect("expiry gauge must exist");
+        let val = fam.get_metric()
+            .first()
+            .map(|m| m.get_gauge().get_value())
+            .unwrap_or(0.0);
+        assert_eq!(val, 1_999_999_999.0, "expiry should be set correctly");
     }
 }

@@ -40,6 +40,7 @@ pub mod ctx;
 pub mod engines;
 pub mod filters;
 pub mod gateway;
+pub mod metrics;
 pub mod protocols;
 pub mod runtime;
 pub mod server;

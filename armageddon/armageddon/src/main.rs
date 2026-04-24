@@ -583,6 +583,24 @@ async fn async_main() -> anyhow::Result<()> {
                 "booting PingoraGateway",
             );
 
+            // -- Prometheus metrics for Pingora subsystems, registered on the
+            // shared `registry` so they appear in `/stats`.
+            // Pass `_pingora_metrics` to `spawn_xds_watcher` / `spawn_svid_rotation_bridge`
+            // when those are wired into the Pingora startup path.
+            let _pingora_metrics = match armageddon_forge::pingora::metrics::PingoraMetrics::new(&registry) {
+                Ok(m) => {
+                    tracing::info!("PingoraMetrics registered on shared Prometheus registry");
+                    Some(Arc::new(m))
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        error = %e,
+                        "PingoraMetrics registration failed — Pingora metrics will be unavailable"
+                    );
+                    None
+                }
+            };
+
             // Build upstream registry from cluster config.
             let upstream_reg = Arc::new(UpstreamRegistry::new());
             for cluster in config.gateway.clusters.iter() {

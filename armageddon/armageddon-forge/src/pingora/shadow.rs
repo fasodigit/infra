@@ -66,6 +66,8 @@ use std::time::{Duration, Instant};
 
 use tracing::warn;
 
+use crate::pingora::metrics::PingoraMetrics;
+
 // ---------------------------------------------------------------------------
 // Configuration
 // ---------------------------------------------------------------------------
@@ -239,16 +241,40 @@ pub struct ShadowSampler {
     pub shadow_port: u16,
     /// Per-shadow-request timeout.
     pub timeout: Duration,
+    /// Shared Prometheus metrics bundle.  `None` disables metric emission
+    /// (e.g. in unit tests that do not wire a registry).
+    metrics: Option<Arc<PingoraMetrics>>,
 }
 
 impl ShadowSampler {
-    /// Create a new sampler from config.
+    /// Create a new sampler from config without Prometheus metrics.
+    ///
+    /// Prefer [`ShadowSampler::with_metrics`] when a shared `PingoraMetrics`
+    /// bundle is available.
     pub fn new(config: &ShadowModeConfig) -> Arc<Self> {
         Arc::new(Self {
             sample_percent: AtomicU32::new(config.sample_rate_percent.min(100)),
             shadow_port: config.pingora_port,
             timeout: Duration::from_millis(config.shadow_timeout_ms),
+            metrics: None,
         })
+    }
+
+    /// Create a new sampler from config with a shared metrics bundle.
+    pub fn with_metrics(config: &ShadowModeConfig, metrics: Arc<PingoraMetrics>) -> Arc<Self> {
+        let sampler = Arc::new(Self {
+            sample_percent: AtomicU32::new(config.sample_rate_percent.min(100)),
+            shadow_port: config.pingora_port,
+            timeout: Duration::from_millis(config.shadow_timeout_ms),
+            metrics: Some(metrics.clone()),
+        });
+        // Publish the initial sample rate.
+        if let Some(m) = &sampler.metrics {
+            m.shadow_sample_rate
+                .with_label_values(&["shadow"])
+                .set(i64::from(config.sample_rate_percent.min(100)));
+        }
+        sampler
     }
 
     /// Test whether this request should be shadowed.
@@ -259,7 +285,13 @@ impl ShadowSampler {
 
     /// Set the sample rate atomically.  `percent` is clamped to `[0, 100]`.
     pub fn set_sample_percent(&self, percent: u32) {
-        self.sample_percent.store(percent.min(100), Ordering::Relaxed);
+        let clamped = percent.min(100);
+        self.sample_percent.store(clamped, Ordering::Relaxed);
+        if let Some(m) = &self.metrics {
+            m.shadow_sample_rate
+                .with_label_values(&["shadow"])
+                .set(i64::from(clamped));
+        }
     }
 
     /// Disable shadow mode atomically (sets `sample_percent` to 0).
@@ -310,15 +342,28 @@ pub struct ShadowEvent {
 pub struct ShadowDiffQueue {
     tx: tokio::sync::mpsc::Sender<ShadowEvent>,
     pub rx: tokio::sync::Mutex<tokio::sync::mpsc::Receiver<ShadowEvent>>,
+    /// Shared Prometheus metrics bundle (optional).
+    metrics: Option<Arc<PingoraMetrics>>,
 }
 
 impl ShadowDiffQueue {
-    /// Create a bounded queue with `capacity` slots.
+    /// Create a bounded queue with `capacity` slots without metrics.
     pub fn new(capacity: usize) -> Arc<Self> {
         let (tx, rx) = tokio::sync::mpsc::channel(capacity);
         Arc::new(Self {
             tx,
             rx: tokio::sync::Mutex::new(rx),
+            metrics: None,
+        })
+    }
+
+    /// Create a bounded queue with `capacity` slots and a metrics bundle.
+    pub fn with_metrics(capacity: usize, metrics: Arc<PingoraMetrics>) -> Arc<Self> {
+        let (tx, rx) = tokio::sync::mpsc::channel(capacity);
+        Arc::new(Self {
+            tx,
+            rx: tokio::sync::Mutex::new(rx),
+            metrics: Some(metrics),
         })
     }
 
@@ -333,7 +378,7 @@ impl ShadowDiffQueue {
                     tokio::sync::mpsc::error::TrySendError::Closed(_) => "closed",
                 };
                 warn!("shadow diff queue {reason} — dropping event");
-                increment_dropped_counter();
+                increment_dropped_counter(self.metrics.as_deref());
                 false
             }
         }
@@ -346,31 +391,83 @@ impl ShadowDiffQueue {
 }
 
 // ---------------------------------------------------------------------------
-// Metrics (stubs — wired in M6)
+// Metrics helpers
 // ---------------------------------------------------------------------------
 
-fn increment_dropped_counter() {
-    // TODO(M6): wire into Prometheus registry.
-    tracing::debug!("armageddon_shadow_diff_dropped_total += 1");
+/// Increment `armageddon_shadow_requests_total{status="dropped"}` via the
+/// diff-queue sender side.  `metrics` is optional; if absent, falls back to a
+/// tracing log line.
+fn increment_dropped_counter(metrics: Option<&PingoraMetrics>) {
+    tracing::debug!("shadow diff queue full — event dropped");
+    if let Some(m) = metrics {
+        m.shadow_requests_total
+            .with_label_values(&["dropped"])
+            .inc();
+    }
 }
 
-/// Increment the `shadow_requests_total{outcome}` counter.
-pub fn record_shadow_outcome(bucket: DiffBucket) {
-    // TODO(M6): wire into Prometheus registry.
-    tracing::debug!(outcome = bucket.label(), "armageddon_shadow_requests_total += 1");
+/// Increment `armageddon_shadow_requests_total{status=<bucket>}` and, when the
+/// response diverged, also increment `armageddon_shadow_diverged_total{field}`.
+pub fn record_shadow_outcome(bucket: DiffBucket, metrics: Option<&PingoraMetrics>) {
+    tracing::debug!(outcome = bucket.label(), "shadow outcome recorded");
+    let Some(m) = metrics else { return };
+    m.shadow_requests_total
+        .with_label_values(&[bucket.label()])
+        .inc();
+    // Increment the diverged counter for each contributing field.
+    match bucket {
+        DiffBucket::StatusDiffer => {
+            m.shadow_diverged_total.with_label_values(&["status"]).inc();
+        }
+        DiffBucket::BodyDiffer => {
+            m.shadow_diverged_total
+                .with_label_values(&["body_hash"])
+                .inc();
+        }
+        DiffBucket::HeaderDiffer => {
+            m.shadow_diverged_total
+                .with_label_values(&["headers"])
+                .inc();
+        }
+        _ => {}
+    }
 }
 
-/// Increment `shadow_requests_sampled_total`.
-pub fn record_shadow_sampled() {
-    tracing::debug!("armageddon_shadow_requests_sampled_total += 1");
+/// Record `armageddon_shadow_latency_diff_seconds` for one comparison.
+///
+/// `diff_secs` = pingora_latency_seconds − hyper_latency_seconds
+/// (negative means Pingora was faster).
+pub fn record_shadow_latency_diff(
+    route: &str,
+    diff_secs: f64,
+    metrics: Option<&PingoraMetrics>,
+) {
+    if let Some(m) = metrics {
+        m.shadow_latency_diff_seconds
+            .with_label_values(&[route])
+            .observe(diff_secs);
+    }
 }
 
-/// Increment `shadow_requests_skipped_total{reason}`.
-pub fn record_shadow_skipped(reason: &str) {
-    tracing::debug!(
-        reason,
-        "armageddon_shadow_requests_skipped_total += 1"
-    );
+/// Increment `armageddon_shadow_requests_total{status="sampled"}`.
+pub fn record_shadow_sampled(metrics: Option<&PingoraMetrics>) {
+    if let Some(m) = metrics {
+        m.shadow_requests_total
+            .with_label_values(&["sampled"])
+            .inc();
+    } else {
+        tracing::debug!("shadow request sampled");
+    }
+}
+
+/// Increment `armageddon_shadow_requests_total{status="skipped"}`.
+pub fn record_shadow_skipped(reason: &str, metrics: Option<&PingoraMetrics>) {
+    tracing::debug!(reason, "shadow request skipped");
+    if let Some(m) = metrics {
+        m.shadow_requests_total
+            .with_label_values(&["skipped"])
+            .inc();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -589,5 +686,95 @@ mod tests {
         assert_eq!(q.depth(), 1);
         assert!(q.push(event));
         assert_eq!(q.depth(), 2);
+    }
+
+    // ── Metrics wiring ─────────────────────────────────────────────────────
+
+    /// ShadowSampler::with_metrics updates the sample_rate gauge on construction.
+    #[test]
+    fn sampler_with_metrics_publishes_sample_rate() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+        use std::sync::Arc;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+        let cfg = ShadowModeConfig {
+            sample_rate_percent: 25,
+            ..Default::default()
+        };
+        let _sampler = ShadowSampler::with_metrics(&cfg, Arc::clone(&m));
+
+        let families = r.gather();
+        let rate = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_shadow_sample_rate")
+            .expect("gauge must exist");
+        let val = rate
+            .get_metric()
+            .first()
+            .map(|m| m.get_gauge().get_value())
+            .unwrap_or(0.0);
+        assert_eq!(val, 25.0, "initial sample rate should be 25");
+    }
+
+    /// set_sample_percent updates both the atomic and the gauge.
+    #[test]
+    fn sampler_set_sample_percent_updates_gauge() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+        use std::sync::Arc;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+        let cfg = ShadowModeConfig {
+            sample_rate_percent: 10,
+            ..Default::default()
+        };
+        let sampler = ShadowSampler::with_metrics(&cfg, Arc::clone(&m));
+        sampler.set_sample_percent(50);
+
+        let families = r.gather();
+        let rate = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_shadow_sample_rate")
+            .expect("gauge must exist");
+        let val = rate
+            .get_metric()
+            .first()
+            .map(|m| m.get_gauge().get_value())
+            .unwrap_or(0.0);
+        assert_eq!(val, 50.0, "sample rate should be updated to 50");
+    }
+
+    /// record_shadow_outcome increments the correct counter and diverged counter.
+    #[test]
+    fn record_shadow_outcome_increments_counters() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+        use std::sync::Arc;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+
+        record_shadow_outcome(DiffBucket::StatusDiffer, Some(&m));
+        record_shadow_outcome(DiffBucket::BodyDiffer, Some(&m));
+        record_shadow_outcome(DiffBucket::Identical, Some(&m));
+
+        let families = r.gather();
+
+        let requests = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_shadow_requests_total")
+            .expect("requests counter must exist");
+        // status_differ + body_differ + identical = 3 label-value combinations.
+        assert!(requests.get_metric().len() >= 2);
+
+        let diverged = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_shadow_diverged_total")
+            .expect("diverged counter must exist");
+        // status and body_hash fields should each have 1 count.
+        assert!(diverged.get_metric().len() >= 2);
     }
 }

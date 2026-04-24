@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
+// Copyright (C) 2026 FASO DIGITALISATION
 //! Canary / A-B / shadow traffic splitting for the Pingora gateway (M4-4 wave 2).
 //!
 //! Ported from `src/traffic_split.rs` (hyper path) and extended with
@@ -40,8 +41,10 @@
 //!
 //! ## Metrics
 //!
-//! TODO(M5): wire `armageddon_traffic_split_decisions_total{route, variant, decision}`
-//! counter once the Prometheus registry wiring is complete.
+//! `armageddon_traffic_split_decisions_total{route, variant, decision}` is
+//! incremented by [`TrafficSplitter::decide`] on every routing decision.
+//! Pass a [`PingoraMetrics`] bundle via [`TrafficSplitter::with_metrics`] to
+//! enable metric emission.
 //!
 //! ## Failure modes
 //!
@@ -55,6 +58,8 @@
 use blake3::Hasher;
 use std::collections::HashMap;
 use std::sync::Arc;
+
+use crate::pingora::metrics::PingoraMetrics;
 
 // ── Types ──────────────────────────────────────────────────────────────────
 
@@ -168,16 +173,33 @@ pub enum SplitError {
 ///
 /// Hot-reloaded by the xDS consumer when it receives weighted-cluster updates.
 /// Uses [`arc_swap::ArcSwap`] for lock-free reads on the hot path.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub struct TrafficSplitter {
     routes: arc_swap::ArcSwap<HashMap<String, Arc<SplitSpec>>>,
+    /// Shared Prometheus metrics bundle.  `None` disables metric emission.
+    metrics: Option<Arc<PingoraMetrics>>,
+}
+
+impl Default for TrafficSplitter {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl TrafficSplitter {
-    /// Create an empty splitter.
+    /// Create an empty splitter without metrics.
     pub fn new() -> Self {
         Self {
             routes: arc_swap::ArcSwap::from_pointee(HashMap::new()),
+            metrics: None,
+        }
+    }
+
+    /// Create an empty splitter with a shared metrics bundle.
+    pub fn with_metrics(metrics: Arc<PingoraMetrics>) -> Self {
+        Self {
+            routes: arc_swap::ArcSwap::from_pointee(HashMap::new()),
+            metrics: Some(metrics),
         }
     }
 
@@ -204,10 +226,38 @@ impl TrafficSplitter {
     ///
     /// Returns `None` when no split is registered for `route_name` — the
     /// caller falls back to the default cluster from its own routing logic.
+    ///
+    /// When a [`PingoraMetrics`] bundle was supplied via
+    /// [`TrafficSplitter::with_metrics`], increments
+    /// `armageddon_traffic_split_decisions_total{route, variant, decision}`.
     pub fn decide(&self, route_name: &str, sticky_value: &str) -> Option<SplitDecision> {
         let routes = self.routes.load();
         let spec = routes.get(route_name)?;
-        Some(decide_with(spec, sticky_value))
+        let decision = decide_with(spec, sticky_value);
+
+        // Emit metrics if a bundle is attached.
+        if let Some(m) = &self.metrics {
+            let variant = decision
+                .primary_label
+                .as_deref()
+                .unwrap_or("unknown");
+            let decision_type = match decision.mode {
+                SplitDecisionMode::Canary => "canary",
+                SplitDecisionMode::AbTest => "canary",
+                SplitDecisionMode::Shadow => {
+                    if decision.shadow.is_some() {
+                        "shadow"
+                    } else {
+                        "primary"
+                    }
+                }
+            };
+            m.traffic_split_decisions_total
+                .with_label_values(&[route_name, variant, decision_type])
+                .inc();
+        }
+
+        Some(decision)
     }
 }
 
@@ -541,5 +591,58 @@ mod tests {
 
         let snap = sp.snapshot();
         assert!(snap.contains_key("api"));
+    }
+
+    // ── Metrics wiring ─────────────────────────────────────────────────────
+
+    /// `decide` with metrics attached increments `decisions_total` counter.
+    #[test]
+    fn decide_with_metrics_increments_counter() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+        let sp = TrafficSplitter::with_metrics(m);
+
+        let mut routes = HashMap::new();
+        routes.insert("api-v2".to_string(), Arc::new(spec_50_50()));
+        sp.update(routes);
+
+        // Make several decisions.
+        for i in 0..10u32 {
+            let _ = sp.decide("api-v2", &format!("user-{i}"));
+        }
+
+        let families = r.gather();
+        let fam = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_traffic_split_decisions_total")
+            .expect("decisions counter must exist");
+
+        let total: f64 = fam
+            .get_metric()
+            .iter()
+            .filter(|m| {
+                m.get_label()
+                    .iter()
+                    .any(|l| l.get_name() == "route" && l.get_value() == "api-v2")
+            })
+            .map(|m| m.get_counter().get_value())
+            .sum();
+        assert_eq!(total, 10.0, "10 decisions should be counted for api-v2");
+    }
+
+    /// `decide` without metrics does not panic.
+    #[test]
+    fn decide_without_metrics_does_not_panic() {
+        let sp = TrafficSplitter::new();
+        let mut routes = HashMap::new();
+        routes.insert("test-route".to_string(), Arc::new(spec_50_50()));
+        sp.update(routes);
+        for i in 0..5u32 {
+            let _ = sp.decide("test-route", &format!("user-{i}"));
+        }
+        // No panic = pass.
     }
 }

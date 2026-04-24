@@ -47,6 +47,8 @@ use std::time::{Duration, Instant};
 use arc_swap::ArcSwap;
 use tracing::{debug, info, warn};
 
+use crate::pingora::metrics::PingoraMetrics;
+
 // ── configuration ──────────────────────────────────────────────────────────────
 
 /// Health check type for one cluster.
@@ -193,14 +195,26 @@ pub struct PingoraHealthChecker {
     health: Arc<ArcSwap<ClusterHealthMap>>,
     /// Registered (cluster, endpoint, config) tuples.
     registrations: Vec<(EndpointId, HealthConfig)>,
+    /// Shared Prometheus metrics bundle (optional).
+    metrics: Option<Arc<PingoraMetrics>>,
 }
 
 impl PingoraHealthChecker {
-    /// Create a new, empty health checker.
+    /// Create a new, empty health checker without metrics.
     pub fn new() -> Self {
         Self {
             health: Arc::new(ArcSwap::from_pointee(HashMap::new())),
             registrations: Vec::new(),
+            metrics: None,
+        }
+    }
+
+    /// Create a new, empty health checker with a shared metrics bundle.
+    pub fn with_metrics(metrics: Arc<PingoraMetrics>) -> Self {
+        Self {
+            health: Arc::new(ArcSwap::from_pointee(HashMap::new())),
+            registrations: Vec::new(),
+            metrics: Some(metrics),
         }
     }
 
@@ -249,10 +263,11 @@ impl PingoraHealthChecker {
     pub fn start(&self) -> Result<tokio::task::JoinHandle<()>, String> {
         let health = Arc::clone(&self.health);
         let registrations = self.registrations.clone();
+        let metrics = self.metrics.clone();
 
         let handle = crate::pingora::runtime::tokio_handle();
         let join = handle.spawn(async move {
-            run_health_check_loop(health, registrations).await;
+            run_health_check_loop(health, registrations, metrics).await;
         });
         Ok(join)
     }
@@ -269,6 +284,7 @@ impl Default for PingoraHealthChecker {
 async fn run_health_check_loop(
     health: Arc<ArcSwap<ClusterHealthMap>>,
     registrations: Vec<(EndpointId, HealthConfig)>,
+    metrics: Option<Arc<PingoraMetrics>>,
 ) {
     if registrations.is_empty() {
         info!("health checker: no registrations, task exiting immediately");
@@ -304,16 +320,18 @@ async fn run_health_check_loop(
 
         for (id, config) in &registrations {
             let timeout = Duration::from_millis(config.timeout_ms);
+            let check_type_label = check_type_label(&config.check_type);
 
             let start = Instant::now();
             let result = run_probe(id, &config.check_type, timeout).await;
             let duration = start.elapsed();
 
             // Emit probe duration metric (best-effort; ignore errors).
-            emit_probe_duration(id, duration);
+            emit_probe_duration(id, check_type_label, duration, metrics.as_deref());
 
             let entry = live.entry(id.clone()).or_insert_with(|| EndpointLive::new(true));
             entry.last_check_ms = now_ms();
+            let was_healthy = entry.healthy;
 
             match result {
                 ProbeResult::Healthy => {
@@ -329,9 +347,10 @@ async fn run_health_check_loop(
                             endpoint = %format!("{}:{}", id.address, id.port),
                             "health: endpoint HEALTHY"
                         );
+                        emit_health_transition(id, "unhealthy", "healthy", metrics.as_deref());
                     }
 
-                    emit_endpoint_up(id, true);
+                    emit_endpoint_up(id, true, metrics.as_deref());
                 }
                 ProbeResult::Unhealthy(ref reason) => {
                     entry.consecutive_successes = 0;
@@ -348,6 +367,7 @@ async fn run_health_check_loop(
                             reason = %reason,
                             "health: endpoint UNHEALTHY"
                         );
+                        emit_health_transition(id, "healthy", "unhealthy", metrics.as_deref());
                     } else {
                         debug!(
                             cluster = %id.cluster,
@@ -358,9 +378,11 @@ async fn run_health_check_loop(
                         );
                     }
 
-                    emit_endpoint_up(id, false);
+                    emit_endpoint_up(id, false, metrics.as_deref());
                 }
             }
+
+            let _ = was_healthy; // used for transition detection above
 
             new_map.insert(
                 id.clone(),
@@ -498,42 +520,53 @@ fn now_ms() -> u64 {
         .as_millis() as u64
 }
 
-/// Emit `armageddon_forge_endpoint_up{cluster,endpoint}` (best-effort).
-fn emit_endpoint_up(id: &EndpointId, healthy: bool) {
-    // Uses a static Prometheus gauge registered lazily.
-    // Failures are silently ignored (metrics are informational, not load-bearing).
-    let _ = (id, healthy); // suppress unused warnings — real impl below
-
-    #[cfg(feature = "pingora")]
-    {
-        use std::sync::OnceLock;
-        static GAUGE: OnceLock<prometheus::IntGaugeVec> = OnceLock::new();
-        let g = GAUGE.get_or_init(|| {
-            prometheus::register_int_gauge_vec!(
-                "armageddon_forge_endpoint_up",
-                "1 = endpoint healthy, 0 = unhealthy",
-                &["cluster", "endpoint"]
-            )
-            .unwrap_or_else(|_| {
-                prometheus::IntGaugeVec::new(
-                    prometheus::Opts::new("armageddon_forge_endpoint_up_fallback", "fallback"),
-                    &["cluster", "endpoint"],
-                )
-                .unwrap()
-            })
-        });
-        let ep_label = format!("{}:{}", id.address, id.port);
-        if let Ok(gauge) = g.get_metric_with_label_values(&[&id.cluster, &ep_label]) {
-            gauge.set(if healthy { 1 } else { 0 });
-        }
+/// Returns a short static string label for the check type, used as the `type`
+/// Prometheus label in `armageddon_forge_health_check_duration_seconds`.
+fn check_type_label(check_type: &HealthCheckType) -> &'static str {
+    match check_type {
+        HealthCheckType::Http { .. } => "http",
+        HealthCheckType::Tcp { .. } => "tcp",
+        HealthCheckType::Grpc { .. } => "grpc",
     }
 }
 
-/// Emit `armageddon_forge_health_check_duration_seconds` (best-effort).
-fn emit_probe_duration(id: &EndpointId, duration: Duration) {
-    let _ = (id, duration);
-    // Histogram registration follows the same OnceLock pattern as above.
-    // TODO(#103): register histogram when Prometheus registry wiring is done.
+/// Set `armageddon_forge_endpoint_up{cluster,endpoint}` gauge.
+///
+/// Silently ignores metric errors (metrics are informational, not load-bearing).
+fn emit_endpoint_up(id: &EndpointId, healthy: bool, metrics: Option<&PingoraMetrics>) {
+    let Some(m) = metrics else { return };
+    let ep_label = format!("{}:{}", id.address, id.port);
+    m.forge_endpoint_up
+        .with_label_values(&[&id.cluster, &ep_label])
+        .set(if healthy { 1 } else { 0 });
+}
+
+/// Observe `armageddon_forge_health_check_duration_seconds{cluster,endpoint,type}`.
+fn emit_probe_duration(
+    id: &EndpointId,
+    check_type: &'static str,
+    duration: Duration,
+    metrics: Option<&PingoraMetrics>,
+) {
+    let Some(m) = metrics else { return };
+    let ep_label = format!("{}:{}", id.address, id.port);
+    m.forge_health_check_duration_seconds
+        .with_label_values(&[&id.cluster, &ep_label, check_type])
+        .observe(duration.as_secs_f64());
+}
+
+/// Increment `armageddon_forge_health_transitions_total{cluster,endpoint,from,to}`.
+fn emit_health_transition(
+    id: &EndpointId,
+    from: &'static str,
+    to: &'static str,
+    metrics: Option<&PingoraMetrics>,
+) {
+    let Some(m) = metrics else { return };
+    let ep_label = format!("{}:{}", id.address, id.port);
+    m.forge_health_transitions_total
+        .with_label_values(&[&id.cluster, &ep_label, from, to])
+        .inc();
 }
 
 // ── tests ─────────────────────────────────────────────────────────────────────
@@ -794,5 +827,88 @@ mod tests {
             HealthConfig::default(),
         );
         assert_eq!(checker.registrations.len(), 1);
+    }
+
+    // ── Metrics wiring ─────────────────────────────────────────────────────
+
+    /// `emit_endpoint_up` sets the gauge to 1 for a healthy endpoint.
+    #[test]
+    fn emit_endpoint_up_sets_gauge() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+        use std::sync::Arc;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+        let id = EndpointId::new("svc-a", "10.1.2.3", 8080);
+
+        emit_endpoint_up(&id, true, Some(&m));
+        emit_endpoint_up(&id, false, Some(&m)); // overwrite to 0
+
+        let families = r.gather();
+        let fam = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_forge_endpoint_up")
+            .expect("gauge must exist");
+        let val = fam
+            .get_metric()
+            .first()
+            .map(|m| m.get_gauge().get_value())
+            .unwrap_or(-1.0);
+        assert_eq!(val, 0.0, "second call sets gauge to 0 (unhealthy)");
+    }
+
+    /// `emit_probe_duration` records a histogram observation.
+    #[test]
+    fn emit_probe_duration_records_observation() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+        use std::sync::Arc;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+        let id = EndpointId::new("svc-b", "10.1.2.4", 8080);
+
+        emit_probe_duration(&id, "http", Duration::from_millis(5), Some(&m));
+        emit_probe_duration(&id, "http", Duration::from_millis(10), Some(&m));
+
+        let families = r.gather();
+        let fam = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_forge_health_check_duration_seconds")
+            .expect("histogram must exist");
+        let sample_count = fam
+            .get_metric()
+            .first()
+            .map(|m| m.get_histogram().get_sample_count())
+            .unwrap_or(0);
+        assert_eq!(sample_count, 2, "two observations must be recorded");
+    }
+
+    /// `emit_health_transition` increments the transitions counter.
+    #[test]
+    fn emit_health_transition_increments_counter() {
+        use crate::pingora::metrics::PingoraMetrics;
+        use prometheus::Registry;
+        use std::sync::Arc;
+
+        let r = Registry::new();
+        let m = Arc::new(PingoraMetrics::new(&r).unwrap());
+        let id = EndpointId::new("svc-c", "10.1.2.5", 9090);
+
+        emit_health_transition(&id, "healthy", "unhealthy", Some(&m));
+        emit_health_transition(&id, "unhealthy", "healthy", Some(&m));
+
+        let families = r.gather();
+        let fam = families
+            .iter()
+            .find(|f| f.get_name() == "armageddon_forge_health_transitions_total")
+            .expect("transitions counter must exist");
+        let total: f64 = fam
+            .get_metric()
+            .iter()
+            .map(|m| m.get_counter().get_value())
+            .sum();
+        assert_eq!(total, 2.0, "two transitions must be counted");
     }
 }
