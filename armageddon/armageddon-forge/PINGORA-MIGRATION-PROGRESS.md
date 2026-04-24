@@ -30,9 +30,14 @@ la vague 1 autonome (2026-04-20).
 | 95ef6ac | feat(armageddon-forge,circuit-breaker): Closed/Open/HalfOpen state machine (close M2-cb wave 2) | M2 | +629 sur 1 fichier | 186/186 |
 | 8f5d5e1 | feat(armageddon-forge,health): background health checker ArcSwap (close M2-health wave 2) | M2 | +794 sur 1 fichier | 186/186 |
 | 0f2ede3 | feat(armageddon-forge,retry): armageddon-retry Pingora adapter (close M2-retry wave 2) | M2 | +492 sur 2 fichiers | 186/186 |
+| 997af61 | feat(armageddon-forge,aegis): enrich HttpRequest/ConnectionInfo from RequestCtx (close M3-1 wave 2) | #104 | +72 / -18 sur 1 fichier | 186+/186 |
+| b1595c7 | feat(armageddon-forge,sentinel): port WAF/GeoIP/JA4 adapter (close M3-2 wave 2) | #104 | +294 / -24 sur 2 fichiers | 213/213 |
+| bf2ac37 | feat(armageddon-forge,arbiter): port anomaly detection adapter (close M3-3 wave 2) | #104 | +214 / -21 sur 1 fichier | 213/213 |
+| 9084e33 | feat(armageddon-forge,oracle): port ML scoring adapter with OTEL propagation (close M3-4 wave 2) | #104 | +249 / -21 sur 1 fichier | 213/213 |
+| daaa2eb | feat(armageddon-forge,nexus): port aggregator adapter — fuse engine signals into verdict (close M3-5 wave 2) | #104 | +348 / -21 sur 1 fichier | 213/213 |
 
-**Total code ajouté** : environ 10 155 LOC net nouveaux + 898 LOC sécurité préservée.
-**Total tests** : 186/186 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
+**Total code ajouté** : environ 11 332 LOC net nouveaux + 898 LOC sécurité préservée.
+**Total tests** : 213/213 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
 
 ## État par gate
 
@@ -97,26 +102,51 @@ Pas de reliquat. Prêt pour M1 consolidation.
 `tls_required && expected_spiffe_id.is_none()`. Verifié par
 `resolver_mtls_without_expected_spiffe_fails`.
 
-### Gate #104 — M3 8 moteurs sécurité **(vague 1, 2/9 modules)**
+### Gate #104 — M3 8 moteurs sécurité **(batch A 5/7, wave 2)**
 
 | Module | État | LOC | Tests |
 |---|---|---:|---:|
 | `pipeline.rs` | **done wave 1** | 404 | 6/6 |
-| `aegis_adapter.rs` | **done wave 1** (Regorus réel) | 249 | 4/4 |
-| `sentinel_adapter.rs` | stub adapter | 47 | — |
-| `arbiter_adapter.rs` | stub adapter | 44 | — |
-| `oracle_adapter.rs` | stub adapter | 44 | — |
-| `nexus_adapter.rs` | stub adapter | 45 | — |
-| `ai_adapter.rs` | stub adapter | 41 | — |
-| `wasm_adapter.rs` | stub adapter | 41 | — |
+| `aegis_adapter.rs` | **done wave 2** (enrichi M3-1) | ~320 | 4/4 |
+| `sentinel_adapter.rs` | **done wave 2** (WAF/GeoIP/JA4) | ~280 | 6/6 |
+| `arbiter_adapter.rs` | **done wave 2** (Aho-Corasick CRS) | ~220 | 6/6 |
+| `oracle_adapter.rs` | **done wave 2** (ONNX + OTEL) | ~260 | 6/6 |
+| `nexus_adapter.rs` | **done wave 2** (aggregator brain) | ~390 | 8/8 |
+| `ai_adapter.rs` | stub adapter — **batch B** | 41 | — |
+| `wasm_adapter.rs` | stub adapter — **batch B** | 41 | — |
 
 Pipeline utilise `FuturesUnordered` + `tokio::time::timeout` par moteur.
 Drop = cancel des futures en vol → short-circuit Deny efficace.
 
-**Placeholder à lever** : `aegis_adapter.rs:20` construit un `HttpRequest` +
-`ConnectionInfo` avec chaînes vides. Les politiques Rego qui inspectent la
-méthode/path/headers voient du vide. À corriger quand `RequestCtx` est
-enrichi (M1 wave 2 consolidation).
+**M3 batch A — TERMINÉ** (commits 997af61 → daaa2eb, 2026-04-24) :
+
+- **M3-1 (AEGIS enrichissement)** : `request_context_from_ctx()` forwarde
+  désormais `user_id`, `tenant_id`, `roles`, `bearer_token`, `cluster`,
+  `request_id`, `trace_id` comme headers et champs `RequestContext`. Les
+  policies Rego voient les vraies valeurs issues du M1 JWT/router.
+
+- **M3-2 (SENTINEL)** : délègue à `armageddon_sentinel::Sentinel::inspect()`.
+  Short-circuit `ctx.waf_score >= 0.9`. IPS + GeoIP + JA3/JA4 + DLP.
+  Timeout 15 ms.
+
+- **M3-3 (ARBITER)** : délègue à `armageddon_arbiter::Arbiter::inspect()`.
+  Aho-Corasick + OWASP CRS v4, anomaly scoring. Flag→Allow(confidence).
+  Timeout 20 ms.
+
+- **M3-4 (ORACLE)** : délègue à `armageddon_oracle::Oracle::inspect()`.
+  22-feature ONNX model. OTEL context propagé via `tracing::debug!` avec
+  `trace_id`/`span_id` (full OTLP export en M6). Timeout 25 ms.
+
+- **M3-5 (NEXUS)** : lit `ctx.waf_score` + `ctx.ai_score`, synthétise
+  des `Decision` avec severity-scaling pour préserver le score dans le
+  `CompositeScorer` pondéré. Multi-vector boost +0.2. Block→Deny,
+  Challenge/LogOnly→Allow. Timeout 10 ms.
+
+**Nouvelles dépendances** (ajoutées au `Cargo.toml` forge) :
+`armageddon-sentinel`, `armageddon-arbiter`, `armageddon-nexus`.
+
+**TODO(M3 batch B)** : `ai_adapter.rs` + `wasm_adapter.rs` (agent ultérieur).
+Le WASM requiert un thread OS dédié (Wasmtime non-`Send`) + channel mpsc.
 
 ### Gate #105 — M4 Protocoles **(vague 1, 1/4 modules)**
 
@@ -215,6 +245,14 @@ pipx install cmake   # fallback si paquet système pas dispo
 | `cargo check -p armageddon` | ✅ clean (GqlLimitError fix inchangé) |
 | `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **186/186 passed** (+51 nouveaux tests M2) |
 
+### Fin M3 batch A (5/7 adapters) wave 2 (2026-04-24)
+
+| Commande | Résultat |
+|---|---|
+| `cargo check -p armageddon-forge --features pingora` | ✅ clean (1 warning pré-existant dans `feature_flags.rs`) |
+| `cargo check -p armageddon` | ✅ clean (GqlLimitError fix inchangé) |
+| `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **213/213 passed** (+27 nouveaux tests M3 batch A) |
+
 ## TODOs documentés (M3 wave 2 et au-delà)
 
 - **JWT session cache** (`jwt:session:<sha256(token)>`): le spec M1 wave 2
@@ -242,7 +280,7 @@ pipx install cmake   # fallback si paquet système pas dispo
   OnceLock registration non terminée. Câbler en M5 wave 2 avec le wiring
   Prometheus complet du gateway.
 
-## Ce qui reste (wave 2, après M2)
+## Ce qui reste (wave 2, après M3 batch A)
 
 Classement par ordre d'impact, pour reprise de session :
 
@@ -254,9 +292,15 @@ Classement par ordre d'impact, pour reprise de session :
    - health: PingoraHealthChecker + ArcSwap publish + Http/Tcp/Grpc probes
    - retry: PingoraRetryPolicy + armageddon-retry adapter + Retry-After
 
-3. **M3 wave 2** — 6 adapters restants (SENTINEL, ARBITER, ORACLE, NEXUS,
-   AI, WASM). WASM aura le plus gros travail (thread-unsafe Wasmtime →
-   thread tokio dédié + channel).
+3. **M3 batch A — TERMINÉE** (commits 997af61 → daaa2eb, 5/7 adapters)
+   - aegis: enrichissement RequestCtx → Rego (M3-1)
+   - sentinel: IPS + GeoIP + JA3/JA4 + DLP (M3-2)
+   - arbiter: Aho-Corasick CRS WAF (M3-3)
+   - oracle: ONNX 22-feature + OTEL propagation (M3-4)
+   - nexus: aggregator brain composite scoring (M3-5)
+
+4. **M3 batch B** — `ai_adapter.rs` + `wasm_adapter.rs` (agent ultérieur).
+   WASM requiert un thread OS dédié (Wasmtime non-`Send`) + channel mpsc.
 
 4. **M4 wave 2** — gRPC-Web (798 LOC à reporter), WebSocket (via
    `session.upgrade_to_ws()` natif Pingora), traffic_split, wiring
