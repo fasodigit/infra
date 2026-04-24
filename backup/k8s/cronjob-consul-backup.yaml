@@ -1,0 +1,112 @@
+# SPDX-FileCopyrightText: 2026 FASO DIGITALISATION
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# CronJob: Consul snapshot — daily backup
+
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: faso-consul-backup
+  namespace: faso-backup
+  labels:
+    app.kubernetes.io/name: consul-backup
+    app.kubernetes.io/part-of: faso-digitalisation
+    app.kubernetes.io/component: backup
+spec:
+  # Daily at 02:30 UTC (offset from Vault to avoid overlap)
+  schedule: "30 2 * * *"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 1800
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: consul-backup
+            app.kubernetes.io/component: backup
+          annotations:
+            vault.hashicorp.com/agent-inject: "true"
+            vault.hashicorp.com/role: "faso-backup"
+            vault.hashicorp.com/agent-inject-secret-consul-token: "faso/data/backup/consul"
+            vault.hashicorp.com/agent-inject-template-consul-token: |
+              {{- with secret "faso/data/backup/consul" -}}
+              {{ .Data.data.acl_token }}
+              {{- end -}}
+            vault.hashicorp.com/agent-inject-secret-s3-credentials: "faso/data/backup/s3"
+            vault.hashicorp.com/agent-inject-template-s3-credentials: |
+              {{- with secret "faso/data/backup/s3" -}}
+              export AWS_ACCESS_KEY_ID={{ .Data.data.access_key }}
+              export AWS_SECRET_ACCESS_KEY={{ .Data.data.secret_key }}
+              {{- end -}}
+            vault.hashicorp.com/agent-inject-secret-encryption-key: "faso/data/backup/encryption"
+            vault.hashicorp.com/agent-inject-template-encryption-key: |
+              {{- with secret "faso/data/backup/encryption" -}}
+              {{ .Data.data.age_public_key }}
+              {{- end -}}
+        spec:
+          serviceAccountName: faso-backup
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: consul-backup
+              image: faso/backup-tools:latest
+              command:
+                - /bin/bash
+                - -c
+                - |
+                  source /vault/secrets/s3-credentials
+                  export CONSUL_HTTP_TOKEN=$(cat /vault/secrets/consul-token)
+                  exec /scripts/consul-backup.sh
+              env:
+                - name: CONSUL_HTTP_ADDR
+                  value: "http://consul.faso-vault.svc.cluster.local:8500"
+                - name: BACKUP_ENCRYPTION_KEY_FILE
+                  value: "/vault/secrets/encryption-key"
+                - name: S3_BUCKET
+                  valueFrom:
+                    configMapKeyRef:
+                      name: faso-backup-config
+                      key: s3-bucket
+                - name: S3_ENDPOINT
+                  valueFrom:
+                    configMapKeyRef:
+                      name: faso-backup-config
+                      key: s3-endpoint
+                - name: PUSHGATEWAY_URL
+                  value: "http://prometheus-pushgateway.faso-observability.svc.cluster.local:9091"
+              resources:
+                requests:
+                  cpu: 100m
+                  memory: 128Mi
+                limits:
+                  cpu: 500m
+                  memory: 512Mi
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 512Mi
+            - name: scripts
+              configMap:
+                name: faso-backup-scripts
+                defaultMode: 0755
