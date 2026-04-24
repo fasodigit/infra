@@ -21,13 +21,17 @@ use async_trait::async_trait;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 
+use bytes::Bytes;
 use pingora_core::prelude::*;
 use pingora_proxy::{ProxyHttp, Session};
 
 use armageddon_common::types::Endpoint;
 
-use crate::pingora::ctx::RequestCtx;
+use crate::pingora::ctx::{RequestCtx, CompressionSession};
 use crate::pingora::filters::{Decision, SharedFilter};
+use crate::pingora::protocols::compression::{
+    CompressionFilter, CompressionStream, NegotiationOutcome,
+};
 
 // ── upstream registry ──────────────────────────────────────────────────────
 
@@ -84,6 +88,11 @@ pub struct PingoraGatewayConfig {
     pub pool_size: usize,
     /// Ordered list of filters to invoke at each hook.
     pub filters: Vec<SharedFilter>,
+    /// Optional response-body compression negotiator.
+    ///
+    /// `None` → compression disabled.  Set this to enable brotli/gzip/zstd
+    /// on eligible responses (M4 wiring).
+    pub compression: Option<CompressionFilter>,
 }
 
 impl std::fmt::Debug for PingoraGatewayConfig {
@@ -106,6 +115,7 @@ impl Default for PingoraGatewayConfig {
             upstream_timeout_ms: 30_000,
             pool_size: 128,
             filters: Vec::new(),
+            compression: None,
         }
     }
 }
@@ -290,6 +300,12 @@ impl ProxyHttp for PingoraGateway {
 
     /// Run the filter chain's `on_response` hooks, then append the
     /// `x-forge-via` banner.
+    ///
+    /// Compression negotiation (M4-1): after the filter chain runs, we inspect
+    /// the upstream headers, run `CompressionFilter::negotiate`, and — when the
+    /// outcome is `Compress(enc)` — mutate the response headers and stash a
+    /// `CompressionSession` in `ctx` so that `response_body_filter` can encode
+    /// each chunk as it arrives.
     async fn response_filter(
         &self,
         session: &mut Session,
@@ -312,6 +328,93 @@ impl ProxyHttp for PingoraGateway {
             }
         }
 
+        // ── M4-1: compression negotiation ──────────────────────────────────
+        if let Some(compression_cfg) = &self.config.compression {
+            let accept_encoding = session
+                .req_header()
+                .headers
+                .get("accept-encoding")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            let content_encoding = upstream_response
+                .headers
+                .get("content-encoding")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            let content_type = upstream_response
+                .headers
+                .get("content-type")
+                .and_then(|v| v.to_str().ok())
+                .map(|s| s.to_string());
+
+            let content_length: Option<usize> = upstream_response
+                .headers
+                .get("content-length")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|s| s.parse().ok());
+
+            let outcome = compression_cfg.negotiate(
+                accept_encoding.as_deref(),
+                content_encoding.as_deref(),
+                content_type.as_deref(),
+                content_length,
+            );
+
+            if let NegotiationOutcome::Compress(encoding) = outcome {
+                // Strip Content-Length (body size will change).
+                upstream_response.remove_header("content-length");
+                // Set Content-Encoding.
+                upstream_response
+                    .insert_header("content-encoding", encoding.as_header_value())
+                    .map_err(|_| Error::new_str("content-encoding insert failed"))?;
+                // Vary: Accept-Encoding — append or create.
+                let vary = upstream_response
+                    .headers
+                    .get("vary")
+                    .and_then(|v| v.to_str().ok())
+                    .map(|s| s.to_string());
+                let new_vary = match vary {
+                    Some(existing) if existing.to_lowercase().contains("accept-encoding") => {
+                        existing
+                    }
+                    Some(existing) => format!("{}, Accept-Encoding", existing),
+                    None => "Accept-Encoding".to_string(),
+                };
+                upstream_response
+                    .insert_header("vary", new_vary.as_str())
+                    .map_err(|_| Error::new_str("vary insert failed"))?;
+
+                // Construct the per-request encoder and stash in ctx.
+                let level = compression_cfg.level();
+                match CompressionStream::new(encoding, level) {
+                    Ok(stream) => {
+                        ctx.compression_session = Some(CompressionSession {
+                            stream,
+                            encoding,
+                            level,
+                        });
+                        tracing::debug!(
+                            encoding = encoding.as_header_value(),
+                            "compression negotiated for response"
+                        );
+                    }
+                    Err(e) => {
+                        // Encoder init failure (rare, only zstd can fail).
+                        // Log + degrade gracefully: send uncompressed.
+                        tracing::warn!(
+                            error = %e,
+                            "compression encoder init failed — falling back to identity"
+                        );
+                        // Undo header mutations so the response is consistent.
+                        upstream_response.remove_header("content-encoding");
+                        upstream_response.remove_header("vary");
+                    }
+                }
+            }
+        }
+
         upstream_response
             .insert_header("x-forge-via", "armageddon-pingora")
             .map_err(|_| Error::new_str("x-forge-via insert failed"))?;
@@ -322,6 +425,72 @@ impl ProxyHttp for PingoraGateway {
             "pingora response forwarded"
         );
         Ok(())
+    }
+
+    /// Stream-compress each body chunk using the encoder stashed in
+    /// `ctx.compression_session` by `response_filter`.
+    ///
+    /// On the final chunk (`end_of_stream = true`) the encoder is consumed via
+    /// `finish()` which flushes the trailing bytes (gzip footer, zstd epilogue).
+    ///
+    /// When `ctx.compression_session` is `None` the body passes through
+    /// unchanged.
+    fn response_body_filter(
+        &self,
+        _session: &mut Session,
+        body: &mut Option<Bytes>,
+        end_of_stream: bool,
+        ctx: &mut Self::CTX,
+    ) -> Result<Option<std::time::Duration>>
+    where
+        Self::CTX: Send + Sync,
+    {
+        // No compression negotiated for this request — pass through.
+        if ctx.compression_session.is_none() {
+            return Ok(None);
+        }
+
+        if let Some(chunk) = body.take() {
+            let session = ctx.compression_session.as_mut().expect("checked above");
+            match session.stream.write(&chunk) {
+                Ok(compressed) => {
+                    // Drain + optionally finish.
+                    let mut out = compressed;
+                    if end_of_stream {
+                        // Take ownership of the encoder to call `finish()`.
+                        let enc_session = ctx.compression_session.take().unwrap();
+                        match enc_session.stream.finish() {
+                            Ok(tail) => out.extend_from_slice(&tail),
+                            Err(e) => {
+                                tracing::warn!(error=%e, "compression finish error");
+                            }
+                        }
+                    }
+                    if !out.is_empty() {
+                        *body = Some(Bytes::from(out));
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(error=%e, "compression write error — dropping encoder");
+                    ctx.compression_session = None;
+                }
+            }
+        } else if end_of_stream {
+            // Empty final chunk — still need to flush the encoder.
+            if let Some(enc_session) = ctx.compression_session.take() {
+                match enc_session.stream.finish() {
+                    Ok(tail) if !tail.is_empty() => {
+                        *body = Some(Bytes::from(tail));
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error=%e, "compression finish error on empty eos");
+                    }
+                }
+            }
+        }
+
+        Ok(None)
     }
 
     /// Run the filter chain's `on_logging` hooks (fan-out; no early exit).
@@ -389,6 +558,7 @@ mod tests {
             upstream_timeout_ms: 5_000,
             pool_size: 64,
             filters: Vec::new(),
+            compression: None,
         };
         let registry = Arc::new(UpstreamRegistry::new());
         let gw = PingoraGateway::new(cfg, registry);

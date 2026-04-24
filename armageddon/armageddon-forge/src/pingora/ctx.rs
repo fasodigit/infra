@@ -24,12 +24,25 @@
 //! | `waf_score`               | SENTINEL / ARBITER engines  | M3 #104|
 //! | `ai_score`                | ORACLE / AI engines         | M3 #104|
 //! | `cdc_outbox_id`           | Webhook / CDC plumbing      | M4     |
+//! | `compression_session`     | Compression wiring          | M4 #105|
+//! | `grpc_web_mode`           | gRPC-Web protocol handler   | M4 #105|
+//! | `ws_upgrade`              | WebSocket protocol handler  | M4 #105|
+//! | `traffic_split_shadow`    | Traffic split decision      | M4 #105|
 //!
 //! The struct derives `Default` so `PingoraGateway::new_ctx` can simply call
 //! [`RequestCtx::new`] (which fills `request_id` with a fresh UUID).
 
+#[cfg(feature = "pingora")]
+use crate::pingora::protocols::compression::{CompressionLevel, CompressionStream, Encoding};
+
 /// Per-request context shared across filters, engines and the upstream path.
-#[derive(Debug, Default, Clone)]
+///
+/// # Clone semantics for M4 fields
+///
+/// `compression_session` is **not cloned** — a live encoder state is
+/// per-request and must not be shared.  Cloning a `RequestCtx` (e.g. for
+/// metrics snapshots) produces a copy with `compression_session = None`.
+#[derive(Debug)]
 pub struct RequestCtx {
     /// Unique request identifier — UUID v4 generated in `new_ctx`.
     /// Injected as the `x-forge-id` header by the core request filter.
@@ -101,6 +114,97 @@ pub struct RequestCtx {
 
     /// Webhook / CDC outbox correlation identifier (M4).
     pub cdc_outbox_id: Option<String>,
+
+    // ── M4 protocol scratch slots ────────────────────────────────────────────
+
+    /// Per-request compression encoder state, held between `response_filter`
+    /// (header negotiation) and `response_body_filter` (body streaming).
+    ///
+    /// `None` means pass-through (no compression for this response).
+    /// Set by the compression wiring in `gateway.rs` after negotiation.
+    #[cfg(feature = "pingora")]
+    pub compression_session: Option<CompressionSession>,
+
+    /// When set, the downstream request was detected as gRPC-Web.
+    ///
+    /// Carries the variant (`Binary` / `Text`) so that body filters can
+    /// encode/decode correctly without re-inspecting headers.
+    pub grpc_web_mode: Option<GrpcWebMode>,
+
+    /// True when the downstream request carries valid WebSocket upgrade
+    /// headers.  Set by the WebSocket detection code in `request_filter`.
+    pub ws_upgrade: bool,
+
+    /// When traffic_split decides a shadow target, its cluster name is stored
+    /// here so that `upstream_peer` can fire-and-forget the shadow request.
+    pub traffic_split_shadow: Option<String>,
+}
+
+// ── M4 auxiliary types ─────────────────────────────────────────────────────
+
+/// State maintained between `response_filter` and `response_body_filter` for
+/// streaming compression.
+///
+/// `response_filter` negotiates encoding and stores this struct in
+/// `ctx.compression_session`; every subsequent `response_body_filter` call
+/// feeds bytes into `stream` and drains compressed output.
+#[cfg(feature = "pingora")]
+pub struct CompressionSession {
+    /// Active streaming encoder — consumed on the final chunk via `finish()`.
+    pub stream: CompressionStream,
+    /// The chosen encoding (mirrors `stream.encoding()`, kept for quick access).
+    pub encoding: Encoding,
+    /// Compression level chosen at negotiation time.
+    pub level: CompressionLevel,
+}
+
+#[cfg(feature = "pingora")]
+impl std::fmt::Debug for CompressionSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CompressionSession")
+            .field("encoding", &self.encoding)
+            .field("level", &self.level)
+            .finish()
+    }
+}
+
+/// gRPC-Web content-type variant detected on the downstream request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GrpcWebMode {
+    /// `application/grpc-web+proto` — binary framing.
+    Binary,
+    /// `application/grpc-web-text` — base64-encoded framing.
+    Text,
+}
+
+impl Default for RequestCtx {
+    fn default() -> Self {
+        Self {
+            request_id: String::new(),
+            trace_id: String::new(),
+            span_id: String::new(),
+            request_start_ms: 0,
+            cluster: String::new(),
+            upstream_addr: String::new(),
+            user_id: None,
+            tenant_id: None,
+            roles: Vec::new(),
+            bearer_token: None,
+            spiffe_peer_expected: None,
+            spiffe_peer: None,
+            feature_flags: Vec::new(),
+            cors_origin: None,
+            veil_nonce: None,
+            waf_score: 0.0,
+            ai_score: 0.0,
+            cdc_outbox_id: None,
+            #[cfg(feature = "pingora")]
+            compression_session: None,
+            grpc_web_mode: None,
+            ws_upgrade: false,
+            traffic_split_shadow: None,
+        }
+    }
 }
 
 impl RequestCtx {
@@ -109,6 +213,42 @@ impl RequestCtx {
         Self {
             request_id: uuid::Uuid::new_v4().to_string(),
             ..Self::default()
+        }
+    }
+}
+
+/// Manual `Clone` impl that resets `compression_session` to `None`.
+///
+/// A streaming encoder is a per-request resource — cloning it makes no
+/// sense.  Callers that clone a `RequestCtx` (e.g. to snapshot metrics)
+/// get a copy with the encoder slot cleared.
+impl Clone for RequestCtx {
+    fn clone(&self) -> Self {
+        Self {
+            request_id: self.request_id.clone(),
+            trace_id: self.trace_id.clone(),
+            span_id: self.span_id.clone(),
+            request_start_ms: self.request_start_ms,
+            cluster: self.cluster.clone(),
+            upstream_addr: self.upstream_addr.clone(),
+            user_id: self.user_id.clone(),
+            tenant_id: self.tenant_id.clone(),
+            roles: self.roles.clone(),
+            bearer_token: self.bearer_token.clone(),
+            spiffe_peer_expected: self.spiffe_peer_expected.clone(),
+            spiffe_peer: self.spiffe_peer.clone(),
+            feature_flags: self.feature_flags.clone(),
+            cors_origin: self.cors_origin.clone(),
+            veil_nonce: self.veil_nonce.clone(),
+            waf_score: self.waf_score,
+            ai_score: self.ai_score,
+            cdc_outbox_id: self.cdc_outbox_id.clone(),
+            // Encoder state is per-request; intentionally not cloned.
+            #[cfg(feature = "pingora")]
+            compression_session: None,
+            grpc_web_mode: self.grpc_web_mode,
+            ws_upgrade: self.ws_upgrade,
+            traffic_split_shadow: self.traffic_split_shadow.clone(),
         }
     }
 }
@@ -156,5 +296,57 @@ mod tests {
         assert_eq!(c.bearer_token.as_deref(), Some("eyJ..."));
         // feature_flags is unaffected.
         assert!(c.feature_flags.is_empty());
+    }
+
+    // -- M4 protocol slots ---------------------------------------------------
+
+    #[test]
+    fn m4_slots_default_to_none_or_false() {
+        let c = RequestCtx::default();
+        assert!(c.grpc_web_mode.is_none());
+        assert!(!c.ws_upgrade);
+        assert!(c.traffic_split_shadow.is_none());
+    }
+
+    #[test]
+    fn grpc_web_mode_is_settable() {
+        let mut c = RequestCtx::new();
+        c.grpc_web_mode = Some(GrpcWebMode::Binary);
+        assert_eq!(c.grpc_web_mode, Some(GrpcWebMode::Binary));
+        c.grpc_web_mode = Some(GrpcWebMode::Text);
+        assert_eq!(c.grpc_web_mode, Some(GrpcWebMode::Text));
+    }
+
+    #[test]
+    fn ws_upgrade_is_settable() {
+        let mut c = RequestCtx::new();
+        c.ws_upgrade = true;
+        assert!(c.ws_upgrade);
+    }
+
+    #[test]
+    fn traffic_split_shadow_is_settable() {
+        let mut c = RequestCtx::new();
+        c.traffic_split_shadow = Some("shadow-cluster".to_string());
+        assert_eq!(
+            c.traffic_split_shadow.as_deref(),
+            Some("shadow-cluster")
+        );
+    }
+
+    #[test]
+    fn clone_resets_compression_session() {
+        let mut c = RequestCtx::new();
+        c.grpc_web_mode = Some(GrpcWebMode::Text);
+        c.ws_upgrade = true;
+        c.traffic_split_shadow = Some("canary".to_string());
+        // Clone must not panic and must preserve non-encoder fields.
+        let c2 = c.clone();
+        assert_eq!(c2.grpc_web_mode, Some(GrpcWebMode::Text));
+        assert!(c2.ws_upgrade);
+        assert_eq!(c2.traffic_split_shadow.as_deref(), Some("canary"));
+        // compression_session is None after clone (encoder not clonable).
+        #[cfg(feature = "pingora")]
+        assert!(c2.compression_session.is_none());
     }
 }
