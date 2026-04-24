@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - name: Install sloth
         run: |
           curl -sLo sloth.tar.gz https://github.com/slok/sloth/releases/download/v0.12.0/sloth-linux-amd64.tar.gz
