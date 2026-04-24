@@ -1,6 +1,545 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-//! Traffic splitting / shadow traffic.
+//! Canary / A-B / shadow traffic splitting for the Pingora gateway (M4-4 wave 2).
 //!
-//! **M0 scaffolding**: empty stub.  M4 ports `src/traffic_split.rs`.
+//! Ported from `src/traffic_split.rs` (hyper path) and extended with
+//! Pingora-specific integration points.
+//!
+//! ## Design
+//!
+//! The [`TrafficSplitter`] holds an [`arc_swap::ArcSwap`]-protected route
+//! table that maps route names to [`SplitSpec`]s.  It is hot-reloadable:
+//! xDS pushes or operator config changes call [`TrafficSplitter::update`]
+//! without blocking active requests.
+//!
+//! ## Routing modes
+//!
+//! ### Canary / A-B
+//!
+//! Probabilistic routing: weights sum to 100.  Routing is **sticky** — the
+//! same `sticky_value` (e.g. `user_id`, session cookie) always maps to the
+//! same variant using a deterministic blake3 hash.
+//!
+//! ### Shadow
+//!
+//! 100 % of traffic goes to the *primary* cluster; a fire-and-forget copy is
+//! sent to the *shadow* cluster at the configured sample rate.  The shadow
+//! response is **ignored**.
+//!
+//! ## Integration in `upstream_peer()`
+//!
+//! ```rust,ignore
+//! // In PingoraGateway::upstream_peer():
+//! if let Some(decision) = self.splitter.decide(&ctx.cluster, sticky_value) {
+//!     ctx.cluster = decision.primary.clone();
+//!     ctx.traffic_split_shadow = decision.shadow.clone();
+//! }
+//! ```
+//!
+//! The shadow request is dispatched as a `tokio::spawn` fire-and-forget in
+//! the calling code after `upstream_peer` returns.
+//!
+//! ## Metrics
+//!
+//! TODO(M5): wire `armageddon_traffic_split_decisions_total{route, variant, decision}`
+//! counter once the Prometheus registry wiring is complete.
+//!
+//! ## Failure modes
+//!
+//! | Scenario | Behaviour |
+//! |----------|-----------|
+//! | Route not in table | `None` returned — caller uses default cluster |
+//! | Weight sum ≠ 100 (canary/A-B) | `SplitError::WeightSum` at validation |
+//! | No variants defined | `SplitError::NoVariants` |
+//! | Shadow sample_rate out of [0,1] | `SplitError::ShadowSampleRate` |
 
-// Intentionally empty — reserved for M4.
+use blake3::Hasher;
+use std::collections::HashMap;
+use std::sync::Arc;
+
+// ── Types ──────────────────────────────────────────────────────────────────
+
+/// One variant in a traffic split (maps to one upstream cluster).
+#[derive(Debug, Clone)]
+pub struct Variant {
+    /// Upstream cluster name matching an entry in the `UpstreamRegistry`.
+    pub cluster: String,
+    /// Integer weight in `0..=100`.  All weights in a `SplitSpec` must sum to 100.
+    pub weight: u32,
+    /// Human-readable label used in metrics (`variant="stable"`, etc.).
+    pub label: Option<String>,
+}
+
+/// How to split traffic among variants.
+#[derive(Debug, Clone)]
+pub enum SplitMode {
+    /// Probabilistic per-request routing.  Not intended as a long-lived split.
+    Canary,
+    /// A/B experiment.  Same mechanics as `Canary` but semantically long-lived.
+    AbTest {
+        /// Experiment identifier used in metrics (e.g. `"checkout-redesign"`).
+        name: String,
+    },
+    /// Shadow — primary always receives the request; the shadow cluster gets a
+    /// fire-and-forget copy.
+    Shadow {
+        /// Fraction of traffic to also shadow (0.0..=1.0).  1.0 = shadow every request.
+        sample_rate: f32,
+    },
+}
+
+/// Complete split specification for one route.
+#[derive(Debug, Clone)]
+pub struct SplitSpec {
+    /// Routing mode.
+    pub mode: SplitMode,
+    /// Ordered list of variants.  For `Shadow` mode the first is the primary,
+    /// the second is the shadow target.
+    pub variants: Vec<Variant>,
+    /// Header or cookie name to use as the sticky hash key.
+    ///
+    /// `None` → fall back to the caller-supplied `sticky_value` (typically the
+    /// client IP or user_id from `ctx`).
+    pub sticky_header: Option<String>,
+}
+
+impl SplitSpec {
+    /// Validate the spec.
+    ///
+    /// Returns `Err` when weight invariants are violated.
+    pub fn validate(&self) -> Result<(), SplitError> {
+        if self.variants.is_empty() {
+            return Err(SplitError::NoVariants);
+        }
+        match &self.mode {
+            SplitMode::Canary | SplitMode::AbTest { .. } => {
+                let sum: u32 = self.variants.iter().map(|v| v.weight).sum();
+                if sum != 100 {
+                    return Err(SplitError::WeightSum(sum));
+                }
+            }
+            SplitMode::Shadow { sample_rate } => {
+                if !((0.0_f32)..=1.0).contains(sample_rate) {
+                    return Err(SplitError::ShadowSampleRate(*sample_rate));
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+/// Result of routing one request.
+#[derive(Debug, Clone)]
+pub struct SplitDecision {
+    /// Cluster the request must be forwarded to.
+    pub primary: String,
+    /// Label of the chosen primary variant (for metrics).
+    pub primary_label: Option<String>,
+    /// When in shadow mode and sampled, the cluster to fire-and-forget to.
+    pub shadow: Option<String>,
+    /// The split mode that produced this decision (for metric labelling).
+    pub mode: SplitDecisionMode,
+}
+
+/// Mode tag on a [`SplitDecision`], used for metric labels.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SplitDecisionMode {
+    Canary,
+    AbTest,
+    Shadow,
+}
+
+/// Errors in split configuration or routing.
+#[derive(Debug, thiserror::Error)]
+pub enum SplitError {
+    /// Spec has no variants.
+    #[error("traffic split has no variants")]
+    NoVariants,
+    /// Weights do not sum to 100.
+    #[error("traffic split weights must sum to 100, got {0}")]
+    WeightSum(u32),
+    /// Shadow sample_rate is outside [0.0, 1.0].
+    #[error("shadow sample_rate must be in 0.0..=1.0, got {0}")]
+    ShadowSampleRate(f32),
+}
+
+// ── TrafficSplitter ────────────────────────────────────────────────────────
+
+/// Thread-safe registry of per-route split specs.
+///
+/// Hot-reloaded by the xDS consumer when it receives weighted-cluster updates.
+/// Uses [`arc_swap::ArcSwap`] for lock-free reads on the hot path.
+#[derive(Debug, Default)]
+pub struct TrafficSplitter {
+    routes: arc_swap::ArcSwap<HashMap<String, Arc<SplitSpec>>>,
+}
+
+impl TrafficSplitter {
+    /// Create an empty splitter.
+    pub fn new() -> Self {
+        Self {
+            routes: arc_swap::ArcSwap::from_pointee(HashMap::new()),
+        }
+    }
+
+    /// Replace the entire route table atomically.
+    ///
+    /// Readers already inside `decide` see the old table; new readers see the
+    /// new table.  There is no window of inconsistency.
+    pub fn update(&self, routes: HashMap<String, Arc<SplitSpec>>) {
+        self.routes.store(Arc::new(routes));
+    }
+
+    /// Return a snapshot of the current route table.
+    ///
+    /// Primarily used in tests to introspect the live state.
+    pub fn snapshot(&self) -> Arc<HashMap<String, Arc<SplitSpec>>> {
+        self.routes.load_full()
+    }
+
+    /// Route one request to a variant.
+    ///
+    /// - `route_name`: matched route (host + path) from the router filter.
+    /// - `sticky_value`: value of the sticky key (user_id, session cookie,
+    ///   client IP).  Determines which variant a particular client lands on.
+    ///
+    /// Returns `None` when no split is registered for `route_name` — the
+    /// caller falls back to the default cluster from its own routing logic.
+    pub fn decide(&self, route_name: &str, sticky_value: &str) -> Option<SplitDecision> {
+        let routes = self.routes.load();
+        let spec = routes.get(route_name)?;
+        Some(decide_with(spec, sticky_value))
+    }
+}
+
+// ── Pure-function routing logic ────────────────────────────────────────────
+
+/// Routing logic extracted for unit-testing without an `Arc<TrafficSplitter>`.
+pub fn decide_with(spec: &SplitSpec, sticky_value: &str) -> SplitDecision {
+    match &spec.mode {
+        SplitMode::Canary => {
+            let v = pick_canary_variant(spec, sticky_value);
+            SplitDecision {
+                primary: v.cluster.clone(),
+                primary_label: v.label.clone(),
+                shadow: None,
+                mode: SplitDecisionMode::Canary,
+            }
+        }
+        SplitMode::AbTest { .. } => {
+            let v = pick_canary_variant(spec, sticky_value);
+            SplitDecision {
+                primary: v.cluster.clone(),
+                primary_label: v.label.clone(),
+                shadow: None,
+                mode: SplitDecisionMode::AbTest,
+            }
+        }
+        SplitMode::Shadow { sample_rate } => {
+            let primary = spec.variants.first().expect("validated non-empty");
+            let shadow_cluster = spec.variants.get(1).map(|v| v.cluster.clone());
+            // Use a higher-resolution bucket (10 000) so that fractional
+            // sample rates can be expressed accurately.
+            let bucket = hash_to_bucket(sticky_value, 10_000) as f32 / 10_000.0;
+            let shadow = if bucket < *sample_rate { shadow_cluster } else { None };
+            SplitDecision {
+                primary: primary.cluster.clone(),
+                primary_label: primary.label.clone(),
+                shadow,
+                mode: SplitDecisionMode::Shadow,
+            }
+        }
+    }
+}
+
+/// Pick the variant whose cumulative weight range contains the hash bucket.
+fn pick_canary_variant<'a>(spec: &'a SplitSpec, sticky_value: &str) -> &'a Variant {
+    let bucket = hash_to_bucket(sticky_value, 100);
+    let mut acc = 0u32;
+    for v in &spec.variants {
+        acc = acc.saturating_add(v.weight);
+        if bucket < acc {
+            return v;
+        }
+    }
+    // Fallback: weights summed to 100 so this should never happen.
+    spec.variants.last().expect("validated non-empty")
+}
+
+/// Deterministic blake3-based hash → uniform bucket in `0..buckets`.
+fn hash_to_bucket(key: &str, buckets: u32) -> u32 {
+    let mut h = Hasher::new();
+    h.update(key.as_bytes());
+    let digest = h.finalize();
+    let bytes = digest.as_bytes();
+    let n = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+    n % buckets
+}
+
+// ── Tests ──────────────────────────────────────────────────────────────────
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -- helpers -----------------------------------------------------------
+
+    fn spec_50_50() -> SplitSpec {
+        SplitSpec {
+            mode: SplitMode::Canary,
+            variants: vec![
+                Variant {
+                    cluster: "v1".into(),
+                    weight: 50,
+                    label: Some("stable".into()),
+                },
+                Variant {
+                    cluster: "v2".into(),
+                    weight: 50,
+                    label: Some("canary".into()),
+                },
+            ],
+            sticky_header: None,
+        }
+    }
+
+    fn spec_10_canary() -> SplitSpec {
+        SplitSpec {
+            mode: SplitMode::Canary,
+            variants: vec![
+                Variant {
+                    cluster: "primary".into(),
+                    weight: 90,
+                    label: Some("stable".into()),
+                },
+                Variant {
+                    cluster: "canary".into(),
+                    weight: 10,
+                    label: Some("canary".into()),
+                },
+            ],
+            sticky_header: None,
+        }
+    }
+
+    // -- validation --------------------------------------------------------
+
+    #[test]
+    fn validate_weight_sum_not_100_errors() {
+        let mut s = spec_50_50();
+        s.variants[0].weight = 60;
+        assert!(matches!(s.validate(), Err(SplitError::WeightSum(_))));
+    }
+
+    #[test]
+    fn validate_empty_variants_errors() {
+        let s = SplitSpec {
+            mode: SplitMode::Canary,
+            variants: vec![],
+            sticky_header: None,
+        };
+        assert!(matches!(s.validate(), Err(SplitError::NoVariants)));
+    }
+
+    #[test]
+    fn validate_shadow_invalid_sample_rate() {
+        let s = SplitSpec {
+            mode: SplitMode::Shadow { sample_rate: 1.5 },
+            variants: vec![Variant {
+                cluster: "p".into(),
+                weight: 100,
+                label: None,
+            }],
+            sticky_header: None,
+        };
+        assert!(matches!(
+            s.validate(),
+            Err(SplitError::ShadowSampleRate(_))
+        ));
+    }
+
+    #[test]
+    fn validate_valid_spec_ok() {
+        assert!(spec_50_50().validate().is_ok());
+    }
+
+    // -- sticky routing ----------------------------------------------------
+
+    #[test]
+    fn sticky_key_is_deterministic() {
+        let s = spec_50_50();
+        let d1 = decide_with(&s, "user-42");
+        let d2 = decide_with(&s, "user-42");
+        assert_eq!(d1.primary, d2.primary);
+    }
+
+    #[test]
+    fn different_keys_may_differ() {
+        let s = spec_50_50();
+        // Over 100 distinct keys at least one pair must land on different
+        // variants (pigeonhole + uniform hash).
+        let decisions: Vec<String> = (0..100)
+            .map(|i| decide_with(&s, &format!("user-{i}")).primary)
+            .collect();
+        let has_v1 = decisions.iter().any(|d| d == "v1");
+        let has_v2 = decisions.iter().any(|d| d == "v2");
+        assert!(has_v1, "expected some requests to land on v1");
+        assert!(has_v2, "expected some requests to land on v2");
+    }
+
+    // -- distribution ------------------------------------------------------
+
+    #[test]
+    fn fifty_fifty_is_balanced() {
+        let s = spec_50_50();
+        let (mut v1, mut v2) = (0u32, 0u32);
+        for i in 0..10_000 {
+            let d = decide_with(&s, &format!("u{i}"));
+            if d.primary == "v1" {
+                v1 += 1;
+            } else {
+                v2 += 1;
+            }
+        }
+        // Expect ±2 % deviation over 10 000 samples.
+        assert!((4_800..=5_200).contains(&v1), "v1={v1}");
+        assert!((4_800..=5_200).contains(&v2), "v2={v2}");
+    }
+
+    #[test]
+    fn ten_percent_canary_is_within_bounds() {
+        let s = spec_10_canary();
+        let mut canary = 0u32;
+        for i in 0..10_000 {
+            let d = decide_with(&s, &format!("u{i}"));
+            if d.primary == "canary" {
+                canary += 1;
+            }
+        }
+        // 10 % ± 2 % over 10 000 samples.
+        assert!((800..=1_200).contains(&canary), "canary={canary}");
+    }
+
+    // -- shadow mode -------------------------------------------------------
+
+    #[test]
+    fn shadow_fires_at_100_percent() {
+        let s = SplitSpec {
+            mode: SplitMode::Shadow { sample_rate: 1.0 },
+            variants: vec![
+                Variant {
+                    cluster: "prod".into(),
+                    weight: 100,
+                    label: None,
+                },
+                Variant {
+                    cluster: "shadow".into(),
+                    weight: 0,
+                    label: None,
+                },
+            ],
+            sticky_header: None,
+        };
+        let d = decide_with(&s, "x");
+        assert_eq!(d.primary, "prod");
+        assert_eq!(d.shadow.as_deref(), Some("shadow"));
+        assert_eq!(d.mode, SplitDecisionMode::Shadow);
+    }
+
+    #[test]
+    fn shadow_skipped_at_0_percent() {
+        let s = SplitSpec {
+            mode: SplitMode::Shadow { sample_rate: 0.0 },
+            variants: vec![
+                Variant {
+                    cluster: "prod".into(),
+                    weight: 100,
+                    label: None,
+                },
+                Variant {
+                    cluster: "shadow".into(),
+                    weight: 0,
+                    label: None,
+                },
+            ],
+            sticky_header: None,
+        };
+        let d = decide_with(&s, "x");
+        assert_eq!(d.primary, "prod");
+        assert!(d.shadow.is_none());
+    }
+
+    #[test]
+    fn shadow_no_shadow_target_gives_none() {
+        let s = SplitSpec {
+            mode: SplitMode::Shadow { sample_rate: 1.0 },
+            variants: vec![Variant {
+                cluster: "prod".into(),
+                weight: 100,
+                label: None,
+            }],
+            sticky_header: None,
+        };
+        let d = decide_with(&s, "x");
+        assert_eq!(d.primary, "prod");
+        assert!(d.shadow.is_none(), "no shadow variant → shadow should be None");
+    }
+
+    // -- A-B mode ----------------------------------------------------------
+
+    #[test]
+    fn abtest_mode_returns_abtest_decision() {
+        let s = SplitSpec {
+            mode: SplitMode::AbTest {
+                name: "checkout-redesign".into(),
+            },
+            variants: vec![
+                Variant {
+                    cluster: "control".into(),
+                    weight: 50,
+                    label: Some("control".into()),
+                },
+                Variant {
+                    cluster: "variant".into(),
+                    weight: 50,
+                    label: Some("variant".into()),
+                },
+            ],
+            sticky_header: None,
+        };
+        let d = decide_with(&s, "user-1");
+        assert_eq!(d.mode, SplitDecisionMode::AbTest);
+        assert!(d.primary == "control" || d.primary == "variant");
+    }
+
+    // -- TrafficSplitter hot-reload ----------------------------------------
+
+    #[test]
+    fn splitter_hot_reload_works() {
+        let sp = TrafficSplitter::new();
+        let mut routes = HashMap::new();
+        routes.insert("poulets".to_string(), Arc::new(spec_50_50()));
+        sp.update(routes);
+
+        let d = sp.decide("poulets", "user-1").unwrap();
+        assert!(matches!(d.primary.as_str(), "v1" | "v2"));
+    }
+
+    #[test]
+    fn splitter_unknown_route_returns_none() {
+        let sp = TrafficSplitter::new();
+        assert!(sp.decide("non-existent", "user-1").is_none());
+    }
+
+    #[test]
+    fn splitter_snapshot_reflects_update() {
+        let sp = TrafficSplitter::new();
+        assert!(sp.snapshot().is_empty());
+
+        let mut routes = HashMap::new();
+        routes.insert("api".to_string(), Arc::new(spec_50_50()));
+        sp.update(routes);
+
+        let snap = sp.snapshot();
+        assert!(snap.contains_key("api"));
+    }
+}
