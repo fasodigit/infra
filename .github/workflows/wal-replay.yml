@@ -37,7 +37,7 @@ jobs:
         working-directory: INFRA/kaya
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -73,7 +73,7 @@ jobs:
         fsync_policy: [always, everysec]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Download binaries
         uses: actions/download-artifact@v4
@@ -123,7 +123,7 @@ jobs:
         working-directory: INFRA/kaya
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -209,7 +209,7 @@ jobs:
       contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           # Fetch last 7 commits of the default branch to inspect nightly run history.
           fetch-depth: 0
