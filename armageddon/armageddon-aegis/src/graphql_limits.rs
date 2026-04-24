@@ -17,9 +17,12 @@
 //! - **Introspection** : deny if the top-level selection includes
 //!   `__schema` or `__type` when `introspection_enabled = false`.
 
+use std::collections::{HashMap, HashSet};
+
 use async_graphql_parser::parse_query;
 use async_graphql_parser::types::{
-    DocumentOperations, ExecutableDocument, Field, OperationDefinition, Selection, SelectionSet,
+    DocumentOperations, ExecutableDocument, Field, FragmentDefinition, OperationDefinition,
+    Selection, SelectionSet,
 };
 use thiserror::Error;
 
@@ -45,6 +48,12 @@ pub enum GqlLimitError {
 
     #[error("GraphQL introspection is disabled in this environment")]
     IntrospectionDisabled,
+
+    #[error("unknown fragment spread `{0}`")]
+    UnknownFragment(String),
+
+    #[error("cyclic fragment reference detected: `{0}`")]
+    CyclicFragments(String),
 }
 
 // -- limiter --
@@ -101,12 +110,24 @@ impl GraphQLLimiter {
         let doc: ExecutableDocument =
             parse_query(query).map_err(|e| GqlLimitError::Parse(e.to_string()))?;
 
+        // Pre-resolve named fragments so that FragmentSpread nodes can be
+        // inlined during traversal. Without this, every cap (depth,
+        // complexity, aliases, directives) and the introspection gate would
+        // be trivially bypassable by hiding the payload in a named fragment.
+        let fragments: HashMap<&str, &FragmentDefinition> = doc
+            .fragments
+            .iter()
+            .map(|(name, frag)| (name.as_str(), &frag.node))
+            .collect();
+
         let mut ctx = ValidationCtx {
             max_depth: self.max_depth,
             max_complexity: self.max_complexity,
             introspection_enabled: self.introspection_enabled,
             total_aliases: 0,
             total_directives: 0,
+            fragments: &fragments,
+            fragment_stack: HashSet::new(),
         };
 
         match &doc.operations {
@@ -140,15 +161,21 @@ impl GraphQLLimiter {
 
 // -- private traversal context --
 
-struct ValidationCtx {
+struct ValidationCtx<'a> {
     max_depth: u32,
     max_complexity: u32,
     introspection_enabled: bool,
     total_aliases: u32,
     total_directives: u32,
+    /// Resolved named fragments — `FragmentSpread` nodes are expanded
+    /// through this map so their bodies are subject to every cap.
+    fragments: &'a HashMap<&'a str, &'a FragmentDefinition>,
+    /// Names of fragments currently on the recursion stack. Used to detect
+    /// cyclic fragment graphs (otherwise the limiter itself stack-overflows).
+    fragment_stack: HashSet<String>,
 }
 
-impl ValidationCtx {
+impl<'a> ValidationCtx<'a> {
     fn visit_operation(&mut self, op: &OperationDefinition) -> Result<(), GqlLimitError> {
         let complexity = self.visit_selection_set(&op.selection_set.node, 0, 1)?;
         if self.max_complexity > 0 && complexity > self.max_complexity {
@@ -195,10 +222,46 @@ impl ValidationCtx {
                         )?,
                     );
                 }
-                Selection::FragmentSpread(_) => {
-                    // Fragment bodies are validated when encountered as
-                    // FragmentDefinition; here we just add a nominal cost.
-                    set_complexity = set_complexity.saturating_add(multiplier);
+                Selection::FragmentSpread(spread) => {
+                    let spread_name = spread.node.fragment_name.node.as_str();
+
+                    // Count directives attached to the spread itself.
+                    self.total_directives = self
+                        .total_directives
+                        .saturating_add(spread.node.directives.len() as u32);
+
+                    // Cycle detection: if this fragment is already on the
+                    // traversal stack, a cyclic graph exists and continuing
+                    // would recurse forever.
+                    if self.fragment_stack.contains(spread_name) {
+                        return Err(GqlLimitError::CyclicFragments(spread_name.to_string()));
+                    }
+
+                    let frag = self.fragments.get(spread_name).copied().ok_or_else(|| {
+                        GqlLimitError::UnknownFragment(spread_name.to_string())
+                    })?;
+
+                    // Count directives on the fragment definition itself.
+                    self.total_directives = self
+                        .total_directives
+                        .saturating_add(frag.directives.len() as u32);
+
+                    // Fragment spreads are transparent to depth: they are
+                    // expanded into the parent selection set, so we recurse
+                    // with the *same* current_depth and multiplier. The
+                    // visit_selection_set entry bumps depth by one for the
+                    // fragment's inner set, matching how a real executor
+                    // would see it.
+                    let owned_name = spread_name.to_string();
+                    self.fragment_stack.insert(owned_name.clone());
+                    let frag_cost = self.visit_selection_set(
+                        &frag.selection_set.node,
+                        current_depth,
+                        multiplier,
+                    );
+                    self.fragment_stack.remove(&owned_name);
+
+                    set_complexity = set_complexity.saturating_add(frag_cost?);
                 }
             }
         }
@@ -503,6 +566,121 @@ mod tests {
         let body = b"hello";
         let result = extract_gql_query(Some("text/plain"), body);
         assert!(result.is_none());
+    }
+
+    // -- Named fragment regression tests (security) --
+    //
+    // Prior to the fragment-visitor fix, every cap could be bypassed by
+    // hiding the payload in a named fragment. These tests lock in that
+    // fragment bodies are walked with the same rigor as inline selections
+    // and that cyclic fragment graphs terminate safely.
+
+    #[test]
+    fn named_fragment_depth_bypass_is_rejected() {
+        let limiter = prod(); // max_depth = 8
+        // The fragment body has depth 11 — should be caught.
+        let q = r#"
+            query Q { ...evil }
+            fragment evil on Query {
+                a { b { c { d { e { f { g { h { i { j { k } } } } } } } } } }
+            }
+        "#;
+        let result = limiter.validate_query(q);
+        assert!(
+            matches!(result, Err(GqlLimitError::DepthExceeded { .. })),
+            "expected DepthExceeded from fragment body, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn named_fragment_introspection_bypass_is_rejected() {
+        let limiter = prod(); // introspection_enabled = false
+        let q = r#"
+            query Q { ...evil }
+            fragment evil on Query { __schema { types { name } } }
+        "#;
+        assert!(matches!(
+            limiter.validate_query(q),
+            Err(GqlLimitError::IntrospectionDisabled)
+        ));
+    }
+
+    #[test]
+    fn named_fragment_aliases_are_counted() {
+        let limiter = GraphQLLimiter {
+            max_aliases: 2,
+            max_depth: 32,
+            max_complexity: 0,
+            max_directives: 0,
+            introspection_enabled: true,
+        };
+        // 3 aliases, all inside a named fragment.
+        let q = r#"
+            query Q { ...aliased }
+            fragment aliased on Query {
+                a: user { id }
+                b: user { id }
+                c: user { id }
+            }
+        "#;
+        assert!(matches!(
+            limiter.validate_query(q),
+            Err(GqlLimitError::AliasesExceeded { count: 3, max: 2 })
+        ));
+    }
+
+    #[test]
+    fn named_fragment_directives_are_counted() {
+        let limiter = GraphQLLimiter {
+            max_directives: 1,
+            max_depth: 32,
+            max_complexity: 0,
+            max_aliases: 0,
+            introspection_enabled: true,
+        };
+        // 3 directive usages inside the fragment body.
+        let q = r#"
+            query Q { ...decorated }
+            fragment decorated on Query {
+                a @include(if: true)
+                b @skip(if: false)
+                c @include(if: true)
+            }
+        "#;
+        assert!(matches!(
+            limiter.validate_query(q),
+            Err(GqlLimitError::DirectivesExceeded { count, max: 1 }) if count >= 3
+        ));
+    }
+
+    #[test]
+    fn cyclic_fragments_return_error_not_stack_overflow() {
+        let limiter = prod();
+        // Two fragments that spread each other: A -> B -> A -> …
+        // Without cycle detection, this recurses until the thread stack
+        // explodes. We expect a clean error.
+        let q = r#"
+            query Q { ...A }
+            fragment A on Query { ...B }
+            fragment B on Query { ...A }
+        "#;
+        let result = limiter.validate_query(q);
+        assert!(
+            matches!(result, Err(GqlLimitError::CyclicFragments(_))),
+            "expected CyclicFragments error, got {:?}",
+            result
+        );
+    }
+
+    #[test]
+    fn unknown_fragment_spread_is_rejected() {
+        let limiter = prod();
+        let q = r#"query Q { ...missing }"#;
+        assert!(matches!(
+            limiter.validate_query(q),
+            Err(GqlLimitError::UnknownFragment(ref n)) if n == "missing"
+        ));
     }
 
     #[test]

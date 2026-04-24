@@ -81,6 +81,32 @@ pub enum PoolError {
     BodyCollect(#[source] hyper::Error),
 }
 
+// -- pool key --
+
+/// Key type for the upstream connection map.
+///
+/// Separates plaintext and mTLS entries so a plaintext cache hit can never
+/// be served to an mTLS caller (crypto downgrade) and two mTLS clusters that
+/// share the same `SocketAddr` but different peer SPIFFE IDs cannot collide
+/// (cross-identity impersonation).
+#[derive(Debug, Clone, Hash, Eq, PartialEq)]
+pub enum PoolKey {
+    /// Plain TCP connection to `addr`.
+    Plain(SocketAddr),
+    /// mTLS connection to `addr` with peer identified by the contained
+    /// SPIFFE ID.  `Arc<str>` is hashed/compared by value.
+    Mtls(SocketAddr, Arc<str>),
+}
+
+impl PoolKey {
+    /// Return the underlying `SocketAddr` regardless of variant.
+    pub fn addr(&self) -> SocketAddr {
+        match self {
+            PoolKey::Plain(a) | PoolKey::Mtls(a, _) => *a,
+        }
+    }
+}
+
 // -- pooled connection --
 
 /// A single persistent H2 connection to one upstream address.
@@ -256,7 +282,7 @@ impl Default for PoolConfig {
 /// # }
 /// ```
 pub struct UpstreamPool {
-    conns: Arc<DashMap<SocketAddr, Arc<PooledConn>>>,
+    conns: Arc<DashMap<PoolKey, Arc<PooledConn>>>,
     config: PoolConfig,
     metrics: Arc<PoolMetrics>,
     /// Optional mTLS dialer for SPIFFE-annotated clusters.  `None` means plain TCP only.
@@ -289,7 +315,7 @@ impl UpstreamPool {
     }
 
     fn new_inner(config: PoolConfig, mesh_dialer: Option<Arc<AutoMtlsDialer>>) -> Self {
-        let conns = Arc::new(DashMap::<SocketAddr, Arc<PooledConn>>::new());
+        let conns = Arc::new(DashMap::<PoolKey, Arc<PooledConn>>::new());
         let metrics = Arc::new(PoolMetrics::new());
 
         let conns_bg = conns.clone();
@@ -326,8 +352,10 @@ impl UpstreamPool {
     ///
     /// If `max_idle` is exceeded, the oldest idle connection is evicted first.
     pub async fn get_or_create(&self, addr: SocketAddr) -> Result<Arc<PooledConn>, PoolError> {
+        let key = PoolKey::Plain(addr);
+
         // Fast path: return existing ready connection.
-        if let Some(entry) = self.conns.get(&addr) {
+        if let Some(entry) = self.conns.get(&key) {
             let conn = entry.value().clone();
             if conn.is_ready() {
                 self.metrics.hits.inc();
@@ -336,7 +364,7 @@ impl UpstreamPool {
             }
             // Connection dead; drop it and fall through to re-dial.
             drop(entry);
-            self.conns.remove(&addr);
+            self.conns.remove(&key);
             self.metrics.pool_size.dec();
         }
 
@@ -350,7 +378,7 @@ impl UpstreamPool {
             self.evict_one_idle();
         }
 
-        self.conns.insert(addr, conn.clone());
+        self.conns.insert(key, conn.clone());
         self.metrics.pool_size.set(self.conns.len() as f64);
 
         Ok(conn)
@@ -380,7 +408,14 @@ impl UpstreamPool {
         addr: SocketAddr,
         tls_ctx: &ClusterTlsContext,
     ) -> Result<Arc<PooledConn>, PoolError> {
-        if let Some(entry) = self.conns.get(&addr) {
+        // Key includes the peer SPIFFE ID so:
+        //   1. A plaintext cache entry for `addr` can never satisfy this call
+        //      (no crypto downgrade).
+        //   2. Two clusters sharing `addr` but with different peer SPIFFE IDs
+        //      get isolated entries (no cross-identity impersonation).
+        let key = PoolKey::Mtls(addr, Arc::from(tls_ctx.spiffe_id.as_str()));
+
+        if let Some(entry) = self.conns.get(&key) {
             let conn = entry.value().clone();
             if conn.is_ready() {
                 self.metrics.hits.inc();
@@ -388,7 +423,7 @@ impl UpstreamPool {
                 return Ok(conn);
             }
             drop(entry);
-            self.conns.remove(&addr);
+            self.conns.remove(&key);
             self.metrics.pool_size.dec();
         }
 
@@ -405,7 +440,7 @@ impl UpstreamPool {
             self.evict_one_idle();
         }
 
-        self.conns.insert(addr, conn.clone());
+        self.conns.insert(key, conn.clone());
         self.metrics.pool_size.set(self.conns.len() as f64);
 
         Ok(conn)
@@ -498,17 +533,18 @@ impl UpstreamPool {
     }
 
     fn evict_one_idle(&self) {
-        let mut candidates: Vec<(SocketAddr, Instant)> = self
+        let mut candidates: Vec<(PoolKey, Instant)> = self
             .conns
             .iter()
             .filter(|e| e.value().is_idle(Duration::from_secs(0)))
-            .map(|e| (*e.key(), *e.value().last_used.lock()))
+            .map(|e| (e.key().clone(), *e.value().last_used.lock()))
             .collect();
 
         candidates.sort_by_key(|(_, t)| *t);
 
-        if let Some((addr, _)) = candidates.first() {
-            self.conns.remove(addr);
+        if let Some((key, _)) = candidates.first() {
+            let addr = key.addr();
+            self.conns.remove(key);
             self.metrics.pool_size.dec();
             debug!("upstream pool: evicted LRU idle connection to {}", addr);
         }
@@ -518,7 +554,7 @@ impl UpstreamPool {
 // -- background eviction task --
 
 async fn run_eviction(
-    conns: Arc<DashMap<SocketAddr, Arc<PooledConn>>>,
+    conns: Arc<DashMap<PoolKey, Arc<PooledConn>>>,
     metrics: Arc<PoolMetrics>,
     idle_timeout: Duration,
     eviction_interval: Duration,
@@ -528,10 +564,13 @@ async fn run_eviction(
         ticker.tick().await;
 
         let before = conns.len();
-        conns.retain(|addr, conn| {
+        conns.retain(|key, conn| {
             let keep = !conn.is_idle(idle_timeout) && conn.is_ready();
             if !keep {
-                debug!("upstream pool eviction: purging idle conn to {}", addr);
+                debug!(
+                    "upstream pool eviction: purging idle conn to {}",
+                    key.addr()
+                );
             }
             keep
         });
@@ -786,6 +825,72 @@ mod tests {
             pool.len() <= 2,
             "pool must not hold stale entries: len={}",
             pool.len()
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Test 8 (security regression): prewarm (plaintext) MUST NOT satisfy a
+    // subsequent get_or_create_tls call for the same addr.
+    //
+    // Previously the pool was keyed by `SocketAddr` alone, so a plaintext
+    // entry installed by prewarm would be returned as an "mTLS hit" on the
+    // next get_or_create_tls(addr, ctx) — a crypto downgrade.  With the
+    // PoolKey::{Plain, Mtls} split the plaintext entry is no longer reachable
+    // through the mTLS code path.
+    // -----------------------------------------------------------------------
+    #[tokio::test]
+    async fn test_prewarm_does_not_satisfy_mtls_call() {
+        let pool = UpstreamPool::new(PoolConfig::default());
+        let addr = bind_h2_server().await;
+
+        // Prime the pool with a plaintext connection.
+        pool.prewarm(&[addr]).await;
+        assert_eq!(pool.len(), 1, "prewarm must populate the pool");
+        let plain_conn = pool
+            .get_or_create(addr)
+            .await
+            .expect("plaintext entry must be reachable");
+
+        // Now request an mTLS connection to the SAME addr.  Because the pool
+        // was built without a mesh dialer, dial_tls must fail with
+        // SpiffeNotAllowed — it must NOT return the plaintext conn as a hit.
+        let ctx = UpstreamTlsContext {
+            spiffe_id: "spiffe://faso.gov.bf/ns/kaya/sa/shard-0".to_string(),
+        };
+        let tls_result = pool.get_or_create_tls(addr, &ctx).await;
+        match tls_result {
+            Err(PoolError::SpiffeNotAllowed { .. }) => {
+                // Expected: no mesh dialer configured, miss fell through to
+                // dial_tls which errored out.  Crucially: the plaintext entry
+                // was not served as a mTLS hit.
+            }
+            Ok(returned) => {
+                // The only way Ok is acceptable here is if a genuinely new
+                // mTLS entry was created that is NOT the same Arc as the
+                // plaintext one.  (The current implementation with no dialer
+                // will never reach this branch, but we still guard it.)
+                assert!(
+                    !Arc::ptr_eq(&returned, &plain_conn),
+                    "SECURITY: mTLS call returned the plaintext connection — \
+                     crypto downgrade regression"
+                );
+            }
+            Err(other) => panic!(
+                "expected SpiffeNotAllowed (no mesh dialer) or a distinct mTLS \
+                 conn; got {:?}",
+                other
+            ),
+        }
+
+        // Plaintext entry must still be present and still be the same Arc —
+        // the mTLS path must not have evicted it.
+        let plain_again = pool
+            .get_or_create(addr)
+            .await
+            .expect("plaintext entry must still be reachable");
+        assert!(
+            Arc::ptr_eq(&plain_again, &plain_conn),
+            "plaintext entry must be preserved across mTLS calls"
         );
     }
 }

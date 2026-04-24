@@ -149,6 +149,33 @@ fn metrics_new_does_not_panic() {
 // T5 — Edge case: syscall_id discriminants are stable
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// T6 — Regression: dropping a forced-stub handle must not UB
+// ---------------------------------------------------------------------------
+//
+// Previously, the Linux+ebpf `stub_inner()` fallback built an `Inner`
+// containing `aya::Ebpf` via `aya::Ebpf::load(&[])` (always-fails) plus
+// `unsafe { std::mem::zeroed() }`. That produced an `Ebpf` from zeroed
+// memory — immediate UB — and on drop, zeroed `OwnedFd` values would call
+// `close(0)` (stdin).
+//
+// This test forces the stub code path and drops it. Under the fixed
+// implementation (`_ebpf: Option<Ebpf>` left as `None`) it must complete
+// without panic. The test is gated on the `ebpf` feature because only
+// that build configuration compiles the stub path at all.
+#[cfg(all(target_os = "linux", feature = "ebpf"))]
+#[tokio::test]
+async fn stub_drop_does_not_ub() {
+    // Construct a stub handle directly, bypassing kernel/capability probes.
+    let obs = armageddon_ebpf::EbpfObservability::stub_for_test();
+    // Drop immediately — with zeroed-memory UB this would corrupt fds/heap.
+    drop(obs);
+
+    // A second round-trip validates no shared-state corruption from the first.
+    let obs2 = armageddon_ebpf::EbpfObservability::stub_for_test();
+    drop(obs2);
+}
+
 #[test]
 fn syscall_id_discriminants() {
     // Protocol between BPF and userspace: 0 = recvfrom, 1 = sendto.

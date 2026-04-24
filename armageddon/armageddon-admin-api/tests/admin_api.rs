@@ -398,3 +398,75 @@ async fn admin_api_loopback_no_token_is_ok() {
     let api = AdminApi::build_with_nulls(cfg).unwrap();
     assert!(api.bind_addr().ip().is_loopback());
 }
+
+// -- CORS regression: the admin API MUST NOT emit any CORS headers so that
+//    a malicious page visited by an operator cannot read `/config_dump` or
+//    `POST /logging` via a cross-origin `fetch()`. See security advisory
+//    "armageddon-admin-api CORS wildcard exfiltration" (2026-04-19).
+
+#[tokio::test]
+async fn cross_origin_get_config_dump_has_no_cors_allow_origin_header() {
+    let app = router_no_auth();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/config_dump")
+                .header("origin", "https://evil.example")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // The request itself is served (it looks like any other HTTP call from
+    // the server's POV), but the browser-enforced SOP check must fail —
+    // i.e. no Access-Control-Allow-Origin header is returned.
+    assert_eq!(resp.status(), StatusCode::OK);
+    assert!(
+        resp.headers().get("access-control-allow-origin").is_none(),
+        "admin API must not emit Access-Control-Allow-Origin; \
+         got {:?}",
+        resp.headers().get("access-control-allow-origin")
+    );
+    assert!(
+        resp.headers().get("access-control-allow-credentials").is_none(),
+        "admin API must not emit Access-Control-Allow-Credentials"
+    );
+    assert!(
+        resp.headers().get("access-control-expose-headers").is_none(),
+        "admin API must not emit Access-Control-Expose-Headers"
+    );
+}
+
+#[tokio::test]
+async fn cross_origin_preflight_for_post_logging_is_not_allowed() {
+    let app = router_no_auth();
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::OPTIONS)
+                .uri("/logging")
+                .header("origin", "https://evil.example")
+                .header("access-control-request-method", "POST")
+                .header("access-control-request-headers", "content-type")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    // With the CORS layer removed, OPTIONS on /logging falls through to the
+    // axum method router — which responds 405 (method not allowed) because
+    // the route only declares POST. No CORS headers either way.
+    assert_ne!(
+        resp.status(),
+        StatusCode::OK,
+        "preflight must NOT succeed: browsers would then allow the cross-origin POST"
+    );
+    assert!(
+        resp.headers().get("access-control-allow-origin").is_none(),
+        "preflight must not advertise any allowed origin"
+    );
+    assert!(
+        resp.headers().get("access-control-allow-methods").is_none(),
+        "preflight must not advertise any allowed methods"
+    );
+}

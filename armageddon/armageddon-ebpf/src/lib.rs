@@ -110,6 +110,20 @@ impl EbpfObservability {
             Ok(Self {})
         }
     }
+
+    /// Test-only constructor that forces the graceful-fallback (stub) code
+    /// path without performing any kernel-version or capability probe.
+    ///
+    /// Used by the regression test that guards against the previous
+    /// `unsafe { std::mem::zeroed() }` UB: dropping the returned handle
+    /// must never leak, panic, or call `close(0)` (stdin).
+    #[cfg(all(target_os = "linux", feature = "ebpf"))]
+    #[doc(hidden)]
+    pub fn stub_for_test() -> Self {
+        Self {
+            _inner: linux::stub_inner_for_test(),
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -136,10 +150,15 @@ mod linux {
     };
 
     /// Internal state — keeps Ebpf handle + task handles alive.
+    ///
+    /// `_ebpf` is `Option<Ebpf>` so the graceful-fallback path (kernel < 5.15
+    /// or missing `CAP_BPF`) can construct a well-formed stub without ever
+    /// building an `Ebpf` from invalid memory. Only the Active path sets
+    /// `Some(_)`; the stub path leaves it `None`.
     #[derive(Debug)]
     pub(crate) struct Inner {
         // The Ebpf handle owns the fd; drop detaches everything.
-        _ebpf: Ebpf,
+        _ebpf: Option<Ebpf>,
         _tcp_task: JoinHandle<()>,
         _syscall_task: JoinHandle<()>,
     }
@@ -194,7 +213,7 @@ mod linux {
 
         Ok(EbpfObservability {
             _inner: Inner {
-                _ebpf: ebpf,
+                _ebpf: Some(ebpf),
                 _tcp_task: tcp_task,
                 _syscall_task: syscall_task,
             },
@@ -202,30 +221,30 @@ mod linux {
     }
 
     /// Fallback stub when graceful skip is triggered after capability/version check.
+    ///
+    /// No `Ebpf` handle is constructed — the previous implementation called
+    /// `aya::Ebpf::load(&[])` (which always fails, empty slice has no ELF
+    /// header) and then fell back to `unsafe { std::mem::zeroed() }`, which
+    /// is immediate UB: `Ebpf` owns `HashMap`s, `OwnedFd`s and `Option<Btf>`
+    /// that have library-level validity invariants, and on `Drop` a zeroed
+    /// `OwnedFd` would `close(0)` (stdin). We now simply leave `_ebpf: None`.
     fn stub_inner() -> Inner {
-        // Spawn no-op tasks so the struct is always well-formed.
+        // Spawn no-op tasks so the struct is always well-formed and the
+        // `JoinHandle` fields are never uninitialised.
         let t1 = tokio::spawn(async {});
         let t2 = tokio::spawn(async {});
-        // SAFETY: we produce a dummy Ebpf that holds nothing attached.
-        // In a real fallback we don't have an Ebpf handle; use an unloaded one.
-        // We load an empty ELF; this won't fail on kernel ≥ 4.x.
-        //
-        // Pragmatic approach: the stub Ebpf is created from a minimal valid ELF.
-        // If that also fails (very old kernel), we just log and return a dummy task pair.
-        // The `Inner` fields are private so users can't misuse them.
-        //
-        // We use a 1-byte slice that will cause an Ebpf::load error, then
-        // reconstruct with an empty programs set. Given graceful fallback already
-        // prevents reaching this on bad kernels, we rely on the empty ELF approach:
-        let empty_elf = aya::Ebpf::load(&[]).unwrap_or_else(|_| {
-            // Last resort: leak a never-progressing task.
-            unsafe { std::mem::zeroed() }
-        });
         Inner {
-            _ebpf: empty_elf,
+            _ebpf: None,
             _tcp_task: t1,
             _syscall_task: t2,
         }
+    }
+
+    /// Exposes `stub_inner` to the crate-public test helper on
+    /// [`super::EbpfObservability::stub_for_test`].
+    #[doc(hidden)]
+    pub(crate) fn stub_inner_for_test() -> Inner {
+        stub_inner()
     }
 
     /// Check for BPF capability using `/proc/self/status`.

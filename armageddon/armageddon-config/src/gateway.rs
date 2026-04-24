@@ -3,9 +3,56 @@
 use armageddon_common::types::{AdminApiConfig, AuthMode, Cluster, CorsConfig, JwtConfig, KratosConfig, RateLimitConfig, Route};
 use serde::{Deserialize, Serialize};
 
+// ---------------------------------------------------------------------------
+// Runtime selector
+// ---------------------------------------------------------------------------
+
+/// Selects the active proxy runtime at startup.
+///
+/// | Value    | Behaviour |
+/// |----------|-----------|
+/// | `hyper`  | Legacy hyper 1.x backend (`ForgeServer`). Deprecated since v2.0. |
+/// | `pingora`| Pingora-based gateway (`PingoraGateway`). **Default since v2.0.** |
+/// | `shadow` | Both backends run concurrently; hyper serves the client, Pingora responses are compared asynchronously via `ShadowSampler`. |
+///
+/// Recommended migration path: `hyper` → `shadow` (48h validation) → `pingora`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum GatewayRuntime {
+    /// Legacy hyper 1.x backend.  Deprecated; will be removed in v3.0.
+    Hyper,
+    /// Pingora-based gateway. Default since ARMAGEDDON v2.0.
+    #[default]
+    Pingora,
+    /// Shadow mode: hyper is primary, Pingora runs as shadow for parity validation.
+    Shadow,
+}
+
+impl GatewayRuntime {
+    /// Returns `true` when Pingora needs to be booted (pingora or shadow mode).
+    pub fn needs_pingora(&self) -> bool {
+        matches!(self, Self::Pingora | Self::Shadow)
+    }
+
+    /// Returns `true` when the hyper backend needs to be booted.
+    pub fn needs_hyper(&self) -> bool {
+        matches!(self, Self::Hyper | Self::Shadow)
+    }
+}
+
 /// Full gateway configuration replacing Envoy.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GatewayConfig {
+    /// Proxy runtime backend selector.
+    ///
+    /// - `"pingora"` (default) — Pingora-based proxy.
+    /// - `"hyper"` — legacy hyper 1.x path (deprecated, removed in v3.0).
+    /// - `"shadow"` — both run in parallel; hyper is primary, Pingora is shadow.
+    ///
+    /// Omit to use `"pingora"` (default since v2.0).
+    #[serde(default)]
+    pub runtime: GatewayRuntime,
+
     /// Listener bindings.
     pub listeners: Vec<ListenerConfig>,
 

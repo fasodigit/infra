@@ -14,8 +14,24 @@
 // -- optional feature-gated backends --
 
 /// Pingora-based proxy backend (compiled only with `--features pingora`).
+///
+/// M0 scaffold — see `PINGORA-MIGRATION.md` and `pingora/RUNTIME.md`.
 #[cfg(feature = "pingora")]
-pub mod pingora_backend;
+pub mod pingora;
+
+/// Legacy alias for pre-M0 callers that imported from `pingora_backend::`.
+///
+/// The module has been reorganised into a tree under [`pingora`]; this
+/// shim re-exports the subset of types that used to live at
+/// `pingora_backend::` so that internal benches / tests keep compiling.
+#[cfg(feature = "pingora")]
+pub mod pingora_backend {
+    //! Backward-compat re-exports — see [`super::pingora`].
+    pub use crate::pingora::gateway::{
+        PingoraGateway, PingoraGatewayConfig, UpstreamRegistry,
+    };
+    pub use crate::pingora::server::build_server;
+}
 
 /// io_uring-based backend (Linux only, compiled with `--features io_uring`).
 #[cfg(all(target_os = "linux", feature = "io_uring"))]
@@ -26,6 +42,7 @@ pub mod io_uring_backend;
 pub mod circuit_breaker;
 pub mod compression;
 pub mod cors;
+pub mod feature_flag_filter;
 pub mod feature_flags;
 pub mod grpc_web;
 pub mod health;
@@ -57,7 +74,28 @@ use dashmap::DashMap;
 use proxy::RoundRobinCounter;
 use std::sync::Arc;
 
-/// The FORGE proxy server.
+/// The FORGE proxy server — **legacy hyper backend**.
+///
+/// # Deprecation notice
+///
+/// `ForgeServer` is deprecated since ARMAGEDDON v2.0 (M6 cutover, 2026-04-24).
+/// Use [`crate::pingora::PingoraGateway`] instead (feature `pingora`, default since v2).
+///
+/// Migration path:
+/// 1. Set `gateway.runtime: "shadow"` in `armageddon.yaml` → run both backends
+///    in parallel for 48 h validation.
+/// 2. Validate parity via `armageddon_traffic_split_decisions_total` metrics.
+/// 3. Set `gateway.runtime: "pingora"` → pure Pingora path.
+/// 4. Remove `gateway.runtime: "hyper"` from all configs.
+///
+/// `ForgeServer` will be removed in v3.0.  Keep the `hyper-legacy` feature enabled
+/// to acknowledge the opt-out until you have migrated.
+#[deprecated(
+    since = "2.0.0",
+    note = "use PingoraGateway (feature `pingora`, default since v2). \
+            See CUTOVER.md for the migration path. \
+            ForgeServer will be removed in v3.0."
+)]
 pub struct ForgeServer {
     listeners: Vec<ListenerConfig>,
     router: Arc<router::Router>,
@@ -75,6 +113,7 @@ pub struct ForgeServer {
     rate_limit_filter: Option<Arc<RateLimitFilter>>,
 }
 
+#[allow(deprecated)]
 impl ForgeServer {
     /// Create a new FORGE proxy server.
     pub fn new(

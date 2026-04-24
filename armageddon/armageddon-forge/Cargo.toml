@@ -4,11 +4,19 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+armageddon-aegis = { workspace = true }
+armageddon-ai = { workspace = true }
+armageddon-arbiter = { workspace = true }
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
 armageddon-mesh = { workspace = true }
+armageddon-nexus = { workspace = true }
 armageddon-oracle = { workspace = true }
 armageddon-ratelimit = { workspace = true }
+armageddon-retry = { workspace = true }
+armageddon-sentinel = { workspace = true }
+armageddon-wasm = { workspace = true }
+async-channel = "2"
 tokio-rustls = "0.26"
 tokio = { workspace = true }
 
@@ -43,6 +51,7 @@ uuid = { workspace = true }
 chrono = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
+sha1 = { workspace = true }
 subtle = { workspace = true }
 hex = { workspace = true }
 tokio-tungstenite = { workspace = true }
@@ -52,6 +61,7 @@ brotli = { workspace = true }
 zstd = { workspace = true }
 flate2 = { workspace = true }
 tower = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 # Optional rdkafka backend; enable with feature "rdkafka-backend"
 rdkafka = { workspace = true, optional = true }
@@ -63,6 +73,7 @@ tokio-uring = { version = "0.5", optional = true }
 pingora = { workspace = true, optional = true }
 pingora-core = { workspace = true, optional = true }
 pingora-proxy = { workspace = true, optional = true }
+armageddon-xds = { workspace = true, optional = true }
 
 # Zero-copy splice: Linux only, always linked when targeting linux
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -70,18 +81,45 @@ nix = { workspace = true }
 libc = { workspace = true }
 
 [features]
-default = []
+# Pingora is now the default proxy backend as of v2.0 (M6 cutover).
+# To opt out and keep the legacy hyper backend only:
+#   cargo build -p armageddon-forge --no-default-features --features hyper-legacy
+default = ["pingora"]
 rdkafka-backend = ["dep:rdkafka"]
 io_uring = ["dep:tokio-uring"]
-pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy"]
+pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy", "dep:armageddon-xds"]
+# Legacy hyper-based proxy path.  Kept for rollback and migration validation.
+# Will be removed in v3.0.  All core hyper dependencies are unconditional so
+# this feature is currently a documentation-only marker; it does NOT remove
+# the hyper code from the binary (that happens in v3.0 cleanup).
+hyper-legacy = []
 
 [dev-dependencies]
 tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
+# Enable ServiceExt::oneshot & service_fn for feature_flag_filter unit tests
+tower = { workspace = true, features = ["util"] }
 
 [dev-dependencies.criterion]
 workspace = true
 
+[[bin]]
+name = "pingora_bench_server"
+path = "src/bin/pingora_bench_server.rs"
+required-features = ["pingora"]
+
+[[bin]]
+name = "hyper_bench_server"
+path = "src/bin/hyper_bench_server.rs"
+
 [[bench]]
 name = "proxy_compare"
+harness = false
+
+# Micro-benchmark for the ForgeFilter chain walker (synchronous part only).
+# Requires the `pingora` feature at invocation time:
+#   cargo bench -p armageddon-forge --bench pingora_filter_chain_micro --features pingora
+# See: armageddon-forge/BENCH-METHODOLOGY.md
+[[bench]]
+name = "pingora_filter_chain_micro"
 harness = false
