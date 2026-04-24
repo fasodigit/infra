@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 FASO DIGITALISATION
-//! Canary / A-B / shadow traffic splitting for the Pingora gateway (M4-4 wave 2).
+//! Canary / A-B / shadow / multi-stage traffic splitting for the Pingora gateway.
 //!
 //! Ported from `src/traffic_split.rs` (hyper path) and extended with
 //! Pingora-specific integration points.
@@ -26,6 +26,25 @@
 //! sent to the *shadow* cluster at the configured sample rate.  The shadow
 //! response is **ignored**.
 //!
+//! ### Multi-stage (BL-1)
+//!
+//! A route may declare multiple [`StageVariant`]s ordered by `priority`
+//! (ascending = first exposure).  Each stage has a `weight` (float in
+//! `[0, 1)`) and a [`StageMode`] (`Split` or `Shadow`).
+//!
+//! **Selection algorithm:**
+//! 1. Compute `h = blake3(sticky_value)` normalised to `[0, 1)`.
+//! 2. Sort stages by `priority` ascending (stable sort preserves declaration
+//!    order on ties).
+//! 3. Walk stages: accumulate `sum_weights`; if `h < sum_weights`, select
+//!    this stage.
+//! 4. If no stage matched → route to primary.
+//! 5. `Shadow` stage: route to primary AND enqueue shadow duplication to
+//!    the stage cluster (response ignored).
+//!
+//! Total weight of all stages must be in `(0, 1]`.  The remaining fraction
+//! `(1 - total_weight)` routes to primary.
+//!
 //! ## Integration in `upstream_peer()`
 //!
 //! ```rust,ignore
@@ -41,7 +60,7 @@
 //!
 //! ## Metrics
 //!
-//! `armageddon_traffic_split_decisions_total{route, variant, decision}` is
+//! `armageddon_traffic_split_decisions_total{route, variant, decision, priority}` is
 //! incremented by [`TrafficSplitter::decide`] on every routing decision.
 //! Pass a [`PingoraMetrics`] bundle via [`TrafficSplitter::with_metrics`] to
 //! enable metric emission.
@@ -54,6 +73,8 @@
 //! | Weight sum ≠ 100 (canary/A-B) | `SplitError::WeightSum` at validation |
 //! | No variants defined | `SplitError::NoVariants` |
 //! | Shadow sample_rate out of [0,1] | `SplitError::ShadowSampleRate` |
+//! | Multi-stage total weight > 1.0 | `SplitError::MultiStageWeightExceeds` |
+//! | Multi-stage no stages | `SplitError::NoVariants` |
 
 use blake3::Hasher;
 use std::collections::HashMap;
@@ -165,6 +186,146 @@ pub enum SplitError {
     /// Shadow sample_rate is outside [0.0, 1.0].
     #[error("shadow sample_rate must be in 0.0..=1.0, got {0}")]
     ShadowSampleRate(f32),
+    /// Multi-stage total weight exceeds 1.0.
+    #[error("multi-stage total weight must be <= 1.0, got {0}")]
+    MultiStageWeightExceeds(f32),
+}
+
+// ── Multi-stage types (BL-1) ───────────────────────────────────────────────
+
+/// Routing mode for an individual stage variant.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StageMode {
+    /// Route the request to this variant cluster (normal split).
+    Split,
+    /// Route to primary AND fire-and-forget a duplicate to this cluster.
+    /// The shadow response is silently discarded.
+    Shadow,
+}
+
+/// One stage variant in a multi-stage rollout.
+#[derive(Debug, Clone)]
+pub struct StageVariant {
+    /// Upstream cluster name.
+    pub cluster: String,
+    /// Exposure priority: lower = earlier (first) exposure.
+    /// Stages are walked in ascending `priority` order.
+    pub priority: u32,
+    /// Fraction of total traffic for this stage, in `(0.0, 1.0]`.
+    /// The sum across all stages must be `<= 1.0`.
+    pub weight: f64,
+    /// `Split` — variant receives the real request.
+    /// `Shadow` — primary receives the request + variant gets a silent copy.
+    pub mode: StageMode,
+}
+
+/// Multi-stage rollout spec: one primary cluster + an ordered list of stages.
+///
+/// Each stage may be a canary slice (`Split`) or a silent shadow (`Shadow`).
+/// Stages are selected by a deterministic sticky hash so the same user always
+/// lands on the same stage for the duration of the rollout.
+#[derive(Debug, Clone)]
+pub struct MultiStageSplitSpec {
+    /// The fallback cluster when no stage matches the hash.
+    pub primary: String,
+    /// Ordered (by `priority` asc) stage variants.
+    pub stages: Vec<StageVariant>,
+    /// Optional sticky key header name.
+    pub sticky_header: Option<String>,
+}
+
+impl MultiStageSplitSpec {
+    /// Validate the spec.
+    ///
+    /// Returns `Err` when:
+    /// - `stages` is empty → `SplitError::NoVariants`
+    /// - total weight > 1.0 → `SplitError::MultiStageWeightExceeds`
+    pub fn validate(&self) -> Result<(), SplitError> {
+        if self.stages.is_empty() {
+            return Err(SplitError::NoVariants);
+        }
+        let total: f64 = self.stages.iter().map(|s| s.weight).sum();
+        if total > 1.0 + f64::EPSILON {
+            return Err(SplitError::MultiStageWeightExceeds(total as f32));
+        }
+        Ok(())
+    }
+}
+
+/// Result of a multi-stage routing decision.
+#[derive(Debug, Clone)]
+pub struct MultiStageSplitDecision {
+    /// Cluster the request is forwarded to (primary or a `Split` stage).
+    pub primary: String,
+    /// When `Some`, a silent copy of the request must also be sent to this
+    /// cluster (stage mode = `Shadow`).
+    pub shadow: Option<String>,
+    /// Priority of the matched stage, or `None` when routed to primary.
+    pub matched_priority: Option<u32>,
+    /// Human-readable label for the matched stage cluster (for metrics).
+    pub variant_label: String,
+}
+
+/// Pure routing function for multi-stage specs.
+///
+/// Stages are walked in ascending `priority` order.  The first stage whose
+/// cumulative weight exceeds the normalised hash wins.
+pub fn multi_stage_decide(spec: &MultiStageSplitSpec, sticky_value: &str) -> MultiStageSplitDecision {
+    // Normalise hash to [0, 1).
+    let h = hash_to_float(sticky_value);
+
+    // Sort stages by priority ascending (stable — preserves declaration order on ties).
+    let mut sorted: Vec<&StageVariant> = spec.stages.iter().collect();
+    sorted.sort_by_key(|s| s.priority);
+
+    let mut acc = 0.0_f64;
+    for stage in &sorted {
+        acc += stage.weight;
+        if h < acc {
+            // This stage wins.
+            match stage.mode {
+                StageMode::Split => {
+                    return MultiStageSplitDecision {
+                        primary: stage.cluster.clone(),
+                        shadow: None,
+                        matched_priority: Some(stage.priority),
+                        variant_label: stage.cluster.clone(),
+                    };
+                }
+                StageMode::Shadow => {
+                    return MultiStageSplitDecision {
+                        primary: spec.primary.clone(),
+                        shadow: Some(stage.cluster.clone()),
+                        matched_priority: Some(stage.priority),
+                        variant_label: stage.cluster.clone(),
+                    };
+                }
+            }
+        }
+    }
+
+    // No stage matched → route to primary.
+    MultiStageSplitDecision {
+        primary: spec.primary.clone(),
+        shadow: None,
+        matched_priority: None,
+        variant_label: spec.primary.clone(),
+    }
+}
+
+/// Normalise a blake3 hash of `key` to a float in `[0, 1)`.
+fn hash_to_float(key: &str) -> f64 {
+    let mut h = Hasher::new();
+    h.update(key.as_bytes());
+    let digest = h.finalize();
+    let bytes = digest.as_bytes();
+    // Use 8 bytes for a well-distributed u64.
+    let n = u64::from_le_bytes([
+        bytes[0], bytes[1], bytes[2], bytes[3],
+        bytes[4], bytes[5], bytes[6], bytes[7],
+    ]);
+    // Map to [0, 1) via uniform division by 2^64.
+    (n as f64) / (u64::MAX as f64 + 1.0)
 }
 
 // ── TrafficSplitter ────────────────────────────────────────────────────────
@@ -644,5 +805,153 @@ mod tests {
             let _ = sp.decide("test-route", &format!("user-{i}"));
         }
         // No panic = pass.
+    }
+
+    // ── Multi-stage (BL-1) ─────────────────────────────────────────────────
+
+    fn multi_stage_spec_10_2_shadow() -> MultiStageSplitSpec {
+        MultiStageSplitSpec {
+            primary: "checkout-v1".into(),
+            stages: vec![
+                StageVariant {
+                    cluster: "checkout-v2".into(),
+                    priority: 1,
+                    weight: 0.10,
+                    mode: StageMode::Split,
+                },
+                StageVariant {
+                    cluster: "checkout-v3-experimental".into(),
+                    priority: 2,
+                    weight: 0.02,
+                    mode: StageMode::Shadow,
+                },
+            ],
+            sticky_header: None,
+        }
+    }
+
+    /// Validation: valid multi-stage spec passes.
+    #[test]
+    fn multi_stage_validate_ok() {
+        assert!(multi_stage_spec_10_2_shadow().validate().is_ok());
+    }
+
+    /// Validation: empty stages → NoVariants.
+    #[test]
+    fn multi_stage_validate_empty_stages() {
+        let s = MultiStageSplitSpec {
+            primary: "p".into(),
+            stages: vec![],
+            sticky_header: None,
+        };
+        assert!(matches!(s.validate(), Err(SplitError::NoVariants)));
+    }
+
+    /// Validation: total weight > 1.0 → MultiStageWeightExceeds.
+    #[test]
+    fn multi_stage_validate_weight_exceeds() {
+        let s = MultiStageSplitSpec {
+            primary: "p".into(),
+            stages: vec![
+                StageVariant { cluster: "a".into(), priority: 1, weight: 0.6, mode: StageMode::Split },
+                StageVariant { cluster: "b".into(), priority: 2, weight: 0.6, mode: StageMode::Split },
+            ],
+            sticky_header: None,
+        };
+        assert!(matches!(s.validate(), Err(SplitError::MultiStageWeightExceeds(_))));
+    }
+
+    /// Distribution: 1000 iterations — ~10 % should land on v2 (priority 1, split).
+    #[test]
+    fn multi_stage_distribution_respected() {
+        let spec = multi_stage_spec_10_2_shadow();
+        let (mut v1_count, mut v2_count, mut shadow_count) = (0u32, 0u32, 0u32);
+        for i in 0..1000u32 {
+            let d = multi_stage_decide(&spec, &format!("user-{i}"));
+            if d.primary == "checkout-v2" {
+                v2_count += 1;
+            } else if d.shadow.is_some() {
+                shadow_count += 1;
+            } else {
+                v1_count += 1;
+            }
+        }
+        // v2 gets ~10 % ± 3 % over 1000 samples.
+        assert!(
+            (70..=130).contains(&v2_count),
+            "checkout-v2 should get ~10%, got {v2_count}/1000"
+        );
+        // shadow stage gets ~2 % ± 2 %.
+        assert!(
+            shadow_count <= 40,
+            "shadow stage should get <=4%, got {shadow_count}/1000"
+        );
+        // primary gets the rest (~88 %).
+        assert!(
+            v1_count >= 800,
+            "primary should get >=80%, got {v1_count}/1000"
+        );
+    }
+
+    /// Sticky session: same key always maps to same stage.
+    #[test]
+    fn multi_stage_sticky_session_deterministic() {
+        let spec = multi_stage_spec_10_2_shadow();
+        let d1 = multi_stage_decide(&spec, "user-sticky-42");
+        let d2 = multi_stage_decide(&spec, "user-sticky-42");
+        assert_eq!(d1.primary, d2.primary);
+        assert_eq!(d1.shadow, d2.shadow);
+        assert_eq!(d1.matched_priority, d2.matched_priority);
+    }
+
+    /// Priority order: if weights are constructed so stage priority=2 has all
+    /// weight, stage priority=1 (empty weight 0.0) is skipped.
+    #[test]
+    fn multi_stage_priority_order_respected() {
+        // priority=1 has 0 weight (never selected), priority=2 has full weight.
+        let spec = MultiStageSplitSpec {
+            primary: "primary".into(),
+            stages: vec![
+                StageVariant { cluster: "prio-2".into(), priority: 2, weight: 0.99, mode: StageMode::Split },
+                StageVariant { cluster: "prio-1".into(), priority: 1, weight: 0.0, mode: StageMode::Split },
+            ],
+            sticky_header: None,
+        };
+        // With weight=0 for priority=1 it is never entered; prio-2 wins almost always.
+        let mut prio2_count = 0u32;
+        let mut prio1_count = 0u32;
+        for i in 0..100u32 {
+            let d = multi_stage_decide(&spec, &format!("u{i}"));
+            if d.primary == "prio-2" { prio2_count += 1; }
+            if d.primary == "prio-1" { prio1_count += 1; }
+        }
+        assert_eq!(prio1_count, 0, "prio-1 stage with weight 0 must never be selected");
+        assert!(prio2_count > 90, "prio-2 stage with weight 0.99 should win almost all calls");
+    }
+
+    /// Shadow mode: decision routes to primary with shadow populated.
+    #[test]
+    fn multi_stage_shadow_duplication() {
+        // 100 % shadow stage to guarantee selection.
+        let spec = MultiStageSplitSpec {
+            primary: "primary".into(),
+            stages: vec![
+                StageVariant {
+                    cluster: "shadow-target".into(),
+                    priority: 1,
+                    weight: 1.0,
+                    mode: StageMode::Shadow,
+                },
+            ],
+            sticky_header: None,
+        };
+        let d = multi_stage_decide(&spec, "any-user");
+        assert_eq!(d.primary, "primary", "shadow mode routes to primary");
+        assert_eq!(
+            d.shadow.as_deref(),
+            Some("shadow-target"),
+            "shadow cluster must be populated"
+        );
+        assert_eq!(d.matched_priority, Some(1));
     }
 }
