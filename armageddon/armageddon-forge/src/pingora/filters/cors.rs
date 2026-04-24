@@ -201,25 +201,15 @@ impl CorsFilter {
     }
 }
 
-/// Stash the request origin between `on_request` and `on_response`.
-///
-/// We reuse [`RequestCtx::feature_flags`] for the M1 scaffolding since that
-/// field already exists; a future refactor will move this to a dedicated
-/// slot on the ctx.
-const ORIGIN_STASH_PREFIX: &str = "cors:origin:";
-
+/// Stash the request origin between `on_request` and `on_response` using the
+/// typed [`RequestCtx::cors_origin`] slot (M1 consolidation — replaces the
+/// previous stringly-typed `"cors:origin:"` prefix in `feature_flags`).
 fn stash_origin(ctx: &mut RequestCtx, origin: &str) {
-    // Clear any prior stash entry so hot-reload / retry don't accumulate.
-    ctx.feature_flags
-        .retain(|s| !s.starts_with(ORIGIN_STASH_PREFIX));
-    ctx.feature_flags
-        .push(format!("{ORIGIN_STASH_PREFIX}{origin}"));
+    ctx.cors_origin = Some(origin.to_string());
 }
 
 fn stashed_origin(ctx: &RequestCtx) -> Option<&str> {
-    ctx.feature_flags
-        .iter()
-        .find_map(|s| s.strip_prefix(ORIGIN_STASH_PREFIX))
+    ctx.cors_origin.as_deref()
 }
 
 #[async_trait::async_trait]
@@ -481,12 +471,10 @@ mod tests {
         // Overwrite-semantics — second stash replaces first.
         stash_origin(&mut ctx, "https://b.test");
         assert_eq!(stashed_origin(&ctx), Some("https://b.test"));
-        // Only one entry kept.
-        let count = ctx
-            .feature_flags
-            .iter()
-            .filter(|s| s.starts_with(ORIGIN_STASH_PREFIX))
-            .count();
-        assert_eq!(count, 1);
+        // feature_flags is not polluted by the origin stash.
+        assert!(
+            ctx.feature_flags.is_empty(),
+            "cors_origin uses a typed slot, not feature_flags"
+        );
     }
 }

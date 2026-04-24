@@ -19,9 +19,9 @@
 //! request (the Pingora 0.3 `Session` does not expose a stable `is_tls()`
 //! helper).
 //!
-//! CSP nonce stash: the random nonce is serialised into
-//! [`RequestCtx::feature_flags`] with the `"veil:nonce:"` prefix so that
-//! downstream HTML-rewriting filters (future) can look it up.
+//! CSP nonce stash: the random nonce is stored in the typed
+//! [`RequestCtx::veil_nonce`] field so that downstream HTML-rewriting filters
+//! (future) can read it directly without scanning `feature_flags`.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -42,7 +42,10 @@ pub const DEFAULT_FINGERPRINT_STRIP: &[&str] = &[
     "x-generator",
 ];
 
-/// Prefix used to stash the per-request CSP nonce into `RequestCtx`.
+/// Prefix retained for backward-compat references in external documentation;
+/// the actual nonce is now stored in [`RequestCtx::veil_nonce`] (typed slot,
+/// M1 consolidation — no longer backed by `feature_flags`).
+#[deprecated(note = "use RequestCtx::veil_nonce directly")]
 pub const CSP_NONCE_STASH_PREFIX: &str = "veil:nonce:";
 
 /// VEIL configuration.
@@ -161,12 +164,10 @@ fn has_header(res: &ResponseHeader, name: &str) -> bool {
     res.headers.contains_key(name)
 }
 
-/// Stash a CSP nonce into the ctx so downstream filters can read it.
+/// Stash a CSP nonce into the typed [`RequestCtx::veil_nonce`] slot so
+/// downstream filters can read it without scanning `feature_flags`.
 fn stash_nonce(ctx: &mut RequestCtx, nonce: &str) {
-    ctx.feature_flags
-        .retain(|s| !s.starts_with(CSP_NONCE_STASH_PREFIX));
-    ctx.feature_flags
-        .push(format!("{CSP_NONCE_STASH_PREFIX}{nonce}"));
+    ctx.veil_nonce = Some(nonce.to_string());
 }
 
 #[async_trait::async_trait]
@@ -404,18 +405,13 @@ mod tests {
         let mut ctx = RequestCtx::default();
         stash_nonce(&mut ctx, "abc");
         stash_nonce(&mut ctx, "xyz"); // overwrites
-        let count = ctx
-            .feature_flags
-            .iter()
-            .filter(|s| s.starts_with(CSP_NONCE_STASH_PREFIX))
-            .count();
-        assert_eq!(count, 1);
-        let found = ctx
-            .feature_flags
-            .iter()
-            .find_map(|s| s.strip_prefix(CSP_NONCE_STASH_PREFIX))
-            .unwrap();
-        assert_eq!(found, "xyz");
+        // Uses the typed slot, not feature_flags.
+        assert_eq!(ctx.veil_nonce.as_deref(), Some("xyz"));
+        // feature_flags must not be polluted.
+        assert!(
+            ctx.feature_flags.is_empty(),
+            "veil_nonce uses a typed slot, not feature_flags"
+        );
     }
 
     // --- filter construction + hot-reload -----------------------------------

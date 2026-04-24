@@ -10,12 +10,17 @@
 //! |---------------------------|-----------------------------|--------|
 //! | `request_id`              | `new_ctx` (uuid v4)         | M0     |
 //! | `trace_id`                | OTEL filter (W3C parser)    | M1 #99 |
+//! | `span_id`                 | OTEL filter (W3C parser)    | M1 #99 |
 //! | `cluster`                 | Router filter               | M1 #95 |
 //! | `upstream_addr`           | Upstream selector           | M2 #103|
 //! | `user_id` / `tenant_id`   | JWT filter                  | M1 #97 |
 //! | `roles`                   | JWT filter                  | M1 #97 |
+//! | `bearer_token`            | JWT filter (raw token)      | M1 #97 |
 //! | `spiffe_peer`             | mTLS upstream filter        | M2     |
 //! | `feature_flags`           | Feature-flag filter         | M1 #98 |
+//! | `cors_origin`             | CORS filter                 | M1 #96 |
+//! | `veil_nonce`              | VEIL filter                 | M1 #100|
+//! | `request_start_ms`        | OTEL filter                 | M1 #99 |
 //! | `waf_score`               | SENTINEL / ARBITER engines  | M3 #104|
 //! | `ai_score`                | ORACLE / AI engines         | M3 #104|
 //! | `cdc_outbox_id`           | Webhook / CDC plumbing      | M4     |
@@ -33,6 +38,13 @@ pub struct RequestCtx {
     /// W3C `traceparent` trace identifier — populated by OTEL filter (M1 #99).
     pub trace_id: String,
 
+    /// W3C `traceparent` span identifier — populated by OTEL filter (M1 #99).
+    pub span_id: String,
+
+    /// Timestamp in milliseconds since UNIX epoch when the request arrived,
+    /// used by the OTEL filter for `duration_ms` in `on_logging`.
+    pub request_start_ms: u64,
+
     /// Logical cluster name resolved by the router filter (M1 #95).
     pub cluster: String,
 
@@ -49,11 +61,31 @@ pub struct RequestCtx {
     /// Roles / scopes parsed from the JWT (M1 #97).
     pub roles: Vec<String>,
 
+    /// Raw Bearer token (populated by JWT filter when a valid token is present).
+    ///
+    /// Stored so downstream engines can access the token without re-parsing.
+    /// **Never log or include in responses.**
+    pub bearer_token: Option<String>,
+
     /// Peer SPIFFE ID observed during upstream mTLS handshake (M2).
     pub spiffe_peer: Option<String>,
 
     /// Feature-flag identifiers injected by the feature-flag filter (M1 #98).
     pub feature_flags: Vec<String>,
+
+    /// CORS `Origin` header observed in the downstream request (M1 #96).
+    ///
+    /// Populated by the CORS filter in `on_request` and consumed in
+    /// `on_response` to inject `Access-Control-Allow-Origin`.  Replaces the
+    /// previous `"cors:origin:"` stringly-typed prefix in `feature_flags`.
+    pub cors_origin: Option<String>,
+
+    /// CSP nonce minted by the VEIL filter (M1 #100).
+    ///
+    /// Replaces the previous `"veil:nonce:"` stringly-typed prefix in
+    /// `feature_flags`.  Downstream HTML-rewriting filters can read this
+    /// without scanning the flags vec.
+    pub veil_nonce: Option<String>,
 
     /// Aggregate WAF score from SENTINEL / ARBITER engines (M3 #104).
     /// Range: 0.0 (safe) ─ 1.0 (block).
@@ -96,5 +128,29 @@ mod tests {
         assert!(c.cluster.is_empty());
         assert!(c.roles.is_empty());
         assert_eq!(c.waf_score, 0.0);
+    }
+
+    #[test]
+    fn typed_slots_default_to_none() {
+        let c = RequestCtx::default();
+        assert!(c.cors_origin.is_none());
+        assert!(c.veil_nonce.is_none());
+        assert!(c.bearer_token.is_none());
+        assert!(c.trace_id.is_empty());
+        assert!(c.span_id.is_empty());
+        assert_eq!(c.request_start_ms, 0);
+    }
+
+    #[test]
+    fn typed_slots_are_independently_settable() {
+        let mut c = RequestCtx::new();
+        c.cors_origin = Some("https://app.faso.dev".to_string());
+        c.veil_nonce = Some("abc123".to_string());
+        c.bearer_token = Some("eyJ...".to_string());
+        assert_eq!(c.cors_origin.as_deref(), Some("https://app.faso.dev"));
+        assert_eq!(c.veil_nonce.as_deref(), Some("abc123"));
+        assert_eq!(c.bearer_token.as_deref(), Some("eyJ..."));
+        // feature_flags is unaffected.
+        assert!(c.feature_flags.is_empty());
     }
 }
