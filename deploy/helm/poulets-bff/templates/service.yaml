@@ -1,0 +1,17 @@
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "poulets-bff.fullname" . }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poulets-bff.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - port: {{ .Values.service.httpPort }}
+      targetPort: http
+      protocol: TCP
+      name: http
+  selector:
+    {{- include "poulets-bff.selectorLabels" . | nindent 4 }}

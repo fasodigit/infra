@@ -1,9 +1,9 @@
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: AGPL-3.0-or-later
 apiVersion: v2
 name: poulets-api
-description: poulets-api — FASO DIGITALISATION
+description: Poulets API Microservice — FASO DIGITALISATION
 type: application
-version: 1.0.0
+version: 1.1.0
 appVersion: "1.0.0"
 keywords:
   - microservice
@@ -15,4 +15,4 @@ maintainers:
     email: fasodigitalisation@gmail.com
 annotations:
   category: Microservice
-  license: AGPL-3.0-only
+  license: AGPL-3.0-or-later

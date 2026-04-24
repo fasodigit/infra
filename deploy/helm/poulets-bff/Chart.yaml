@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+apiVersion: v2
+name: poulets-bff
+description: Poulets BFF (Next.js) — FASO DIGITALISATION
+type: application
+version: 1.0.0
+appVersion: "1.0.0"
+keywords:
+  - bff
+  - nextjs
+  - frontend
+  - sovereign
+maintainers:
+  - name: FASO DIGITALISATION
+    email: fasodigitalisation@gmail.com
+annotations:
+  category: Frontend
+  license: AGPL-3.0-or-later

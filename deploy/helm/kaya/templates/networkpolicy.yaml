@@ -1,4 +1,4 @@
-{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
 {{- if .Values.networkPolicy.enabled }}
 # Deny all ingress/egress by default
 apiVersion: networking.k8s.io/v1
@@ -16,7 +16,7 @@ spec:
     - Ingress
     - Egress
 ---
-# Allow RESP from app namespaces
+# Allow RESP3 + gRPC from app namespaces and gateway
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -35,11 +35,16 @@ spec:
         - namespaceSelector:
             matchLabels:
               faso.gov.bf/tier: app
+        - namespaceSelector:
+            matchLabels:
+              faso.gov.bf/tier: gateway
       ports:
         - protocol: TCP
           port: 6380
+        - protocol: TCP
+          port: 6381
 ---
-# Allow Prometheus scrape from observability namespace
+# Allow Prometheus scrape from observability namespace on metrics port
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -63,13 +68,13 @@ spec:
               app.kubernetes.io/name: prometheus
       ports:
         - protocol: TCP
-          port: 6381
+          port: 9100
 ---
-# Allow DNS egress (CoreDNS)
+# Allow inter-pod communication for cluster bus (Raft) + DNS
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
-  name: {{ include "kaya.fullname" . }}-allow-dns
+  name: {{ include "kaya.fullname" . }}-allow-cluster
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kaya.labels" . | nindent 4 }}
@@ -78,8 +83,27 @@ spec:
     matchLabels:
       {{- include "kaya.selectorLabels" . | nindent 6 }}
   policyTypes:
+    - Ingress
     - Egress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "kaya.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 6382
   egress:
+    - to:
+        - podSelector:
+            matchLabels:
+              {{- include "kaya.selectorLabels" . | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 6382
+        - protocol: TCP
+          port: 6380
+    # DNS (CoreDNS)
     - ports:
         - protocol: UDP
           port: 53
