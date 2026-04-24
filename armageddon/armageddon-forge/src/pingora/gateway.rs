@@ -227,11 +227,51 @@ impl ProxyHttp for PingoraGateway {
 
     /// Run the filter chain's `on_request` hooks, then perform the
     /// core header-hygiene work (hop-by-hop strip + x-forge-id injection).
+    ///
+    /// # Header population (Sprint 1 #4 reliquat)
+    ///
+    /// Before any filter in the chain runs, we extract the HTTP method, path
+    /// (including query string), and all inbound headers from the session and
+    /// store them in `ctx`.  This ensures every downstream filter (JWT,
+    /// feature-flag, OTEL, AI adapter) sees populated values without each
+    /// having to re-access `session.req_header()`.
+    ///
+    /// Multi-value headers are joined with `", "` (RFC 7230 § 3.2.2).
+    /// Sensitive headers (`authorization`, `cookie`, `x-api-key`) are stored
+    /// as-is (redaction is the caller's responsibility when logging).
     async fn request_filter(
         &self,
         session: &mut Session,
         ctx: &mut Self::CTX,
     ) -> Result<bool> {
+        // 0. Populate ctx.http_method, ctx.http_path, ctx.http_headers
+        //    from the inbound request — BEFORE any filter runs.
+        {
+            let req = session.req_header();
+            // HTTP method.
+            ctx.http_method = Some(req.method.to_string());
+
+            // Full path + query string.
+            let path = req.uri.path_and_query()
+                .map(|pq| pq.as_str().to_string())
+                .unwrap_or_else(|| req.uri.path().to_string());
+            ctx.http_path = Some(path);
+
+            // Headers — multi-value joined with ", ".
+            let mut header_map: std::collections::BTreeMap<String, Vec<String>> =
+                std::collections::BTreeMap::new();
+            for (name, value) in req.headers.iter() {
+                let key = name.as_str().to_ascii_lowercase();
+                if let Ok(v) = value.to_str() {
+                    header_map.entry(key).or_default().push(v.to_string());
+                }
+            }
+            ctx.http_headers = header_map
+                .into_iter()
+                .map(|(k, vals)| (k, vals.join(", ")))
+                .collect();
+        }
+
         // 1. Filter chain.
         for filter in &self.config.filters {
             match filter.on_request(session, ctx).await {
@@ -710,5 +750,140 @@ mod tests {
                 tracing::warn!("build_server returned err in test env: {e}");
             }
         }
+    }
+
+    // ── Sprint 1 #4 reliquat: header population logic unit tests ─────────────
+    //
+    // `request_filter` populates `ctx.http_method`, `ctx.http_path`, and
+    // `ctx.http_headers` from `session.req_header()` before any filter runs.
+    //
+    // We cannot construct a real `pingora_proxy::Session` in unit tests
+    // (it requires a live TCP connection).  Instead we exercise the
+    // extraction logic via a standalone helper that mirrors the same code path,
+    // operating on a `pingora::http::RequestHeader` directly.  This validates
+    // that the logic is correct even though the wiring through `Session` is
+    // only exercised by the integration tests.
+
+    /// Simulate the header-extraction block from `request_filter` on a
+    /// `pingora::http::RequestHeader` and populate a `RequestCtx`.
+    fn populate_ctx_from_req_header(
+        req: &pingora::http::RequestHeader,
+        ctx: &mut RequestCtx,
+    ) {
+        ctx.http_method = Some(req.method.to_string());
+
+        let path = req
+            .uri
+            .path_and_query()
+            .map(|pq| pq.as_str().to_string())
+            .unwrap_or_else(|| req.uri.path().to_string());
+        ctx.http_path = Some(path);
+
+        let mut header_map: std::collections::BTreeMap<String, Vec<String>> =
+            std::collections::BTreeMap::new();
+        for (name, value) in req.headers.iter() {
+            let key = name.as_str().to_ascii_lowercase();
+            if let Ok(v) = value.to_str() {
+                header_map.entry(key).or_default().push(v.to_string());
+            }
+        }
+        ctx.http_headers = header_map
+            .into_iter()
+            .map(|(k, vals)| (k, vals.join(", ")))
+            .collect();
+    }
+
+    #[test]
+    fn test_request_filter_populates_method_and_path() {
+        let req = pingora::http::RequestHeader::build(
+            "GET",
+            b"/api/v1/users?page=2",
+            Some(4),
+        )
+        .expect("build request header");
+
+        let mut ctx = RequestCtx::new();
+        populate_ctx_from_req_header(&req, &mut ctx);
+
+        assert_eq!(
+            ctx.http_method.as_deref(),
+            Some("GET"),
+            "http_method must be GET"
+        );
+        assert_eq!(
+            ctx.http_path.as_deref(),
+            Some("/api/v1/users?page=2"),
+            "http_path must include query string"
+        );
+    }
+
+    #[test]
+    fn test_request_filter_populates_headers_lowercase() {
+        let mut req = pingora::http::RequestHeader::build(
+            "POST",
+            b"/admin/action",
+            Some(4),
+        )
+        .expect("build request header");
+
+        req.insert_header("Content-Type", "application/json")
+            .expect("insert content-type");
+        req.insert_header("X-Request-ID", "abc123")
+            .expect("insert x-request-id");
+        req.insert_header("Authorization", "Bearer tok")
+            .expect("insert authorization");
+
+        let mut ctx = RequestCtx::new();
+        populate_ctx_from_req_header(&req, &mut ctx);
+
+        assert_eq!(
+            ctx.http_headers.get("content-type").map(String::as_str),
+            Some("application/json"),
+            "content-type header must be present and lowercased"
+        );
+        assert_eq!(
+            ctx.http_headers.get("x-request-id").map(String::as_str),
+            Some("abc123"),
+            "x-request-id header must be present"
+        );
+        assert_eq!(
+            ctx.http_headers.get("authorization").map(String::as_str),
+            Some("Bearer tok"),
+            "authorization header must be stored (redaction is caller's responsibility)"
+        );
+    }
+
+    #[test]
+    fn test_request_filter_multi_value_headers_joined() {
+        let mut req = pingora::http::RequestHeader::build(
+            "GET",
+            b"/multi",
+            Some(4),
+        )
+        .expect("build request header");
+
+        // Insert two Accept headers to simulate multi-value.
+        req.append_header("Accept", "application/json")
+            .expect("append accept 1");
+        req.append_header("Accept", "text/plain")
+            .expect("append accept 2");
+
+        let mut ctx = RequestCtx::new();
+        populate_ctx_from_req_header(&req, &mut ctx);
+
+        let accept = ctx.http_headers.get("accept").expect("accept header must be present");
+        // Both values must appear in the joined string.
+        assert!(
+            accept.contains("application/json"),
+            "accept must contain application/json; got: {accept}"
+        );
+        assert!(
+            accept.contains("text/plain"),
+            "accept must contain text/plain; got: {accept}"
+        );
+        assert!(
+            accept.contains(", "),
+            "multi-value headers must be joined with ', '; got: {accept}"
+        );
     }
 }
