@@ -31,11 +31,11 @@ use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
 use arc_swap::ArcSwap;
-use tracing::{debug, error, warn};
+use tracing::{debug, error};
 
 use armageddon_common::types::Endpoint;
 
-use super::lb::{LbPolicy, RoundRobin};
+use super::lb::{LbPolicy, PowerOfTwoChoices, RoundRobin, Weighted};
 
 // -- pool key --
 
@@ -159,6 +159,10 @@ pub struct ClusterResolver {
     clusters: Arc<ArcSwap<HashMap<String, Arc<ClusterState>>>>,
     /// Per-cluster round-robin cursor, keyed by cluster name.
     rr_cursors: dashmap::DashMap<String, Arc<RoundRobinCursor>>,
+    /// Per-cluster Smooth WRR state, keyed by cluster name.
+    weighted_lbs: dashmap::DashMap<String, Arc<Weighted>>,
+    /// Per-cluster P2C state (active-connection counters), keyed by cluster name.
+    p2c_lbs: dashmap::DashMap<String, Arc<PowerOfTwoChoices>>,
 }
 
 impl std::fmt::Debug for ClusterResolver {
@@ -168,6 +172,7 @@ impl std::fmt::Debug for ClusterResolver {
             .finish()
     }
 }
+
 
 /// Per-cluster round-robin cursor.  Boxed separately from `RoundRobin` so
 /// the resolver can hand out `Arc` handles without forcing `RoundRobin`
@@ -192,6 +197,8 @@ impl ClusterResolver {
         Self {
             clusters: Arc::new(ArcSwap::from_pointee(HashMap::new())),
             rr_cursors: dashmap::DashMap::new(),
+            weighted_lbs: dashmap::DashMap::new(),
+            p2c_lbs: dashmap::DashMap::new(),
         }
     }
 
@@ -212,7 +219,7 @@ impl ClusterResolver {
         next.insert(cluster.to_string(), state);
         self.clusters.store(Arc::new(next));
 
-        // Ensure a cursor exists (does not reset an existing one).
+        // Ensure a cursor / LB instance exists (does not reset an existing one).
         self.rr_cursors
             .entry(cluster.to_string())
             .or_insert_with(|| {
@@ -221,6 +228,12 @@ impl ClusterResolver {
                     _generation: AtomicUsize::new(0),
                 })
             });
+        self.weighted_lbs
+            .entry(cluster.to_string())
+            .or_insert_with(|| Arc::new(Weighted::new()));
+        self.p2c_lbs
+            .entry(cluster.to_string())
+            .or_insert_with(|| Arc::new(PowerOfTwoChoices::new()));
 
         debug!(cluster, "ClusterResolver: state updated");
     }
@@ -269,26 +282,21 @@ impl ClusterResolver {
                     .clone();
                 cursor.inner.pick(&state.endpoints).cloned()
             }
-            LbPolicy::Weighted | LbPolicy::PowerOfTwoChoices => {
-                // TODO(#103): fall through to RR until these policies are
-                // implemented in the M2 follow-up.  For now we preserve
-                // fairness by routing via the existing RR cursor.
-                warn!(
-                    cluster,
-                    policy = ?state.lb_policy,
-                    "ClusterResolver: policy not yet implemented — falling back to round-robin"
-                );
-                let cursor = self
-                    .rr_cursors
+            LbPolicy::Weighted => {
+                let lb = self
+                    .weighted_lbs
                     .entry(cluster.to_string())
-                    .or_insert_with(|| {
-                        Arc::new(RoundRobinCursor {
-                            inner: RoundRobin::new(),
-                            _generation: AtomicUsize::new(0),
-                        })
-                    })
+                    .or_insert_with(|| Arc::new(Weighted::new()))
                     .clone();
-                cursor.inner.pick(&state.endpoints).cloned()
+                lb.pick(&state.endpoints).cloned()
+            }
+            LbPolicy::PowerOfTwoChoices => {
+                let lb = self
+                    .p2c_lbs
+                    .entry(cluster.to_string())
+                    .or_insert_with(|| Arc::new(PowerOfTwoChoices::new()))
+                    .clone();
+                lb.pick(&state.endpoints).cloned()
             }
         };
 
@@ -604,5 +612,136 @@ mod tests {
         let r = ClusterResolver::default();
         assert!(r.is_empty());
         assert_eq!(r.len(), 0);
+    }
+
+    // -- Weighted policy via ClusterResolver ----------------------------------
+
+    /// Weighted policy must route to endpoints proportional to their weight.
+    /// Over 600 calls with weights [3, 1] the heavier endpoint should appear
+    /// ~75 % of the time (±10 % tolerance — generous because this is an
+    /// integration test, not a unit distribution test).
+    #[test]
+    fn resolver_weighted_distributes_by_weight() {
+        let r = ClusterResolver::new();
+        r.update(
+            "svc",
+            ClusterState::new(
+                vec![
+                    Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 8001,
+                        weight: 3,
+                        healthy: true,
+                    },
+                    Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 8002,
+                        weight: 1,
+                        healthy: true,
+                    },
+                ],
+                false,
+                None,
+                LbPolicy::Weighted,
+            ),
+        );
+
+        let n = 600usize;
+        let mut heavy = 0usize;
+        for _ in 0..n {
+            let p = r.resolve("svc").expect("must resolve");
+            if p.addr.port() == 8001 {
+                heavy += 1;
+            }
+        }
+
+        let ratio = heavy as f64 / n as f64;
+        assert!(
+            (ratio - 0.75).abs() < 0.10,
+            "weighted 3:1 should give ~75% to port 8001, got {:.1}%",
+            ratio * 100.0
+        );
+    }
+
+    /// Weighted policy with all endpoints unhealthy must return None.
+    #[test]
+    fn resolver_weighted_all_unhealthy_returns_none() {
+        let r = ClusterResolver::new();
+        r.update(
+            "dead",
+            ClusterState::new(
+                vec![
+                    Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 9001,
+                        weight: 5,
+                        healthy: false,
+                    },
+                    Endpoint {
+                        address: "127.0.0.1".to_string(),
+                        port: 9002,
+                        weight: 1,
+                        healthy: false,
+                    },
+                ],
+                false,
+                None,
+                LbPolicy::Weighted,
+            ),
+        );
+        assert!(
+            r.resolve("dead").is_none(),
+            "Weighted cluster with all unhealthy endpoints must yield None"
+        );
+    }
+
+    // -- P2C policy via ClusterResolver ---------------------------------------
+
+    /// P2C policy must return a valid peer from a two-endpoint healthy cluster.
+    #[test]
+    fn resolver_p2c_resolves_healthy_cluster() {
+        let r = ClusterResolver::new();
+        r.update(
+            "p2c-svc",
+            ClusterState::new(
+                vec![
+                    ep("127.0.0.1", 7001, true),
+                    ep("127.0.0.1", 7002, true),
+                ],
+                false,
+                None,
+                LbPolicy::PowerOfTwoChoices,
+            ),
+        );
+
+        for _ in 0..50 {
+            let p = r.resolve("p2c-svc").expect("P2C must resolve healthy cluster");
+            assert!(
+                p.addr.port() == 7001 || p.addr.port() == 7002,
+                "P2C must pick one of the two endpoints"
+            );
+        }
+    }
+
+    /// P2C with all unhealthy endpoints must return None.
+    #[test]
+    fn resolver_p2c_all_unhealthy_returns_none() {
+        let r = ClusterResolver::new();
+        r.update(
+            "p2c-dead",
+            ClusterState::new(
+                vec![
+                    ep("127.0.0.1", 7001, false),
+                    ep("127.0.0.1", 7002, false),
+                ],
+                false,
+                None,
+                LbPolicy::PowerOfTwoChoices,
+            ),
+        );
+        assert!(
+            r.resolve("p2c-dead").is_none(),
+            "P2C cluster with all unhealthy endpoints must yield None"
+        );
     }
 }
