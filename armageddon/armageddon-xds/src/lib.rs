@@ -43,6 +43,7 @@ pub mod ads_client;
 pub mod debouncer;
 pub mod error;
 pub mod metrics;
+pub mod mtls;
 pub mod proto;
 pub mod resources;
 pub mod subscription;
@@ -52,5 +53,10 @@ mod tests;
 
 pub use ads_client::{AdsClient, XdsCallback};
 pub use error::XdsError;
+pub use mtls::{
+    InlineSvid, MtlsError, SvidSource, XdsMtlsConfig, XdsServerMtlsConfig,
+    build_channel, inc_handshake, inc_reconnect, is_authorized_client,
+    mtls_handshakes, mtls_reconnects,
+};
 pub use resources::ResourceCache;
 pub use subscription::Subscription;

@@ -94,7 +94,7 @@ thiserror = "2"
 anyhow = "1"
 
 # gRPC
-tonic = "0.12"
+tonic = { version = "0.12", features = ["tls"] }
 prost = "0.13"
 
 # HTTP
