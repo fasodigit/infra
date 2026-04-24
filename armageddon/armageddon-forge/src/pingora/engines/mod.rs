@@ -22,6 +22,7 @@
 pub mod aegis_adapter;
 pub mod ai_adapter;
 pub mod arbiter_adapter;
+pub mod llm_provider;
 pub mod nexus_adapter;
 pub mod oracle_adapter;
 pub mod pipeline;
