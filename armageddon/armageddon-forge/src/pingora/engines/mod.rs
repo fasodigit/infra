@@ -23,6 +23,7 @@ pub mod aegis_adapter;
 pub mod ai_adapter;
 pub mod arbiter_adapter;
 pub mod llm_provider;
+pub mod multi_ai_provider;
 pub mod nexus_adapter;
 pub mod oracle_adapter;
 pub mod pipeline;
@@ -32,6 +33,9 @@ pub mod wasm_adapter;
 pub use aegis_adapter::AegisAdapter;
 pub use ai_adapter::AiAdapter;
 pub use arbiter_adapter::ArbiterAdapter;
+pub use multi_ai_provider::{
+    EnsembleMode, MultiAiProvider, MultiStrategy, NamedProvider, RequestRouter,
+};
 pub use nexus_adapter::NexusAdapter;
 pub use oracle_adapter::OracleAdapter;
 pub use pipeline::{EngineAdapter, EngineVerdict, Pipeline, PipelineVerdict};
