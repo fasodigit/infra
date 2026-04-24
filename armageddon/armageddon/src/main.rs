@@ -845,7 +845,9 @@ async fn handle_http_request(
                             "gql_limit_exceeded",
                             e.to_string(),
                         ),
-                        GqlLimitError::Parse(_) => (400, "gql_parse_error", e.to_string()),
+                        GqlLimitError::Parse(_)
+                        | GqlLimitError::UnknownFragment(_)
+                        | GqlLimitError::CyclicFragments(_) => (400, "gql_parse_error", e.to_string()),
                     };
                     tracing::warn!(
                         path = %path,
