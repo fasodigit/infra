@@ -1,6 +1,10 @@
 server:
   port: 8801
   shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 25MB
+    max-swallow-size: 25MB
+  max-http-request-header-size: 16KB
 
 spring:
   application:
@@ -19,18 +23,28 @@ spring:
       minimum-idle: 2
       idle-timeout: 300000
       connection-timeout: 20000
-      max-lifetime: 1200000
+      max-lifetime: 600000
+      validation-timeout: 3000
+      leak-detection-threshold: 30000
+      data-source-properties:
+        options: "-c statement_timeout=10000"
 
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
     properties:
+      jakarta:
+        persistence:
+          query:
+            timeout: 5000
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
         jdbc:
           time_zone: UTC
+          batch_size: 25
+        default_batch_fetch_size: 16
 
   # Flyway
   flyway:
@@ -54,11 +68,19 @@ spring:
           min-idle: 2
           max-wait: 2000ms
 
+  # Input validation & request size limits
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 25MB
+
   # GraphQL (DGS)
   graphql:
     path: /graphql
     graphiql:
       enabled: false
+    introspection:
+      enabled: ${GRAPHQL_INTROSPECTION:false}
     schema:
       locations: classpath:schema/
 
@@ -161,6 +183,73 @@ management:
   otlp:
     tracing:
       endpoint: http://localhost:4318/v1/traces
+
+# Resilience4j
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.client.HttpServerErrorException
+    instances:
+      kratos:
+        baseConfig: default
+        failureRateThreshold: 60
+        waitDurationInOpenState: 15s
+      keto:
+        baseConfig: default
+      kaya:
+        baseConfig: default
+        slidingWindowSize: 20
+        waitDurationInOpenState: 10s
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+    instances:
+      kratos:
+        timeoutDuration: 3s
+      keto:
+        timeoutDuration: 2s
+      kaya:
+        timeoutDuration: 1s
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 500ms
+    instances:
+      kratos:
+        maxConcurrentCalls: 15
+      keto:
+        maxConcurrentCalls: 10
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 500ms
+        retryExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+    instances:
+      kratos:
+        maxAttempts: 3
+        waitDuration: 1s
+      kaya:
+        maxAttempts: 3
+        waitDuration: 200ms
 
 logging:
   level:
