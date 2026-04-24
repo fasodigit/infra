@@ -5,6 +5,7 @@ edition.workspace = true
 
 [dependencies]
 armageddon-aegis = { workspace = true }
+armageddon-ai = { workspace = true }
 armageddon-arbiter = { workspace = true }
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
@@ -14,6 +15,8 @@ armageddon-oracle = { workspace = true }
 armageddon-ratelimit = { workspace = true }
 armageddon-retry = { workspace = true }
 armageddon-sentinel = { workspace = true }
+armageddon-wasm = { workspace = true }
+async-channel = "2"
 tokio-rustls = "0.26"
 tokio = { workspace = true }
 
