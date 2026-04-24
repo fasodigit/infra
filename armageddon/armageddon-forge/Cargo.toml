@@ -81,10 +81,18 @@ nix = { workspace = true }
 libc = { workspace = true }
 
 [features]
-default = []
+# Pingora is now the default proxy backend as of v2.0 (M6 cutover).
+# To opt out and keep the legacy hyper backend only:
+#   cargo build -p armageddon-forge --no-default-features --features hyper-legacy
+default = ["pingora"]
 rdkafka-backend = ["dep:rdkafka"]
 io_uring = ["dep:tokio-uring"]
 pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy", "dep:armageddon-xds"]
+# Legacy hyper-based proxy path.  Kept for rollback and migration validation.
+# Will be removed in v3.0.  All core hyper dependencies are unconditional so
+# this feature is currently a documentation-only marker; it does NOT remove
+# the hyper code from the binary (that happens in v3.0 cleanup).
+hyper-legacy = []
 
 [dev-dependencies]
 tokio = { workspace = true }
