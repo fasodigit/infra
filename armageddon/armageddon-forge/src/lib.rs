@@ -74,7 +74,28 @@ use dashmap::DashMap;
 use proxy::RoundRobinCounter;
 use std::sync::Arc;
 
-/// The FORGE proxy server.
+/// The FORGE proxy server — **legacy hyper backend**.
+///
+/// # Deprecation notice
+///
+/// `ForgeServer` is deprecated since ARMAGEDDON v2.0 (M6 cutover, 2026-04-24).
+/// Use [`crate::pingora::PingoraGateway`] instead (feature `pingora`, default since v2).
+///
+/// Migration path:
+/// 1. Set `gateway.runtime: "shadow"` in `armageddon.yaml` → run both backends
+///    in parallel for 48 h validation.
+/// 2. Validate parity via `armageddon_traffic_split_decisions_total` metrics.
+/// 3. Set `gateway.runtime: "pingora"` → pure Pingora path.
+/// 4. Remove `gateway.runtime: "hyper"` from all configs.
+///
+/// `ForgeServer` will be removed in v3.0.  Keep the `hyper-legacy` feature enabled
+/// to acknowledge the opt-out until you have migrated.
+#[deprecated(
+    since = "2.0.0",
+    note = "use PingoraGateway (feature `pingora`, default since v2). \
+            See CUTOVER.md for the migration path. \
+            ForgeServer will be removed in v3.0."
+)]
 pub struct ForgeServer {
     listeners: Vec<ListenerConfig>,
     router: Arc<router::Router>,
@@ -92,6 +113,7 @@ pub struct ForgeServer {
     rate_limit_filter: Option<Arc<RateLimitFilter>>,
 }
 
+#[allow(deprecated)]
 impl ForgeServer {
     /// Create a new FORGE proxy server.
     pub fn new(
