@@ -129,6 +129,8 @@ redis = { version = "0.27", features = ["tokio-comp", "aio"] }
 # HMAC-SHA256 for webhook signature validation
 hmac = "0.12"
 sha2 = "0.10"
+# SHA-1 for WebSocket Sec-WebSocket-Accept (RFC 6455 §1.3)
+sha1 = "0.10"
 # Constant-time comparison (HMAC validation)
 subtle = "2"
 
