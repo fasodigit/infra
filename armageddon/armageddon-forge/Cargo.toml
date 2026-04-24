@@ -61,6 +61,7 @@ brotli = { workspace = true }
 zstd = { workspace = true }
 flate2 = { workspace = true }
 tower = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 # Optional rdkafka backend; enable with feature "rdkafka-backend"
 rdkafka = { workspace = true, optional = true }
@@ -72,6 +73,7 @@ tokio-uring = { version = "0.5", optional = true }
 pingora = { workspace = true, optional = true }
 pingora-core = { workspace = true, optional = true }
 pingora-proxy = { workspace = true, optional = true }
+armageddon-xds = { workspace = true, optional = true }
 
 # Zero-copy splice: Linux only, always linked when targeting linux
 [target.'cfg(target_os = "linux")'.dependencies]
@@ -82,7 +84,7 @@ libc = { workspace = true }
 default = []
 rdkafka-backend = ["dep:rdkafka"]
 io_uring = ["dep:tokio-uring"]
-pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy"]
+pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy", "dep:armageddon-xds"]
 
 [dev-dependencies]
 tokio = { workspace = true }
@@ -92,6 +94,15 @@ tower = { workspace = true, features = ["util"] }
 
 [dev-dependencies.criterion]
 workspace = true
+
+[[bin]]
+name = "pingora_bench_server"
+path = "src/bin/pingora_bench_server.rs"
+required-features = ["pingora"]
+
+[[bin]]
+name = "hyper_bench_server"
+path = "src/bin/hyper_bench_server.rs"
 
 [[bench]]
 name = "proxy_compare"

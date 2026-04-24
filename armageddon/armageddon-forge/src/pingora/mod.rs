@@ -44,6 +44,9 @@ pub mod protocols;
 pub mod runtime;
 pub mod server;
 pub mod upstream;
+pub mod shadow;
+pub mod svid_rotation_bridge;
+pub mod xds_watcher;
 
 // Convenient re-exports so callers can write `pingora::PingoraGateway`
 // without digging into `pingora::gateway::…`.
