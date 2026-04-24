@@ -40,6 +40,7 @@
 //!   server does not stall.
 
 pub mod ads_client;
+pub mod delta_ads_client;
 pub mod debouncer;
 pub mod error;
 pub mod metrics;
@@ -52,6 +53,7 @@ pub mod subscription;
 mod tests;
 
 pub use ads_client::{AdsClient, XdsCallback};
+pub use delta_ads_client::{DeltaAdsClient, DeltaXdsCallback, DeltaSubscription, DeltaSubscriptionMap};
 pub use error::XdsError;
 pub use mtls::{
     InlineSvid, MtlsError, SvidSource, XdsMtlsConfig, XdsServerMtlsConfig,

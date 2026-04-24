@@ -510,3 +510,318 @@ fn test_subscription_map_all_types_present() {
         assert!(urls.contains(url), "subscription map must include {url}");
     }
 }
+
+// ===========================================================================
+// Delta ADS Client tests
+//
+// Test matrix:
+//   D1. delta_client_applies_add_update_remove
+//       — mock server pushes add, then update, then remove → cache final state correct
+//   D2. delta_client_sends_ack_with_nonce
+//       — verify ACK carries the server's nonce
+//   D3. delta_client_nack_on_invalid_resource
+//       — garbled resource bytes → NACK sent, cache NOT updated
+// ===========================================================================
+
+use crate::delta_ads_client::{DeltaAdsClient, DeltaXdsCallback, DeltaSubscription};
+use crate::proto::discovery::{Resource, Node as DeltaNode};
+
+/// Encode a prost message into a Resource wrapper (for DeltaDiscoveryResponse).
+fn to_resource<M: prost::Message>(name: &str, version: &str, type_url: &str, msg: &M) -> Resource {
+    let mut buf = Vec::new();
+    msg.encode(&mut buf).expect("encode resource");
+    Resource {
+        name: name.to_string(),
+        version: version.to_string(),
+        resource: Some(Any {
+            type_url: type_url.to_string(),
+            value: buf,
+        }),
+        aliases: vec![],
+    }
+}
+
+fn make_delta_response(
+    type_url: &str,
+    nonce: &str,
+    resources: Vec<Resource>,
+    removed: Vec<String>,
+) -> DeltaDiscoveryResponse {
+    DeltaDiscoveryResponse {
+        system_version_info: "sv1".to_string(),
+        resources,
+        type_url: type_url.to_string(),
+        removed_resources: removed,
+        nonce: nonce.to_string(),
+        control_plane: None,
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Mock Delta ADS server for client tests
+// ---------------------------------------------------------------------------
+
+struct MockDeltaAdsService {
+    /// Responses to push to the Delta stream.
+    pushes: Vec<DeltaDiscoveryResponse>,
+    /// Records every inbound DeltaDiscoveryRequest.
+    received: Arc<Mutex<Vec<DeltaDiscoveryRequest>>>,
+}
+
+#[tonic::async_trait]
+impl AggregatedDiscoveryService for MockDeltaAdsService {
+    type StreamAggregatedResourcesStream =
+        Pin<Box<dyn tokio_stream::Stream<Item = Result<DiscoveryResponse, Status>> + Send + 'static>>;
+    type DeltaAggregatedResourcesStream =
+        Pin<Box<dyn tokio_stream::Stream<Item = Result<DeltaDiscoveryResponse, Status>> + Send + 'static>>;
+
+    async fn stream_aggregated_resources(
+        &self,
+        _request: Request<Streaming<DiscoveryRequest>>,
+    ) -> Result<Response<Self::StreamAggregatedResourcesStream>, Status> {
+        Err(Status::unimplemented("SOTW not used in delta tests"))
+    }
+
+    async fn delta_aggregated_resources(
+        &self,
+        request: Request<Streaming<DeltaDiscoveryRequest>>,
+    ) -> Result<Response<Self::DeltaAggregatedResourcesStream>, Status> {
+        let (tx, rx) = mpsc::channel(32);
+        let pushes = self.pushes.clone();
+        let received = self.received.clone();
+
+        tokio::spawn(async move {
+            let mut inbound = request.into_inner();
+
+            // Consume initial subscription request.
+            if let Some(Ok(req)) = inbound.next().await {
+                received.lock().await.push(req);
+            }
+
+            // Push prepared delta responses.
+            for resp in pushes {
+                if tx.send(Ok(resp)).await.is_err() {
+                    return;
+                }
+            }
+
+            // Drain remaining requests (ACKs / NACKs).
+            while let Some(Ok(req)) = inbound.next().await {
+                received.lock().await.push(req);
+            }
+        });
+
+        Ok(Response::new(Box::pin(ReceiverStream::new(rx))))
+    }
+}
+
+async fn start_mock_delta_server(
+    pushes: Vec<DeltaDiscoveryResponse>,
+    received: Arc<Mutex<Vec<DeltaDiscoveryRequest>>>,
+) -> String {
+    let addr: std::net::SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let local_addr = listener.local_addr().unwrap();
+
+    let svc = MockDeltaAdsService { pushes, received };
+
+    tokio::spawn(async move {
+        Server::builder()
+            .add_service(AggregatedDiscoveryServiceServer::new(svc))
+            .serve_with_incoming(tokio_stream::wrappers::TcpListenerStream::new(listener))
+            .await
+            .ok();
+    });
+
+    tokio::time::sleep(Duration::from_millis(20)).await;
+    format!("http://{}", local_addr)
+}
+
+// ---------------------------------------------------------------------------
+// Shared Delta callback
+// ---------------------------------------------------------------------------
+
+#[derive(Default)]
+struct RecordingDeltaCallback {
+    clusters_upserted: Mutex<Vec<Cluster>>,
+    clusters_removed: Mutex<Vec<String>>,
+    endpoints_upserted: Mutex<Vec<ClusterLoadAssignment>>,
+    endpoints_removed: Mutex<Vec<String>>,
+}
+
+#[async_trait]
+impl DeltaXdsCallback for RecordingDeltaCallback {
+    async fn on_cluster_upsert(&self, c: Cluster) { self.clusters_upserted.lock().await.push(c); }
+    async fn on_cluster_removed(&self, n: String) { self.clusters_removed.lock().await.push(n); }
+    async fn on_endpoint_upsert(&self, e: ClusterLoadAssignment) { self.endpoints_upserted.lock().await.push(e); }
+    async fn on_endpoint_removed(&self, n: String) { self.endpoints_removed.lock().await.push(n); }
+    async fn on_listener_upsert(&self, _: Listener) {}
+    async fn on_listener_removed(&self, _: String) {}
+    async fn on_route_upsert(&self, _: crate::proto::route::RouteConfiguration) {}
+    async fn on_route_removed(&self, _: String) {}
+    async fn on_secret_upsert(&self, _: Secret) {}
+    async fn on_secret_removed(&self, _: String) {}
+}
+
+// ---------------------------------------------------------------------------
+// D1: delta_client_applies_add_update_remove
+// ---------------------------------------------------------------------------
+
+/// Server pushes: add cluster-a, then update cluster-a, then remove cluster-a.
+/// Final cache state: cluster-a absent.
+#[tokio::test]
+async fn delta_client_applies_add_update_remove() {
+    let cluster_v1 = Cluster { name: "cluster-a".to_string(), ..Default::default() };
+    let cluster_v2 = Cluster { name: "cluster-a".to_string(), ..Default::default() };
+
+    let add_resp = make_delta_response(
+        type_urls::CLUSTER,
+        "nonce-1",
+        vec![to_resource("cluster-a", "v1", type_urls::CLUSTER, &cluster_v1)],
+        vec![],
+    );
+    let update_resp = make_delta_response(
+        type_urls::CLUSTER,
+        "nonce-2",
+        vec![to_resource("cluster-a", "v2", type_urls::CLUSTER, &cluster_v2)],
+        vec![],
+    );
+    let remove_resp = make_delta_response(
+        type_urls::CLUSTER,
+        "nonce-3",
+        vec![],
+        vec!["cluster-a".to_string()],
+    );
+
+    let received = Arc::new(Mutex::new(vec![]));
+    let addr = start_mock_delta_server(
+        vec![add_resp, update_resp, remove_resp],
+        received.clone(),
+    )
+    .await;
+
+    let cb = Arc::new(RecordingDeltaCallback::default());
+    let client = DeltaAdsClient::connect_delta(&addr, "test-node".to_string())
+        .await
+        .expect("connect");
+    let cache = client.resources.clone();
+
+    let cb2 = cb.clone();
+    let handle = tokio::spawn(async move { let _ = client.run_delta(cb2).await; });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    handle.abort();
+
+    // Upsert callback must have been called twice (add + update).
+    let upserted = cb.clusters_upserted.lock().await;
+    assert_eq!(upserted.len(), 2, "two upsert callbacks (add + update)");
+
+    // Remove callback once.
+    let removed = cb.clusters_removed.lock().await;
+    assert_eq!(removed.len(), 1, "one remove callback");
+    assert_eq!(removed[0], "cluster-a");
+
+    // Cache must NOT contain cluster-a after the remove.
+    let snap = cache.load();
+    assert!(
+        !snap.clusters.contains_key("cluster-a"),
+        "cluster-a must be absent after remove"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// D2: delta_client_sends_ack_with_nonce
+// ---------------------------------------------------------------------------
+
+/// Verify that after a valid delta response, the client sends an ACK with
+/// `response_nonce == server_nonce` and no `error_detail`.
+#[tokio::test]
+async fn delta_client_sends_ack_with_nonce() {
+    let cluster = Cluster { name: "svc-x".to_string(), ..Default::default() };
+    let resp = make_delta_response(
+        type_urls::CLUSTER,
+        "the-nonce-99",
+        vec![to_resource("svc-x", "v1", type_urls::CLUSTER, &cluster)],
+        vec![],
+    );
+
+    let received = Arc::new(Mutex::new(vec![]));
+    let addr = start_mock_delta_server(vec![resp], received.clone()).await;
+
+    let cb = Arc::new(RecordingDeltaCallback::default());
+    let client = DeltaAdsClient::connect_delta(&addr, "test-node".to_string())
+        .await
+        .expect("connect");
+
+    let handle = tokio::spawn(async move { let _ = client.run_delta(cb).await; });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    handle.abort();
+
+    let reqs = received.lock().await;
+    let ack = reqs
+        .iter()
+        .find(|r| r.response_nonce == "the-nonce-99" && r.error_detail.is_none());
+    assert!(
+        ack.is_some(),
+        "ACK with nonce 'the-nonce-99' and no error_detail must be sent; got: {:?}",
+        reqs.iter().map(|r| (&r.response_nonce, r.error_detail.is_some())).collect::<Vec<_>>()
+    );
+}
+
+// ---------------------------------------------------------------------------
+// D3: delta_client_nack_on_invalid_resource
+// ---------------------------------------------------------------------------
+
+/// Server sends a resource with garbled bytes.  The client must NACK
+/// (error_detail set) and must NOT update the cache.
+#[tokio::test]
+async fn delta_client_nack_on_invalid_resource() {
+    let bad_resp = DeltaDiscoveryResponse {
+        system_version_info: "sv1".to_string(),
+        resources: vec![Resource {
+            name: "bad-cluster".to_string(),
+            version: "v1".to_string(),
+            resource: Some(Any {
+                type_url: type_urls::CLUSTER.to_string(),
+                value: vec![0xFF, 0xFE, 0xAB, 0xCD], // invalid protobuf
+            }),
+            aliases: vec![],
+        }],
+        type_url: type_urls::CLUSTER.to_string(),
+        removed_resources: vec![],
+        nonce: "bad-nonce".to_string(),
+        control_plane: None,
+    };
+
+    let received = Arc::new(Mutex::new(vec![]));
+    let addr = start_mock_delta_server(vec![bad_resp], received.clone()).await;
+
+    let cb = Arc::new(RecordingDeltaCallback::default());
+    let client = DeltaAdsClient::connect_delta(&addr, "test-node".to_string())
+        .await
+        .expect("connect");
+    let cache = client.resources.clone();
+
+    let handle = tokio::spawn(async move { let _ = client.run_delta(cb.clone()).await; });
+    tokio::time::sleep(Duration::from_millis(300)).await;
+    handle.abort();
+
+    // No cluster upsert callback should have fired.
+    // (RecordingDeltaCallback is moved, test cb is the Arc we kept.)
+    // Cache must be empty.
+    let snap = cache.load();
+    assert!(
+        snap.clusters.is_empty(),
+        "cache must be empty after NACK (no valid resources applied)"
+    );
+
+    // NACK must have been sent.
+    let reqs = received.lock().await;
+    let nack_req = reqs
+        .iter()
+        .find(|r| r.response_nonce == "bad-nonce" && r.error_detail.is_some());
+    assert!(
+        nack_req.is_some(),
+        "NACK with nonce 'bad-nonce' and error_detail must be sent; got: {:?}",
+        reqs.iter().map(|r| (&r.response_nonce, r.error_detail.is_some())).collect::<Vec<_>>()
+    );
+}

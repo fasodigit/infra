@@ -109,4 +109,91 @@ impl ResourceCache {
         next.secrets = secrets;
         self.snapshot.store(Arc::new(next));
     }
+
+    // -----------------------------------------------------------------------
+    // Delta (upsert + remove) methods used by DeltaAdsClient
+    // -----------------------------------------------------------------------
+
+    /// Upsert clusters from a delta response and remove the listed names.
+    ///
+    /// Operates on a single atomic snapshot swap; the write-lock is never held
+    /// across an `.await`.
+    pub fn upsert_remove_clusters(
+        &self,
+        adds: HashMap<String, Cluster>,
+        removes: &[String],
+    ) {
+        let _guard = self.write_lock.write();
+        let prev = self.snapshot.load();
+        let mut next = (**prev).clone();
+        next.clusters.extend(adds);
+        for name in removes {
+            next.clusters.remove(name);
+        }
+        self.snapshot.store(Arc::new(next));
+    }
+
+    /// Upsert endpoints from a delta response and remove the listed names.
+    pub fn upsert_remove_endpoints(
+        &self,
+        adds: HashMap<String, ClusterLoadAssignment>,
+        removes: &[String],
+    ) {
+        let _guard = self.write_lock.write();
+        let prev = self.snapshot.load();
+        let mut next = (**prev).clone();
+        next.endpoints.extend(adds);
+        for name in removes {
+            next.endpoints.remove(name);
+        }
+        self.snapshot.store(Arc::new(next));
+    }
+
+    /// Upsert listeners from a delta response and remove the listed names.
+    pub fn upsert_remove_listeners(
+        &self,
+        adds: HashMap<String, Listener>,
+        removes: &[String],
+    ) {
+        let _guard = self.write_lock.write();
+        let prev = self.snapshot.load();
+        let mut next = (**prev).clone();
+        next.listeners.extend(adds);
+        for name in removes {
+            next.listeners.remove(name);
+        }
+        self.snapshot.store(Arc::new(next));
+    }
+
+    /// Upsert routes from a delta response and remove the listed names.
+    pub fn upsert_remove_routes(
+        &self,
+        adds: HashMap<String, RouteConfiguration>,
+        removes: &[String],
+    ) {
+        let _guard = self.write_lock.write();
+        let prev = self.snapshot.load();
+        let mut next = (**prev).clone();
+        next.routes.extend(adds);
+        for name in removes {
+            next.routes.remove(name);
+        }
+        self.snapshot.store(Arc::new(next));
+    }
+
+    /// Upsert secrets from a delta response and remove the listed names.
+    pub fn upsert_remove_secrets(
+        &self,
+        adds: HashMap<String, Secret>,
+        removes: &[String],
+    ) {
+        let _guard = self.write_lock.write();
+        let prev = self.snapshot.load();
+        let mut next = (**prev).clone();
+        next.secrets.extend(adds);
+        for name in removes {
+            next.secrets.remove(name);
+        }
+        self.snapshot.store(Arc::new(next));
+    }
 }
