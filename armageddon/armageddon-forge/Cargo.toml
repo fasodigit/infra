@@ -5,12 +5,15 @@ edition.workspace = true
 
 [dependencies]
 armageddon-aegis = { workspace = true }
+armageddon-arbiter = { workspace = true }
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
 armageddon-mesh = { workspace = true }
+armageddon-nexus = { workspace = true }
 armageddon-oracle = { workspace = true }
 armageddon-ratelimit = { workspace = true }
 armageddon-retry = { workspace = true }
+armageddon-sentinel = { workspace = true }
 tokio-rustls = "0.26"
 tokio = { workspace = true }
 
