@@ -1,0 +1,311 @@
+{
+  "__comment": "SPDX-License-Identifier: AGPL-3.0-or-later | Copyright (C) 2026 FASO DIGITALISATION",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "FASO DIGITALISATION — Service dependency map with node graph, call rates, and error-rate coloring from spanmetrics.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 200,
+      "title": "Service Dependency Graph",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "tempo", "uid": "faso-tempo-ds" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": []
+      },
+      "gridPos": { "h": 16, "w": 24, "x": 0, "y": 1 },
+      "id": 1,
+      "options": {
+        "nodes": {},
+        "edges": {}
+      },
+      "title": "Service Map (Tempo Service Graph)",
+      "type": "nodeGraph",
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "faso-tempo-ds" },
+          "queryType": "serviceMap",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 201,
+      "title": "Call Rate Matrix",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "continuous-GrYlRd" },
+          "custom": { "fillOpacity": 80 },
+          "unit": "ops"
+        }
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 18 },
+      "id": 2,
+      "options": {
+        "calculate": false,
+        "cellGap": 2,
+        "color": { "mode": "scheme", "scheme": "RdYlGn", "steps": 64 },
+        "tooltip": { "show": true },
+        "yAxis": { "axisLabel": "Server" }
+      },
+      "title": "Inter-Service Call Rate (requests/sec)",
+      "type": "heatmap",
+      "targets": [
+        {
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_total[$interval]))",
+          "legendFormat": "{{ client }} -> {{ server }}",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "orange", "value": 0.05 },
+              { "color": "red", "value": 0.10 }
+            ]
+          },
+          "unit": "percentunit",
+          "custom": { "fillOpacity": 80 }
+        }
+      },
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 18 },
+      "id": 3,
+      "options": {
+        "calculate": false,
+        "cellGap": 2,
+        "color": { "mode": "scheme", "scheme": "RdYlGn", "reverse": true, "steps": 64 },
+        "tooltip": { "show": true },
+        "yAxis": { "axisLabel": "Server" }
+      },
+      "title": "Inter-Service Error Rate",
+      "type": "heatmap",
+      "targets": [
+        {
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total[$interval])) / clamp_min(sum by (client, server) (rate(traces_service_graph_request_total[$interval])), 1)",
+          "legendFormat": "{{ client }} -> {{ server }}",
+          "format": "table",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 28 },
+      "id": 202,
+      "title": "Service Health Summary",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" },
+          "unit": "ops"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 29 },
+      "id": 4,
+      "title": "Request Rate per Service (from spanmetrics)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (service_name) (rate(otel_span_duration_count{service_name=~\"$service\"}[$interval]))",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 29 },
+      "id": 5,
+      "title": "Error Rate per Service (from spanmetrics)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "sum by (service_name) (rate(otel_span_duration_count{status_code=\"STATUS_CODE_ERROR\", service_name=~\"$service\"}[$interval])) / clamp_min(sum by (service_name) (rate(otel_span_duration_count{service_name=~\"$service\"}[$interval])), 1)",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 29 },
+      "id": 6,
+      "title": "P99 Latency per Service (from spanmetrics)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, service_name) (rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])))",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 37 },
+      "id": 203,
+      "title": "Dependency Edges Detail",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Call Rate" },
+            "properties": [{ "id": "unit", "value": "ops" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "Error Rate" },
+            "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "thresholds", "value": { "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 0.01 }] } }, { "id": "custom.displayMode", "value": "color-background" }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "P99 Latency" },
+            "properties": [{ "id": "unit", "value": "s" }, { "id": "thresholds", "value": { "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 0.1 }, { "color": "red", "value": 1 }] } }, { "id": "custom.displayMode", "value": "color-background" }]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 38 },
+      "id": 7,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Call Rate" }],
+        "footer": { "show": false }
+      },
+      "title": "Service-to-Service Edge Table",
+      "type": "table",
+      "targets": [
+        {
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_total[$interval]))",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "sum by (client, server) (rate(traces_service_graph_request_failed_total[$interval])) / clamp_min(sum by (client, server) (rate(traces_service_graph_request_total[$interval])), 1)",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by (le, client, server) (rate(traces_service_graph_request_server_seconds_bucket[$interval])))",
+          "legendFormat": "",
+          "format": "table",
+          "instant": true,
+          "refId": "C"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "merge",
+          "options": {}
+        },
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": { "Time": true },
+            "renameByName": {
+              "client": "Client",
+              "server": "Server",
+              "Value #A": "Call Rate",
+              "Value #B": "Error Rate",
+              "Value #C": "P99 Latency"
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["faso", "service-map", "dependencies", "observability"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+        "definition": "label_values(otel_span_duration_count, service_name)",
+        "includeAll": true,
+        "multi": true,
+        "name": "service",
+        "query": { "query": "label_values(otel_span_duration_count, service_name)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "5m", "value": "5m" },
+        "name": "interval",
+        "options": [
+          { "selected": false, "text": "1m", "value": "1m" },
+          { "selected": true, "text": "5m", "value": "5m" },
+          { "selected": false, "text": "15m", "value": "15m" },
+          { "selected": false, "text": "1h", "value": "1h" }
+        ],
+        "query": "1m,5m,15m,1h",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Africa/Ouagadougou",
+  "title": "FASO Service Dependency Map",
+  "uid": "faso-service-map",
+  "version": 1
+}

@@ -1,0 +1,98 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+#
+# Upptime status page configuration
+# Docs: https://upptime.js.org/docs/
+# Deployed to: status.faso.gov.bf
+---
+owner: faso-digitalisation
+repo: status
+
+sites:
+  - name: Plateforme Poulets
+    url: https://poulets.faso.gov.bf
+    expectedStatusCodes:
+      - 200
+      - 301
+    icon: https://faso.gov.bf/assets/icons/poulets.svg
+    assignees:
+      - sre-team-lead
+
+  - name: API Poulets
+    url: https://api.poulets.faso.gov.bf/actuator/health
+    expectedStatusCodes:
+      - 200
+    assignees:
+      - sre-team-lead
+
+  - name: Authentification
+    url: https://auth.faso.gov.bf/.well-known/openid-configuration
+    expectedStatusCodes:
+      - 200
+    assignees:
+      - sre-team-lead
+
+  - name: Paiement Mobile Money
+    url: https://api.poulets.faso.gov.bf/api/payment/health
+    expectedStatusCodes:
+      - 200
+    assignees:
+      - sre-team-lead
+
+  - name: SMS Gateway
+    url: https://api.poulets.faso.gov.bf/api/sms/health
+    expectedStatusCodes:
+      - 200
+    assignees:
+      - sre-team-lead
+
+  - name: API Gateway (ARMAGEDDON)
+    url: https://gateway.faso.gov.bf/health
+    expectedStatusCodes:
+      - 200
+    assignees:
+      - sre-team-lead
+
+status-website:
+  cname: status.faso.gov.bf
+  logoUrl: https://faso.gov.bf/assets/logo.svg
+  name: "FASO DIGITALISATION \u2014 Statut des Services"
+  theme: dark
+  navbar:
+    - title: "Retour au site"
+      href: https://poulets.faso.gov.bf
+    - title: "Contact support"
+      href: "mailto:support@faso.gov.bf"
+  i18n:
+    activeIncidents: "Incidents en cours"
+    allSystemsOperational: "Tous les systemes sont operationnels"
+    scheduledMaintenance: "Maintenance programmee"
+    incidentReport: "Rapport d'incident"
+    pastIncidents: "Incidents passes"
+    liveStatus: "Statut en direct"
+    uptime: "Disponibilite"
+    responseTime: "Temps de reponse"
+    ms: "ms"
+    second: "seconde"
+    seconds: "secondes"
+    minute: "minute"
+    minutes: "minutes"
+    hour: "heure"
+    hours: "heures"
+    day: "jour"
+    days: "jours"
+
+notifications:
+  - type: slack
+    channel: "#faso-status"
+  - type: email
+    email: "sre@faso.gov.bf"
+
+workflowSchedule:
+  uptime: "*/5 * * * *"       # Check every 5 minutes
+  responseTime: "*/10 * * * *" # Measure response time every 10 minutes
+  graphs: "0 0 * * *"          # Generate graphs daily
+  staticSite: "0 0 * * *"      # Rebuild status site daily
+
+i18n:
+  locale: fr

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Tempo configuration — 90-day trace retention with S3 archival.
 server:
   http_listen_port: 3200
   log_level: warn
@@ -16,7 +19,10 @@ ingester:
 
 compactor:
   compaction:
-    block_retention: 48h
+    block_retention: 2160h  # 90 days (up from 48h)
+  ring:
+    kvstore:
+      store: consul
 
 metrics_generator:
   registry:
@@ -24,18 +30,24 @@ metrics_generator:
       source: tempo
       cluster: faso-dev
   storage:
-    path: /tmp/tempo/generator/wal
+    path: /var/tempo/generator/wal
     remote_write:
       - url: http://prometheus:9090/api/v1/write
         send_exemplars: true
 
 storage:
   trace:
-    backend: local
-    local:
-      path: /tmp/tempo/blocks
+    backend: s3
+    s3:
+      bucket: faso-traces-archive
+      endpoint: s3.gra.io.cloud.ovh.net
+      region: gra
+    block:
+      bloom_filter_false_positive: 0.05
     wal:
-      path: /tmp/tempo/wal
+      path: /var/tempo/wal
+    pool:
+      max_workers: 100
 
 overrides:
   defaults:

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Loki configuration — tiered retention with S3 archival (2-year compliance).
 auth_enabled: false
 
 server:
@@ -19,25 +22,39 @@ common:
 
 schema_config:
   configs:
-    - from: 2024-01-01
+    - from: 2026-01-01
       store: tsdb
-      object_store: filesystem
+      object_store: s3
       schema: v13
       index:
-        prefix: index_
+        prefix: loki_index_
         period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/cache
+    shared_store: s3
+  aws:
+    s3: s3://faso-logs-archive
+    region: gra
+    endpoint: s3.gra.io.cloud.ovh.net
+    s3forcepathstyle: true
 
 limits_config:
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32
   max_query_parallelism: 32
-  retention_period: 744h  # 31 days
+  retention_period: 744h  # 31 days hot (local)
+  per_tenant_override_config: /etc/loki/overrides.yaml
 
 compactor:
   working_directory: /loki/compactor
+  shared_store: s3
   retention_enabled: true
   retention_delete_delay: 2h
   compaction_interval: 10m
+  delete_request_store: s3
 
 ruler:
   alertmanager_url: http://localhost:9093

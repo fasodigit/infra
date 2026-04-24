@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Thanos sidecar config — S3 bucket for long-term Prometheus block upload.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: thanos-sidecar-config
+  namespace: faso-observability
+data:
+  bucket.yaml: |
+    type: S3
+    config:
+      bucket: faso-metrics-archive
+      endpoint: s3.gra.io.cloud.ovh.net
+      region: gra
+      access_key: ${S3_ACCESS_KEY}
+      secret_key: ${S3_SECRET_KEY}

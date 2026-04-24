@@ -19,7 +19,7 @@ services:
     container_name: faso-postmortem-bot
     build:
       context: ../scripts
-      dockerfile: Dockerfile.postmortem-bot
+      dockerfile: Containerfile.postmortem-bot
     image: faso/postmortem-bot:latest
     restart: unless-stopped
     networks:

@@ -1,0 +1,650 @@
+{
+  "__comment": "SPDX-License-Identifier: AGPL-3.0-or-later | Copyright (C) 2026 FASO DIGITALISATION",
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "FASO DIGITALISATION — End-to-end latency analysis with spanmetrics, heatmaps, slow trace drill-down, and infrastructure correlation.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "icon": "external link",
+      "tags": [],
+      "title": "Jaeger UI",
+      "type": "link",
+      "url": "http://localhost:16686/jaeger"
+    }
+  ],
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100,
+      "title": "Global Latency Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "axisLabel": "Latency",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          },
+          "unit": "s"
+        },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*p99.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*p95.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*p50.*" }, "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 1 },
+      "id": 1,
+      "options": { "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max", "lastNotNull"] }, "tooltip": { "mode": "multi" } },
+      "title": "P50 / P95 / P99 Latency per Service",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le, service_name))",
+          "legendFormat": "{{ service_name }} p50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le, service_name))",
+          "legendFormat": "{{ service_name }} p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le, service_name))",
+          "legendFormat": "{{ service_name }} p99",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.7 },
+              { "color": "yellow", "value": 0.85 },
+              { "color": "green", "value": 0.94 }
+            ]
+          },
+          "min": 0,
+          "max": 1,
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 12, "y": 1 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "textMode": "value_and_name" },
+      "title": "Apdex Score per Service",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "(sum by (service_name) (rate(otel_span_duration_bucket{le=\"0.5\", service_name=~\"$service\"}[$interval])) + sum by (service_name) (rate(otel_span_duration_bucket{le=\"2.0\", service_name=~\"$service\"}[$interval]))) / 2 / clamp_min(sum by (service_name) (rate(otel_span_duration_count{service_name=~\"$service\"}[$interval])), 1)",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "orange", "value": 0.05 },
+              { "color": "red", "value": 0.10 }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 6, "x": 18, "y": 1 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "textMode": "value_and_name" },
+      "title": "Error Rate per Service",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "sum by (service_name) (rate(otel_span_duration_count{status_code=\"STATUS_CODE_ERROR\", service_name=~\"$service\"}[$interval])) / clamp_min(sum by (service_name) (rate(otel_span_duration_count{service_name=~\"$service\"}[$interval])), 1)",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 9 },
+      "id": 101,
+      "title": "Request Flow Latency Breakdown",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 10 },
+      "id": 4,
+      "title": "ARMAGEDDON Upstream Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(armageddon_upstream_duration_seconds_bucket[$interval])) by (le))",
+          "legendFormat": "p99 upstream",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(armageddon_upstream_duration_seconds_bucket[$interval])) by (le))",
+          "legendFormat": "p50 upstream",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 10 },
+      "id": 5,
+      "title": "Database Query Latency (OTel)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{db_system!=\"\", service_name=~\"$service\"}[$interval])) by (le, db_system))",
+          "legendFormat": "{{ db_system }} p99",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(otel_span_duration_bucket{db_system!=\"\", service_name=~\"$service\"}[$interval])) by (le, db_system))",
+          "legendFormat": "{{ db_system }} p50",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 10 },
+      "id": 6,
+      "title": "KAYA Command Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(kaya_command_duration_seconds_bucket[$interval])) by (le))",
+          "legendFormat": "p99",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum(rate(kaya_command_duration_seconds_bucket[$interval])) by (le))",
+          "legendFormat": "p95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.50, sum(rate(kaya_command_duration_seconds_bucket[$interval])) by (le))",
+          "legendFormat": "p50",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 10 },
+      "id": 7,
+      "title": "Kafka Produce / Consume Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{messaging_system=\"kafka\", messaging_operation=\"publish\"}[$interval])) by (le))",
+          "legendFormat": "produce p99",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{messaging_system=\"kafka\", messaging_operation=\"process\"}[$interval])) by (le))",
+          "legendFormat": "consume p99",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 17 },
+      "id": 102,
+      "title": "Latency Heatmap",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "scheme", "schemeId": "Oranges" },
+          "custom": {
+            "fillOpacity": 80,
+            "scaleDistribution": { "log": 2, "type": "log" }
+          },
+          "unit": "s"
+        }
+      },
+      "gridPos": { "h": 9, "w": 24, "x": 0, "y": 18 },
+      "id": 8,
+      "options": {
+        "calculate": false,
+        "cellGap": 1,
+        "color": { "exponent": 0.5, "fill": "dark-orange", "mode": "scheme", "scheme": "Oranges", "steps": 64 },
+        "exemplars": { "color": "rgba(255,0,255,0.7)" },
+        "filterValues": { "le": 1e-9 },
+        "tooltip": { "show": true, "yHistogram": true },
+        "yAxis": { "axisLabel": "Duration", "unit": "s" }
+      },
+      "title": "Request Duration Heatmap (all services)",
+      "type": "heatmap",
+      "targets": [
+        {
+          "expr": "sum(increase(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le)",
+          "legendFormat": "{{ le }}",
+          "format": "heatmap",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 103,
+      "title": "Slow Traces",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "tempo", "uid": "faso-tempo-ds" },
+      "fieldConfig": {
+        "defaults": {},
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Duration" },
+            "properties": [{ "id": "unit", "value": "ns" }]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "id": 9,
+      "options": {
+        "showHeader": true,
+        "sortBy": [{ "desc": true, "displayName": "Duration" }],
+        "footer": { "show": false }
+      },
+      "title": "Top Slowest Traces (last 1h)",
+      "type": "table",
+      "targets": [
+        {
+          "datasource": { "type": "tempo", "uid": "faso-tempo-ds" },
+          "queryType": "traceqlSearch",
+          "limit": 10,
+          "filters": [
+            { "id": "duration", "tag": "duration", "operator": ">", "value": ["500ms"] },
+            { "id": "service-name", "tag": "service.name", "operator": "=", "value": ["$service"], "scope": "resource" }
+          ],
+          "refId": "A"
+        }
+      ],
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "renameByName": {
+              "traceID": "Trace ID",
+              "rootServiceName": "Service",
+              "rootTraceName": "Operation",
+              "traceDuration": "Duration",
+              "startTime": "Start Time"
+            }
+          }
+        }
+      ],
+      "links": [
+        {
+          "title": "View in Tempo",
+          "url": "/explore?orgId=1&left={\"datasource\":\"faso-tempo-ds\",\"queries\":[{\"refId\":\"A\",\"queryType\":\"traceql\",\"query\":\"${__data.fields.traceID}\"}]}",
+          "targetBlank": true
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 38 },
+      "id": 104,
+      "title": "Latency Comparison (Time Shift)",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*yesterday.*" }, "properties": [{ "id": "custom.lineStyle", "value": { "fill": "dash", "dash": [10, 10] } }] },
+          { "matcher": { "id": "byRegexp", "options": ".*last week.*" }, "properties": [{ "id": "custom.lineStyle", "value": { "fill": "dot" } }] }
+        ]
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 39 },
+      "id": 10,
+      "title": "P99 Latency — Today vs Yesterday vs Last Week",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le))",
+          "legendFormat": "now",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval] offset 1d)) by (le))",
+          "legendFormat": "yesterday",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval] offset 7d)) by (le))",
+          "legendFormat": "last week",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1.1 },
+              { "color": "orange", "value": 1.5 },
+              { "color": "red", "value": 2.0 }
+            ]
+          },
+          "unit": "percentunit"
+        }
+      },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 39 },
+      "id": 11,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "horizontal", "textMode": "value_and_name", "colorMode": "background" },
+      "title": "Latency Degradation vs Yesterday",
+      "type": "stat",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le, service_name)) / clamp_min(histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval] offset 1d)) by (le, service_name)), 0.0001)",
+          "legendFormat": "{{ service_name }}",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 47 },
+      "id": 105,
+      "title": "Infrastructure Correlation",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*CPU.*" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "custom.axisPlacement", "value": "left" }] },
+          { "matcher": { "id": "byRegexp", "options": ".*latency.*" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 0, "y": 48 },
+      "id": 12,
+      "title": "CPU vs Latency Correlation",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "1 - avg(rate(node_cpu_seconds_total{mode=\"idle\"}[$interval]))",
+          "legendFormat": "CPU usage",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le))",
+          "legendFormat": "p99 latency",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*memory.*" }, "properties": [{ "id": "unit", "value": "percentunit" }, { "id": "custom.axisPlacement", "value": "left" }] },
+          { "matcher": { "id": "byRegexp", "options": ".*latency.*" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 6, "y": 48 },
+      "id": 13,
+      "title": "Memory vs Latency Correlation",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)",
+          "legendFormat": "memory usage",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le))",
+          "legendFormat": "p99 latency",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*pool.*" }, "properties": [{ "id": "unit", "value": "short" }, { "id": "custom.axisPlacement", "value": "left" }] },
+          { "matcher": { "id": "byRegexp", "options": ".*latency.*" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 12, "y": 48 },
+      "id": 14,
+      "title": "Connection Pool vs Latency",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "hikaricp_connections_pending{application=~\"$service\"}",
+          "legendFormat": "{{ application }} pool pending",
+          "refId": "A"
+        },
+        {
+          "expr": "hikaricp_connections_active{application=~\"$service\"}",
+          "legendFormat": "{{ application }} pool active",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le))",
+          "legendFormat": "p99 latency",
+          "refId": "C"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" } },
+        "overrides": [
+          { "matcher": { "id": "byRegexp", "options": ".*GC.*" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "left" }] },
+          { "matcher": { "id": "byRegexp", "options": ".*latency.*" }, "properties": [{ "id": "unit", "value": "s" }, { "id": "custom.axisPlacement", "value": "right" }] }
+        ]
+      },
+      "gridPos": { "h": 7, "w": 6, "x": 18, "y": 48 },
+      "id": 15,
+      "title": "GC Pause Time vs Latency (Java)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "rate(jvm_gc_pause_seconds_sum{application=~\"$service\"}[$interval])",
+          "legendFormat": "{{ application }} GC pause rate",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{service_name=~\"$service\"}[$interval])) by (le))",
+          "legendFormat": "p99 latency",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 55 },
+      "id": 106,
+      "title": "Network Latency",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 56 },
+      "id": 16,
+      "title": "Inter-Service Call Latency (from traces)",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(traces_service_graph_request_server_seconds_bucket{client=~\"$service\"}[$interval])) by (le, client, server))",
+          "legendFormat": "{{ client }} -> {{ server }} p99",
+          "refId": "A"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 56 },
+      "id": 17,
+      "title": "DNS Resolution Time",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(otel_span_duration_bucket{http_target=~\".*\", span_name=~\".*dns.*\"}[$interval])) by (le, service_name))",
+          "legendFormat": "{{ service_name }} DNS p99",
+          "refId": "A"
+        },
+        {
+          "expr": "probe_dns_lookup_time_seconds",
+          "legendFormat": "{{ instance }} DNS probe",
+          "refId": "B"
+        }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+      "fieldConfig": {
+        "defaults": { "unit": "s", "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 15, "showPoints": "never" } }
+      },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 56 },
+      "id": 18,
+      "title": "TLS Handshake Duration",
+      "type": "timeseries",
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(armageddon_tls_handshake_duration_seconds_bucket[$interval])) by (le))",
+          "legendFormat": "ARMAGEDDON TLS p99",
+          "refId": "A"
+        },
+        {
+          "expr": "probe_ssl_last_chain_expiry_timestamp_seconds - time()",
+          "legendFormat": "{{ instance }} cert TTL",
+          "refId": "B"
+        }
+      ]
+    }
+  ],
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "tags": ["faso", "latency", "observability", "sre"],
+  "templating": {
+    "list": [
+      {
+        "current": { "selected": false, "text": "All", "value": "$__all" },
+        "datasource": { "type": "prometheus", "uid": "faso-prometheus-ds" },
+        "definition": "label_values(otel_span_duration_count, service_name)",
+        "includeAll": true,
+        "multi": true,
+        "name": "service",
+        "query": { "query": "label_values(otel_span_duration_count, service_name)", "refId": "StandardVariableQuery" },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "current": { "selected": false, "text": "faso", "value": "faso" },
+        "name": "namespace",
+        "query": "faso",
+        "type": "textbox"
+      },
+      {
+        "current": { "selected": false, "text": "5m", "value": "5m" },
+        "name": "interval",
+        "options": [
+          { "selected": false, "text": "1m", "value": "1m" },
+          { "selected": true, "text": "5m", "value": "5m" },
+          { "selected": false, "text": "15m", "value": "15m" },
+          { "selected": false, "text": "1h", "value": "1h" }
+        ],
+        "query": "1m,5m,15m,1h",
+        "type": "custom"
+      },
+      {
+        "current": { "selected": false, "text": "production", "value": "production" },
+        "name": "environment",
+        "options": [
+          { "selected": true, "text": "production", "value": "production" },
+          { "selected": false, "text": "staging", "value": "staging" },
+          { "selected": false, "text": "dev", "value": "dev" }
+        ],
+        "query": "production,staging,dev",
+        "type": "custom"
+      }
+    ]
+  },
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "timezone": "Africa/Ouagadougou",
+  "title": "FASO Latency Analysis",
+  "uid": "faso-latency-analysis",
+  "version": 1
+}
