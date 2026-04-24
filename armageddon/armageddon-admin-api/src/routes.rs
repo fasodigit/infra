@@ -197,6 +197,80 @@ pub async fn post_logging(
     }))
 }
 
+// -- /admin/shadow/* --
+
+/// Request body for `POST /admin/shadow/rate`.
+#[derive(Debug, Deserialize)]
+pub struct ShadowRateRequest {
+    /// Integer percent 0–100.
+    pub percent: u32,
+}
+
+/// Response for `POST /admin/shadow/rate`.
+#[derive(Debug, Serialize)]
+pub struct ShadowRateResponse {
+    pub sample_rate: u32,
+}
+
+/// `POST /admin/shadow/rate` — update the shadow sample rate (0–100).
+///
+/// Clamps the value to `[0, 100]`.
+pub async fn post_shadow_rate(
+    State(state): State<Arc<AdminApiState>>,
+    Json(body): Json<ShadowRateRequest>,
+) -> Result<Json<ShadowRateResponse>, (StatusCode, String)> {
+    if body.percent > 100 {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "percent must be in range [0, 100], got {}",
+                body.percent
+            ),
+        ));
+    }
+    let new_rate = state.shadow.set_sample_rate(body.percent).await;
+    Ok(Json(ShadowRateResponse { sample_rate: new_rate }))
+}
+
+/// `GET /admin/shadow/state` — current shadow mode runtime state.
+pub async fn get_shadow_state(
+    State(state): State<Arc<AdminApiState>>,
+) -> Json<crate::providers::ShadowStateSnapshot> {
+    Json(state.shadow.shadow_state().await)
+}
+
+/// Request body for `POST /admin/shadow/gate`.
+#[derive(Debug, Deserialize)]
+pub struct ShadowGateRequest {
+    /// Enable or disable the gate.
+    pub enabled: Option<bool>,
+    /// New threshold (0.0–1.0). `null` to leave unchanged.
+    pub max_divergence_rate: Option<f64>,
+}
+
+/// `POST /admin/shadow/gate` — reconfigure the divergence gate at runtime.
+pub async fn post_shadow_gate(
+    State(state): State<Arc<AdminApiState>>,
+    Json(body): Json<ShadowGateRequest>,
+) -> Result<Json<crate::providers::ShadowStateSnapshot>, (StatusCode, String)> {
+    if let Some(rate) = body.max_divergence_rate {
+        if !(0.0..=1.0).contains(&rate) {
+            return Err((
+                StatusCode::BAD_REQUEST,
+                format!(
+                    "max_divergence_rate must be in [0.0, 1.0], got {}",
+                    rate
+                ),
+            ));
+        }
+    }
+    state
+        .shadow
+        .reconfigure_gate(body.enabled, body.max_divergence_rate)
+        .await;
+    Ok(Json(state.shadow.shadow_state().await))
+}
+
 // -- fallback --
 
 pub async fn not_found() -> (StatusCode, &'static str) {

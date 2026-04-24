@@ -759,10 +759,105 @@ fn default_sink_channel_capacity() -> usize {
     10_000
 }
 
+// ---------------------------------------------------------------------------
+// Shadow gate sub-configuration
+// ---------------------------------------------------------------------------
+
+/// Action taken when the shadow divergence gate trips.
+///
+/// ```yaml
+/// shadow_mode:
+///   gate:
+///     action: pause   # pause | drop_sample | alert_only
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum ShadowGateActionConfig {
+    /// Set sample_rate to 0 (fully disable shadow mode).
+    #[default]
+    Pause,
+    /// Halve the current sample_rate on each trip.
+    DropSample,
+    /// Emit metrics/logs only; do not change the rate.
+    AlertOnly,
+}
+
+/// Auto-pause gate configuration under `gateway.shadow_mode.gate`.
+///
+/// The gate evaluates `diverged_total / total` in a sliding window.  When
+/// the rate exceeds `max_divergence_rate` and the window has at least
+/// `min_samples_before_gate` requests, the configured `action` is triggered.
+///
+/// Example:
+///
+/// ```yaml
+/// shadow_mode:
+///   enabled: true
+///   sample_rate: 0.01
+///   gate:
+///     enabled: true
+///     max_divergence_rate: 0.02
+///     min_samples_before_gate: 100
+///     window_secs: 60
+///     action: pause
+/// ```
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShadowGateExtConfig {
+    /// Enable the gate background task.
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+
+    /// Maximum fraction of requests that may diverge before the gate trips
+    /// (0.0 – 1.0, default 0.02 = 2%).
+    #[serde(default = "default_gate_max_divergence_rate")]
+    pub max_divergence_rate: f64,
+
+    /// Minimum total requests in the window before the gate is active.
+    /// Prevents false positives during cold start.
+    #[serde(default = "default_gate_min_samples")]
+    pub min_samples_before_gate: u64,
+
+    /// Evaluation window in seconds (default 60).
+    #[serde(default = "default_gate_window_secs")]
+    pub window_secs: u64,
+
+    /// What to do when the gate trips.
+    #[serde(default)]
+    pub action: ShadowGateActionConfig,
+}
+
+impl Default for ShadowGateExtConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            max_divergence_rate: default_gate_max_divergence_rate(),
+            min_samples_before_gate: default_gate_min_samples(),
+            window_secs: default_gate_window_secs(),
+            action: ShadowGateActionConfig::default(),
+        }
+    }
+}
+
+fn default_gate_max_divergence_rate() -> f64 {
+    0.02
+}
+
+fn default_gate_min_samples() -> u64 {
+    100
+}
+
+fn default_gate_window_secs() -> u64 {
+    60
+}
+
+// ---------------------------------------------------------------------------
+// Shadow mode top-level configuration
+// ---------------------------------------------------------------------------
+
 /// Shadow mode configuration block (`gateway.shadow_mode`).
 ///
-/// Used when `gateway.runtime = "shadow"` to control the sampling rate and
-/// diff-event persistence.
+/// Used when `gateway.runtime = "shadow"` to control the sampling rate,
+/// diff-event persistence, and automatic divergence gate.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ShadowModeExtConfig {
     /// Enable shadow mode globally.  When `false`, no requests are mirrored
@@ -780,6 +875,12 @@ pub struct ShadowModeExtConfig {
     /// Diff-event persistence backend.
     #[serde(default)]
     pub sink: ShadowSinkConfig,
+
+    /// Automatic divergence gate.  When enabled, a background task monitors
+    /// the divergence rate and auto-pauses (or halves) the sample rate when
+    /// it exceeds `gate.max_divergence_rate`.
+    #[serde(default)]
+    pub gate: ShadowGateExtConfig,
 }
 
 impl Default for ShadowModeExtConfig {
@@ -788,6 +889,7 @@ impl Default for ShadowModeExtConfig {
             enabled: false,
             sample_rate: default_shadow_sample_rate(),
             sink: ShadowSinkConfig::default(),
+            gate: ShadowGateExtConfig::default(),
         }
     }
 }

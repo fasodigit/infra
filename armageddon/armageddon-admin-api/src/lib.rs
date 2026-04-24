@@ -50,7 +50,8 @@ use crate::auth::AuthState;
 use crate::metrics::track_request;
 use crate::providers::{
     ClusterProvider, ConfigDumper, HealthProvider, NullClusterProvider, NullConfigDumper,
-    NullHealthProvider, NullRuntimeProvider, NullStatsProvider, RuntimeProvider, StatsProvider,
+    NullHealthProvider, NullRuntimeProvider, NullShadowProvider, NullStatsProvider,
+    RuntimeProvider, ShadowProvider, StatsProvider,
 };
 use crate::state::{AdminApiState, ServerInfo};
 
@@ -104,6 +105,9 @@ impl AdminApi {
     /// Returns `Err(AdminApiError::MissingTokenForPublicBind)` when the
     /// bind address is non-loopback and no bearer token is present in the
     /// configured env var.
+    ///
+    /// The shadow provider defaults to `NullShadowProvider`. Use
+    /// [`AdminApi::build_with_shadow`] to wire in a live provider.
     pub fn build(
         cfg: AdminApiConfig,
         stats: Arc<dyn StatsProvider>,
@@ -111,6 +115,29 @@ impl AdminApi {
         config: Arc<dyn ConfigDumper>,
         runtime: Arc<dyn RuntimeProvider>,
         health: Arc<dyn HealthProvider>,
+    ) -> Result<Self, AdminApiError> {
+        Self::build_with_shadow(
+            cfg,
+            stats,
+            clusters,
+            config,
+            runtime,
+            health,
+            Arc::new(NullShadowProvider),
+        )
+    }
+
+    /// Build an `AdminApi` with a live shadow-mode provider.
+    ///
+    /// All other behaviour is identical to [`AdminApi::build`].
+    pub fn build_with_shadow(
+        cfg: AdminApiConfig,
+        stats: Arc<dyn StatsProvider>,
+        clusters: Arc<dyn ClusterProvider>,
+        config: Arc<dyn ConfigDumper>,
+        runtime: Arc<dyn RuntimeProvider>,
+        health: Arc<dyn HealthProvider>,
+        shadow: Arc<dyn ShadowProvider>,
     ) -> Result<Self, AdminApiError> {
         if !cfg.enabled {
             return Err(AdminApiError::Disabled);
@@ -146,12 +173,13 @@ impl AdminApi {
         };
 
         let server_info = ServerInfo::from_env();
-        let state = AdminApiState::new(
+        let state = crate::state::AdminApiState::new_with_shadow(
             stats,
             clusters,
             config,
             runtime,
             health,
+            shadow,
             server_info,
             default_log_level(),
         );
@@ -235,6 +263,10 @@ pub fn build_router(
         .route("/listeners", get(routes::get_listeners))
         .route("/health", get(routes::get_health))
         .route("/logging", post(routes::post_logging))
+        // Shadow mode ramp-up control endpoints.
+        .route("/admin/shadow/rate", post(routes::post_shadow_rate))
+        .route("/admin/shadow/state", get(routes::get_shadow_state))
+        .route("/admin/shadow/gate", post(routes::post_shadow_gate))
         .fallback(routes::not_found)
         // Track requests for Prometheus.
         .layer(middleware::from_fn(track_request))

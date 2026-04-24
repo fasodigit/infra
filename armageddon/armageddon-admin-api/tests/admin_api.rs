@@ -6,10 +6,12 @@
 use armageddon_admin_api::{
     auth::{bearer_auth, AuthState},
     build_router, providers::{NullClusterProvider, NullConfigDumper, NullHealthProvider,
-        NullRuntimeProvider, NullStatsProvider},
+        NullRuntimeProvider, NullShadowProvider, NullStatsProvider,
+        ShadowProvider, ShadowStateSnapshot},
     state::{AdminApiState, ServerInfo},
     AdminApi, AdminApiConfig,
 };
+use async_trait::async_trait;
 use axum::{
     body::{to_bytes, Body},
     http::{Method, Request, StatusCode},
@@ -37,6 +39,33 @@ fn make_state() -> Arc<AdminApiState> {
             started_at: Utc::now(),
         },
         "info",
+    )
+}
+
+fn make_state_with_shadow(shadow: Arc<dyn ShadowProvider>) -> Arc<AdminApiState> {
+    AdminApiState::new_with_shadow(
+        Arc::new(NullStatsProvider),
+        Arc::new(NullClusterProvider),
+        Arc::new(NullConfigDumper),
+        Arc::new(NullRuntimeProvider),
+        Arc::new(NullHealthProvider),
+        shadow,
+        ServerInfo {
+            version: "test".to_string(),
+            build_sha: "abc123".to_string(),
+            hostname: "host".to_string(),
+            started_at: Utc::now(),
+        },
+        "info",
+    )
+}
+
+fn router_with_shadow(shadow: Arc<dyn ShadowProvider>) -> Router {
+    let cfg = AdminApiConfig::default();
+    build_router(
+        make_state_with_shadow(shadow),
+        Arc::new(AuthState::disabled()),
+        &cfg,
     )
 }
 
@@ -435,6 +464,182 @@ async fn cross_origin_get_config_dump_has_no_cors_allow_origin_header() {
         resp.headers().get("access-control-expose-headers").is_none(),
         "admin API must not emit Access-Control-Expose-Headers"
     );
+}
+
+// -- /admin/shadow/* --
+
+/// A test shadow provider that tracks rate changes in an `AtomicU32`.
+struct TestShadowProvider {
+    rate: std::sync::atomic::AtomicU32,
+    gate_enabled: std::sync::atomic::AtomicBool,
+}
+
+impl TestShadowProvider {
+    fn new(initial_rate: u32) -> Arc<Self> {
+        Arc::new(Self {
+            rate: std::sync::atomic::AtomicU32::new(initial_rate),
+            gate_enabled: std::sync::atomic::AtomicBool::new(true),
+        })
+    }
+}
+
+#[async_trait]
+impl ShadowProvider for TestShadowProvider {
+    async fn shadow_state(&self) -> ShadowStateSnapshot {
+        ShadowStateSnapshot {
+            sample_rate: self.rate.load(std::sync::atomic::Ordering::Relaxed),
+            gate_tripped_count: 0,
+            last_divergence_rate: 0.01,
+            window_samples: 150,
+            gate_enabled: self.gate_enabled.load(std::sync::atomic::Ordering::Relaxed),
+            gate_max_divergence_rate: 0.02,
+        }
+    }
+
+    async fn set_sample_rate(&self, percent: u32) -> u32 {
+        let clamped = percent.min(100);
+        self.rate.store(clamped, std::sync::atomic::Ordering::Relaxed);
+        clamped
+    }
+
+    async fn reconfigure_gate(&self, enabled: Option<bool>, _max_divergence_rate: Option<f64>) {
+        if let Some(e) = enabled {
+            self.gate_enabled.store(e, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+/// `POST /admin/shadow/rate` sets rate and returns new value.
+#[tokio::test]
+async fn post_shadow_rate_sets_rate_and_returns_new_value() {
+    let provider = TestShadowProvider::new(10);
+    let app = router_with_shadow(provider.clone());
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/admin/shadow/rate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"percent": 25}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 4096).await.unwrap();
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v.get("sample_rate").and_then(Value::as_u64), Some(25));
+}
+
+/// `POST /admin/shadow/rate` with percent > 100 returns 400.
+#[tokio::test]
+async fn post_shadow_rate_rejects_out_of_range_value() {
+    let app = router_with_shadow(Arc::new(NullShadowProvider));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/admin/shadow/rate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"percent": 101}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
+}
+
+/// `POST /admin/shadow/rate` with percent = 0 disables shadow mode.
+#[tokio::test]
+async fn post_shadow_rate_zero_disables_shadow_mode() {
+    let provider = TestShadowProvider::new(50);
+    let app = router_with_shadow(provider.clone());
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/admin/shadow/rate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"percent": 0}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 4096).await.unwrap();
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v.get("sample_rate").and_then(Value::as_u64), Some(0));
+}
+
+/// `GET /admin/shadow/state` returns the expected fields.
+#[tokio::test]
+async fn get_shadow_state_returns_expected_fields() {
+    let provider = TestShadowProvider::new(15);
+    let app = router_with_shadow(provider);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .uri("/admin/shadow/state")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 4096).await.unwrap();
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    assert!(v.get("sample_rate").is_some(), "sample_rate field must be present");
+    assert!(v.get("gate_tripped_count").is_some(), "gate_tripped_count must be present");
+    assert!(v.get("last_divergence_rate").is_some(), "last_divergence_rate must be present");
+    assert!(v.get("window_samples").is_some(), "window_samples must be present");
+    assert!(v.get("gate_enabled").is_some(), "gate_enabled must be present");
+    assert!(v.get("gate_max_divergence_rate").is_some(), "gate_max_divergence_rate must be present");
+    // Verify the actual rate is 15.
+    assert_eq!(v.get("sample_rate").and_then(Value::as_u64), Some(15));
+}
+
+/// `POST /admin/shadow/gate` reconfigures enabled flag.
+#[tokio::test]
+async fn post_shadow_gate_reconfigures_enabled() {
+    let provider = TestShadowProvider::new(10);
+    let app = router_with_shadow(provider);
+
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/admin/shadow/gate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"enabled": false}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let body = to_bytes(resp.into_body(), 4096).await.unwrap();
+    let v: Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(v.get("gate_enabled").and_then(Value::as_bool), Some(false));
+}
+
+/// `POST /admin/shadow/gate` rejects out-of-range max_divergence_rate.
+#[tokio::test]
+async fn post_shadow_gate_rejects_invalid_divergence_rate() {
+    let app = router_with_shadow(Arc::new(NullShadowProvider));
+    let resp = app
+        .oneshot(
+            Request::builder()
+                .method(Method::POST)
+                .uri("/admin/shadow/gate")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"max_divergence_rate": 1.5}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), StatusCode::BAD_REQUEST);
 }
 
 #[tokio::test]

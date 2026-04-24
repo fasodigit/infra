@@ -7,7 +7,7 @@ use chrono::{DateTime, Utc};
 use parking_lot::Mutex;
 use std::sync::Arc;
 
-use crate::providers::{ClusterProvider, ConfigDumper, HealthProvider, RuntimeProvider, StatsProvider};
+use crate::providers::{ClusterProvider, ConfigDumper, HealthProvider, RuntimeProvider, ShadowProvider, StatsProvider};
 
 /// Static server-info carried by `AdminApiState`.
 #[derive(Debug, Clone)]
@@ -49,6 +49,8 @@ pub struct AdminApiState {
     pub config: Arc<dyn ConfigDumper>,
     pub runtime: Arc<dyn RuntimeProvider>,
     pub health: Arc<dyn HealthProvider>,
+    /// Shadow mode provider (sampler + gate state).
+    pub shadow: Arc<dyn ShadowProvider>,
 
     pub server_info: Arc<ServerInfo>,
 
@@ -69,12 +71,36 @@ impl AdminApiState {
         server_info: ServerInfo,
         initial_log_level: impl Into<String>,
     ) -> Arc<Self> {
+        Self::new_with_shadow(
+            stats,
+            clusters,
+            config,
+            runtime,
+            health,
+            Arc::new(crate::providers::NullShadowProvider),
+            server_info,
+            initial_log_level,
+        )
+    }
+
+    /// Build a new `AdminApiState` with all providers including a shadow provider.
+    pub fn new_with_shadow(
+        stats: Arc<dyn StatsProvider>,
+        clusters: Arc<dyn ClusterProvider>,
+        config: Arc<dyn ConfigDumper>,
+        runtime: Arc<dyn RuntimeProvider>,
+        health: Arc<dyn HealthProvider>,
+        shadow: Arc<dyn ShadowProvider>,
+        server_info: ServerInfo,
+        initial_log_level: impl Into<String>,
+    ) -> Arc<Self> {
         Arc::new(Self {
             stats,
             clusters,
             config,
             runtime,
             health,
+            shadow,
             server_info: Arc::new(server_info),
             log_level: Mutex::new(initial_log_level.into()),
         })

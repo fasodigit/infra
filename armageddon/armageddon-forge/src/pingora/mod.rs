@@ -46,6 +46,7 @@ pub mod runtime;
 pub mod server;
 pub mod upstream;
 pub mod shadow;
+pub mod shadow_gate;
 pub mod shadow_sink;
 pub mod svid_rotation_bridge;
 pub mod xds_watcher;

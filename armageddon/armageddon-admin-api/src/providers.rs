@@ -199,3 +199,62 @@ impl HealthProvider for NullHealthProvider {
         }
     }
 }
+
+// -- Shadow mode provider ---------------------------------------------------
+
+/// Snapshot returned by `GET /admin/shadow/state`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShadowStateSnapshot {
+    /// Current sample rate as an integer percentage (0–100).
+    pub sample_rate: u32,
+    /// Total number of times the gate has tripped since startup.
+    pub gate_tripped_count: u64,
+    /// Last observed divergence rate (fraction 0.0–1.0).
+    pub last_divergence_rate: f64,
+    /// Number of samples in the last evaluated window.
+    pub window_samples: u64,
+    /// Whether the gate is currently enabled.
+    pub gate_enabled: bool,
+    /// Current gate `max_divergence_rate` threshold (fraction 0.0–1.0).
+    pub gate_max_divergence_rate: f64,
+}
+
+/// Provider for shadow-mode runtime state.
+///
+/// Implementations wrap the `ShadowSampler` + `ShadowGateState` from
+/// `armageddon-forge`. The null impl returns safe defaults.
+#[async_trait]
+pub trait ShadowProvider: Send + Sync + 'static {
+    /// Read current shadow state.
+    async fn shadow_state(&self) -> ShadowStateSnapshot;
+
+    /// Update the sample rate (0–100 integer percent). Returns the new rate.
+    async fn set_sample_rate(&self, percent: u32) -> u32;
+
+    /// Reconfigure the gate at runtime.
+    async fn reconfigure_gate(&self, enabled: Option<bool>, max_divergence_rate: Option<f64>);
+}
+
+/// No-op `ShadowProvider` returning static defaults.
+#[derive(Default, Clone, Copy)]
+pub struct NullShadowProvider;
+
+#[async_trait]
+impl ShadowProvider for NullShadowProvider {
+    async fn shadow_state(&self) -> ShadowStateSnapshot {
+        ShadowStateSnapshot {
+            sample_rate: 0,
+            gate_tripped_count: 0,
+            last_divergence_rate: 0.0,
+            window_samples: 0,
+            gate_enabled: false,
+            gate_max_divergence_rate: 0.02,
+        }
+    }
+
+    async fn set_sample_rate(&self, percent: u32) -> u32 {
+        percent.min(100)
+    }
+
+    async fn reconfigure_gate(&self, _enabled: Option<bool>, _max_divergence_rate: Option<f64>) {}
+}
