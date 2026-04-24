@@ -21,9 +21,14 @@ la vague 1 autonome (2026-04-20).
 | 2c78d32 | engines pipeline + real AEGIS adapter (M3 wave 1) | #104 | +951 sur 9 fichiers + Cargo.toml | 10/10 |
 | 04de00c | streaming compression gzip/brotli/zstd (M4 wave 1) | #105 | +716 sur 2 fichiers | 16/16 |
 | 4be840d | bench harness + shadow-mode design (M5 wave 1) | #106 | +1024 sur 4 nouveaux fichiers | bash -n clean, cargo bench --no-run OK |
+| e5ef107 | ctx typed slots + CORS/VEIL refactor (M1 consolidation) | #102 | +83 / -43 | 135/135 |
+| 945ff46 | JWT ES384 filter (close #97 M1 wave 2) | #97 | +715 | 135/135 |
+| 7e2a341 | feature-flag filter + bug_005 preserved (close #98 M1 wave 2) | #98 | +448 | 135/135 |
+| 4807944 | OTEL traceparent filter + logging hook (close #99 M1 wave 2) | #99 | +422 | 135/135 |
+| 8cef15e | fix GqlLimitError exhaustive match (UnknownFragment + CyclicFragments) | #— | +3 / -1 | cargo check OK |
 
-**Total code ajouté** : environ 5 140 LOC net nouveaux + 898 LOC sécurité préservée.
-**Total tests** : 94/94 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
+**Total code ajouté** : environ 6 830 LOC net nouveaux + 898 LOC sécurité préservée.
+**Total tests** : 135/135 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
 
 ## État par gate
 
@@ -53,22 +58,21 @@ Pas de reliquat. Prêt pour M1 consolidation.
 |---|---|---:|---:|
 | [#95 router](https://github.com/fasodigit/infra/issues/95) | **done wave 1** | 241 | 7/7 |
 | [#96 cors](https://github.com/fasodigit/infra/issues/96) | **done wave 1** | 477 | 14/14 |
-| [#97 jwt](https://github.com/fasodigit/infra/issues/97) | stub M0 — **M1 wave 2** | 0 | 0 |
-| [#98 feature-flag](https://github.com/fasodigit/infra/issues/98) | stub M0 — **M1 wave 2** | 0 | 0 |
-| [#99 otel](https://github.com/fasodigit/infra/issues/99) | stub M0 — **M1 wave 2** | 0 | 0 |
+| [#97 jwt](https://github.com/fasodigit/infra/issues/97) | **done wave 2** | 715 | 13/13 |
+| [#98 feature-flag](https://github.com/fasodigit/infra/issues/98) | **done wave 2** | 448 | 10/10 |
+| [#99 otel](https://github.com/fasodigit/infra/issues/99) | **done wave 2** | 422 | 13/13 |
 | [#100 veil](https://github.com/fasodigit/infra/issues/100) | **done wave 1** | 435 | 12/12 |
 
-**À faire M1 wave 2** :
-- JWT : reprendre `src/jwt.rs` (553 LOC) et câbler KAYA RESP3 via le
-  `tokio_handle()` bridge. Cache JWKS 300s, session cache `jwt:<sha256>`.
-- feature-flag : reprendre `src/feature_flag_filter.rs` (398 LOC) en
-  **préservant** le scrub inconditionnel en tête de `call()` (fix ultrareview
-  bug_005, commit 8a786e8). 3 tests de régression à porter verbatim.
-- otel : hook `ProxyHttp::logging()` pour la fermeture du span; propagation
-  `traceparent` dans `upstream_request_filter`.
-- **Trade-off résiduel** : CORS origin et VEIL nonce sont stashés dans
-  `RequestCtx.feature_flags` avec préfixes (`cors:origin:`, `veil:nonce:`).
-  À remplacer par un slot typé dédié dans `ctx.rs` (petite consolidation).
+**M1 wave 2 — TERMINÉE (commits e5ef107 → 4807944)** :
+- JWT : `JwtFilter` avec JWKS cache KAYA 300s + in-process fallback; `KayaJwtBackend`
+  trait + `NoopKayaBackend` pour tests. 13 tests.
+- feature-flag : `FeatureFlagFilter` avec scrub inconditionnel `X-Faso-Features`
+  préservé (bug_005); 3 tests de régression verbatim portés.
+- otel : `OtelFilter` avec `Traceparent` parser W3C, injection upstream hop,
+  `on_logging` avec `duration_ms` + `http.status_code`. 13 tests.
+- ctx.rs consolidation : `cors_origin`, `veil_nonce`, `bearer_token`, `span_id`,
+  `request_start_ms` slots typés; `CorsFilter` et `VeilFilter` refactorisés.
+- `CSP_NONCE_STASH_PREFIX` marqué `#[deprecated]` (compat seule).
 - **TLS detection** : `session.is_tls()` n'existe pas en Pingora 0.3. VEIL
   utilise `X-Forwarded-Proto: https` comme fallback. Upgrade path :
   `session.digest().ssl_digest.is_some()` quand l'API se stabilise.
@@ -178,7 +182,9 @@ apt install cmake
 pipx install cmake   # fallback si paquet système pas dispo
 ```
 
-## Matrices de vérification (fin vague 1)
+## Matrices de vérification
+
+### Fin vague 1
 
 | Commande | Résultat |
 |---|---|
@@ -188,16 +194,34 @@ pipx install cmake   # fallback si paquet système pas dispo
 | `cargo bench --bench pingora_filter_chain_micro --features pingora --no-run` | ✅ compile |
 | `bash -n benches/pingora_vs_hyper.sh` | ✅ clean |
 
-## Ce qui reste (wave 2 minimale avant M6)
+### Fin M1 wave 2 (2026-04-24)
+
+| Commande | Résultat |
+|---|---|
+| `cargo check -p armageddon-forge --features pingora` | ✅ clean (1 warning pré-existant dans `feature_flags.rs`) |
+| `cargo check -p armageddon` | ✅ clean (GqlLimitError fix commit 8cef15e) |
+| `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **135/135 passed** |
+| `cargo test -p armageddon-forge --lib feature_flag_filter` | ✅ **7/7 passed** (bug_005 regression) |
+
+## TODOs documentés (M2 wave 2 et au-delà)
+
+- **JWT session cache** (`jwt:session:<sha256(token)>`): le spec M1 wave 2
+  mentionnait un cache par token en plus du cache JWKS. Non implémenté car
+  il nécessite une stratégie de révocation cohérente (jti blacklist dans KAYA).
+  Déféré à M2 wave 2 avec le module `mtls.rs`.
+- **OTEL tracing::Span guard** : le span est actuellement loggé via
+  `tracing::info!` uniquement. Pour un export OTEL complet (Tempo/Jaeger),
+  câbler `tracing-opentelemetry` subscriber au démarrage du serveur Pingora
+  (M6 cutover tâche).
+- **aegis_adapter.rs placeholder** : construit `HttpRequest` avec chaînes
+  vides (TODO depuis wave 1). Peut maintenant être enrichi avec `RequestCtx`
+  (user_id, tenant_id, cluster disponibles) — tâche M3 wave 2.
+
+## Ce qui reste (wave 2, après M1)
 
 Classement par ordre d'impact, pour reprise de session :
 
-1. **M1 wave 2** (le plus gros levier)
-   - **JWT** #97 — câble KAYA RESP3 via `pingora::runtime::tokio_handle()`.
-   - **feature-flag** #98 — préserver le scrub bug_005 en tête.
-   - **otel** #99 — `logging()` hook + `traceparent`.
-   - Ajout d'un slot scratch typé à `RequestCtx` (consolide CORS origin,
-     VEIL nonce, et débloque M4 ProxyHttp integration).
+1. **M1 wave 2 — TERMINÉE** (commits e5ef107 → 4807944 + 8cef15e)
 
 2. **M2 wave 2** (bloque M5 cert rotation + shadow fidélité)
    - mtls / auto_mtls avec SPIFFE peer-id validation dans
