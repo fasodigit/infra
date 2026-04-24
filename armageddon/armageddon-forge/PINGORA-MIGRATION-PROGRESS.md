@@ -26,9 +26,13 @@ la vague 1 autonome (2026-04-20).
 | 7e2a341 | feature-flag filter + bug_005 preserved (close #98 M1 wave 2) | #98 | +448 | 135/135 |
 | 4807944 | OTEL traceparent filter + logging hook (close #99 M1 wave 2) | #99 | +422 | 135/135 |
 | 8cef15e | fix GqlLimitError exhaustive match (UnknownFragment + CyclicFragments) | #— | +3 / -1 | cargo check OK |
+| 314a89d | feat(armageddon-forge,mtls): SPIFFE-aware upstream mTLS (close M2-mtls wave 2) | M2 | +410 sur 3 fichiers | 186/186 |
+| 95ef6ac | feat(armageddon-forge,circuit-breaker): Closed/Open/HalfOpen state machine (close M2-cb wave 2) | M2 | +629 sur 1 fichier | 186/186 |
+| 8f5d5e1 | feat(armageddon-forge,health): background health checker ArcSwap (close M2-health wave 2) | M2 | +794 sur 1 fichier | 186/186 |
+| 0f2ede3 | feat(armageddon-forge,retry): armageddon-retry Pingora adapter (close M2-retry wave 2) | M2 | +492 sur 2 fichiers | 186/186 |
 
-**Total code ajouté** : environ 6 830 LOC net nouveaux + 898 LOC sécurité préservée.
-**Total tests** : 135/135 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
+**Total code ajouté** : environ 10 155 LOC net nouveaux + 898 LOC sécurité préservée.
+**Total tests** : 186/186 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
 
 ## État par gate
 
@@ -77,16 +81,16 @@ Pas de reliquat. Prêt pour M1 consolidation.
   utilise `X-Forwarded-Proto: https` comme fallback. Upgrade path :
   `session.digest().ssl_digest.is_some()` quand l'API se stabilise.
 
-### Gate #103 — M2 Machinerie upstream **(vague 1, 2/6 modules)**
+### Gate #103 — M2 Machinerie upstream **(vague 2, 6/6 modules — TERMINÉ)**
 
 | Module | État | Notes |
 |---|---|---|
 | `selector.rs` | **done wave 1** — 610 LOC | PoolKey SPIFFE-aware (bug_006 préservé) + ClusterResolver hot-reload + résolution fail-closed |
 | `lb.rs` | **done wave 1** — 245 LOC | Round-robin complet (6/6 tests). Weighted + P2C : `todo!()` |
-| `mtls.rs` | stub M0 — **M2 wave 2** | |
-| `circuit_breaker.rs` | stub M0 — **M2 wave 2** | Port `src/circuit_breaker.rs` (226 LOC) vers `fail_to_proxy` + `upstream_response_filter` |
-| `health.rs` | stub M0 — **M2 wave 2** | Port `src/health.rs` (760 LOC) — thread tokio bg, publish vers `ArcSwap<ClusterState>` |
-| `retry.rs` | stub M0 — **M2 wave 2** | |
+| `mtls.rs` | **done wave 2** — 324 LOC | SpiffeChecker + UpstreamMtlsFilter; ctx.spiffe_peer_expected slot; fail-closed bug_006 |
+| `circuit_breaker.rs` | **done wave 2** — 400 LOC | Closed/Open/HalfOpen; DashMap+AtomicU32+RwLock; cooldown doubling; error-rate threshold |
+| `health.rs` | **done wave 2** — 540 LOC | PingoraHealthChecker; ArcSwap publish; Http/Tcp/Grpc probes; threshold transitions |
+| `retry.rs` | **done wave 2** — 360 LOC | PingoraRetryPolicy wrapping armageddon-retry; Retry-After; budget; cb non-interference |
 
 **Invariant sécurité préservé** : `ClusterResolver::resolve()` retourne `None`
 + `error!` log (**jamais** fallback plaintext) quand
@@ -203,12 +207,20 @@ pipx install cmake   # fallback si paquet système pas dispo
 | `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **135/135 passed** |
 | `cargo test -p armageddon-forge --lib feature_flag_filter` | ✅ **7/7 passed** (bug_005 regression) |
 
-## TODOs documentés (M2 wave 2 et au-delà)
+### Fin M2 wave 2 (2026-04-24)
+
+| Commande | Résultat |
+|---|---|
+| `cargo check -p armageddon-forge --features pingora` | ✅ clean (1 warning pré-existant dans `feature_flags.rs`) |
+| `cargo check -p armageddon` | ✅ clean (GqlLimitError fix inchangé) |
+| `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **186/186 passed** (+51 nouveaux tests M2) |
+
+## TODOs documentés (M3 wave 2 et au-delà)
 
 - **JWT session cache** (`jwt:session:<sha256(token)>`): le spec M1 wave 2
   mentionnait un cache par token en plus du cache JWKS. Non implémenté car
   il nécessite une stratégie de révocation cohérente (jti blacklist dans KAYA).
-  Déféré à M2 wave 2 avec le module `mtls.rs`.
+  Déféré à M3 wave 2 avec les adapters moteur.
 - **OTEL tracing::Span guard** : le span est actuellement loggé via
   `tracing::info!` uniquement. Pour un export OTEL complet (Tempo/Jaeger),
   câbler `tracing-opentelemetry` subscriber au démarrage du serveur Pingora
@@ -216,17 +228,31 @@ pipx install cmake   # fallback si paquet système pas dispo
 - **aegis_adapter.rs placeholder** : construit `HttpRequest` avec chaînes
   vides (TODO depuis wave 1). Peut maintenant être enrichi avec `RequestCtx`
   (user_id, tenant_id, cluster disponibles) — tâche M3 wave 2.
+- **mTLS connector wire-up** (`upstream/mtls.rs:TODO(M5)`) : en Pingora 0.3
+  il n'existe pas de hook `upstream_connect` exposé via `ProxyHttp`.
+  `UpstreamMtlsFilter` valide le peer SPIFFE ID post-hoc via `ctx.spiffe_peer`.
+  Le vrai dial mTLS (AutoMtlsDialer + tokio_rustls) sera câblé en M5 wave 2
+  quand pingora-rustls exposera un custom connector.
+- **gRPC health probe** (`upstream/health.rs:probe_grpc`) : actuellement
+  fallback TCP. Port réel du protocole gRPC Health (grpc.health.v1.Health/Check)
+  prévu en M4 wave 2 avec le module grpc_web.rs.
+- **LB Weighted + P2C** (`upstream/lb.rs`) : `todo!()` depuis wave 1.
+  Déféré à M3 wave 2.
+- **Prometheus histogram** (`upstream/health.rs:emit_probe_duration`) :
+  OnceLock registration non terminée. Câbler en M5 wave 2 avec le wiring
+  Prometheus complet du gateway.
 
-## Ce qui reste (wave 2, après M1)
+## Ce qui reste (wave 2, après M2)
 
 Classement par ordre d'impact, pour reprise de session :
 
 1. **M1 wave 2 — TERMINÉE** (commits e5ef107 → 4807944 + 8cef15e)
 
-2. **M2 wave 2** (bloque M5 cert rotation + shadow fidélité)
-   - mtls / auto_mtls avec SPIFFE peer-id validation dans
-     `upstream_request_filter`.
-   - circuit_breaker + health + retry via les hooks Pingora.
+2. **M2 wave 2 — TERMINÉE** (commits 314a89d → 0f2ede3)
+   - mtls: SpiffeChecker + UpstreamMtlsFilter + ctx.spiffe_peer_expected
+   - circuit_breaker: Closed/Open/HalfOpen + DashMap + CircuitBreakerManager
+   - health: PingoraHealthChecker + ArcSwap publish + Http/Tcp/Grpc probes
+   - retry: PingoraRetryPolicy + armageddon-retry adapter + Retry-After
 
 3. **M3 wave 2** — 6 adapters restants (SENTINEL, ARBITER, ORACLE, NEXUS,
    AI, WASM). WASM aura le plus gros travail (thread-unsafe Wasmtime →
