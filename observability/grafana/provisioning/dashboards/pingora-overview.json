@@ -1,0 +1,117 @@
+{
+  "__inputs": [],
+  "__comment": "SPDX-License-Identifier: AGPL-3.0-or-later — Copyright (C) 2026 FASO DIGITALISATION — ARMAGEDDON Pingora backend overview dashboard.",
+  "annotations": { "list": [{ "builtIn": 1, "datasource": { "type": "prometheus", "uid": "prometheus" }, "enable": true, "hide": true, "iconColor": "rgba(0,211,255,1)", "name": "Annotations & Alerts", "type": "dashboard" }] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "uid": "pingora-overview",
+  "title": "ARMAGEDDON — Pingora Overview",
+  "tags": ["armageddon", "pingora", "gateway"],
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "version": 1,
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "prometheus" } },
+      { "name": "cluster", "type": "query", "datasource": { "type": "prometheus", "uid": "prometheus" }, "query": "label_values(armageddon_forge_endpoint_up, cluster)", "refresh": 2, "includeAll": true, "multi": true, "current": { "text": "All", "value": "$__all" } }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Request rate (Pingora)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "reqps" } },
+      "targets": [
+        { "expr": "sum(rate(armageddon_shadow_requests_total{status=~\"accepted|match|diverged\"}[1m]))", "legendFormat": "shadow total", "refId": "A" },
+        { "expr": "sum(rate(armageddon_traffic_split_decisions_total[1m]))", "legendFormat": "traffic split decisions", "refId": "B" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Latency p50 / p95 / p99 (shadow diff)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[5m])) by (le))", "legendFormat": "p50 diff", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[5m])) by (le))", "legendFormat": "p95 diff", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[5m])) by (le))", "legendFormat": "p99 diff", "refId": "C" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Endpoint up/down per cluster",
+      "type": "state-timeline",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 8 },
+      "fieldConfig": { "defaults": { "mappings": [{ "options": { "0": { "text": "DOWN", "color": "red" }, "1": { "text": "UP", "color": "green" } }, "type": "value" }] } },
+      "targets": [
+        { "expr": "armageddon_forge_endpoint_up{cluster=~\"$cluster\"}", "legendFormat": "{{cluster}}/{{endpoint}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Health transitions rate (flapping detector)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "expr": "sum by (cluster) (rate(armageddon_forge_health_transitions_total[5m]))", "legendFormat": "{{cluster}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "xDS updates by resource type",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "expr": "sum by (resource_type) (rate(armageddon_xds_updates_total[5m]))", "legendFormat": "{{resource_type}}", "refId": "A" },
+        { "expr": "sum by (resource_type) (rate(armageddon_xds_nack_total[5m]))", "legendFormat": "NACK {{resource_type}}", "refId": "B" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "WASM invocation outcomes",
+      "type": "bargauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "options": { "displayMode": "basic", "orientation": "horizontal" },
+      "targets": [
+        { "expr": "sum by (outcome) (increase(armageddon_wasm_invocations_total[1h]))", "legendFormat": "{{outcome}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "SVID rotations (per SPIFFE ID)",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 22 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "expr": "sum by (spiffe_id) (increase(armageddon_mesh_svid_rotations_total[1h]))", "legendFormat": "{{spiffe_id}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Traffic split decisions",
+      "type": "table",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
+      "targets": [
+        { "expr": "sum by (route, variant, decision) (increase(armageddon_traffic_split_decisions_total[1h]))", "format": "table", "instant": true, "refId": "A" }
+      ]
+    }
+  ]
+}

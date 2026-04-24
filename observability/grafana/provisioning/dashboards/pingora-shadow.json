@@ -1,0 +1,131 @@
+{
+  "__inputs": [],
+  "__comment": "SPDX-License-Identifier: AGPL-3.0-or-later — Copyright (C) 2026 FASO DIGITALISATION — ARMAGEDDON Pingora shadow mode dashboard — ramp-up hyper→pingora.",
+  "annotations": { "list": [{ "builtIn": 1, "datasource": { "type": "prometheus", "uid": "prometheus" }, "enable": true, "hide": true, "iconColor": "rgba(0,211,255,1)", "name": "Annotations & Alerts", "type": "dashboard" }] },
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "uid": "pingora-shadow",
+  "title": "ARMAGEDDON — Pingora Shadow Mode",
+  "tags": ["armageddon", "pingora", "shadow", "cutover"],
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "version": 1,
+  "templating": {
+    "list": [
+      { "name": "datasource", "type": "datasource", "query": "prometheus", "current": { "text": "Prometheus", "value": "prometheus" } }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Current sample rate",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 0, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.1 }, { "color": "orange", "value": 0.5 }] } } },
+      "options": { "colorMode": "value", "graphMode": "area", "textMode": "auto" },
+      "targets": [
+        { "expr": "armageddon_shadow_sample_rate", "legendFormat": "rate", "refId": "A" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Divergence rate (diverged / total)",
+      "type": "gauge",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "percentunit", "min": 0, "max": 0.1, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] } } },
+      "targets": [
+        {
+          "expr": "sum(rate(armageddon_shadow_requests_total{status=\"diverged\"}[5m])) / clamp_min(sum(rate(armageddon_shadow_requests_total{status=~\"accepted|diverged|match\"}[5m])), 1)",
+          "legendFormat": "diverged", "refId": "A"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Sink emitted / dropped (5m rate)",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 12, "x": 12, "y": 0 },
+      "fieldConfig": { "defaults": { "unit": "short" } },
+      "targets": [
+        { "expr": "sum by (backend) (rate(armageddon_shadow_sink_emitted_total[5m]))", "legendFormat": "emitted {{backend}}", "refId": "A" },
+        { "expr": "sum by (backend, reason) (rate(armageddon_shadow_sink_dropped_total[5m]))", "legendFormat": "dropped {{backend}} ({{reason}})", "refId": "B" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Sampler outcomes",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "reqps", "custom": { "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "expr": "sum by (status) (rate(armageddon_shadow_requests_total[1m]))", "legendFormat": "{{status}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Divergences by field",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 5 },
+      "fieldConfig": { "defaults": { "unit": "short", "custom": { "stacking": { "mode": "normal" } } } },
+      "targets": [
+        { "expr": "sum by (field) (rate(armageddon_shadow_diverged_total[1m]))", "legendFormat": "{{field}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Latency diff distribution (pingora − hyper)",
+      "type": "heatmap",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 13 },
+      "options": { "calculate": false, "yAxis": { "unit": "s" } },
+      "targets": [
+        { "expr": "sum by (le) (rate(armageddon_shadow_latency_diff_seconds_bucket[5m]))", "format": "heatmap", "legendFormat": "{{le}}", "refId": "A" }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Latency diff quantiles",
+      "type": "timeseries",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 0, "y": 21 },
+      "fieldConfig": { "defaults": { "unit": "s" } },
+      "targets": [
+        { "expr": "histogram_quantile(0.50, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[5m])) by (le))", "legendFormat": "p50", "refId": "A" },
+        { "expr": "histogram_quantile(0.95, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[5m])) by (le))", "legendFormat": "p95", "refId": "B" },
+        { "expr": "histogram_quantile(0.99, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[5m])) by (le))", "legendFormat": "p99", "refId": "C" }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Ramp-up readiness checklist",
+      "type": "stat",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 7, "w": 12, "x": 12, "y": 21 },
+      "fieldConfig": { "defaults": { "mappings": [{ "options": { "0": { "text": "GO", "color": "green" }, "1": { "text": "HOLD", "color": "red" } }, "type": "value" }] } },
+      "options": { "colorMode": "background", "textMode": "value_and_name" },
+      "targets": [
+        {
+          "expr": "(sum(rate(armageddon_shadow_requests_total{status=\"diverged\"}[10m])) / clamp_min(sum(rate(armageddon_shadow_requests_total{status=~\"accepted|diverged|match\"}[10m])), 1)) > 0.01",
+          "legendFormat": "divergence >1%", "refId": "A", "instant": true
+        },
+        {
+          "expr": "sum(rate(armageddon_shadow_sink_dropped_total[5m])) > 1",
+          "legendFormat": "sink dropping", "refId": "B", "instant": true
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[5m])) by (le)) > 0.05",
+          "legendFormat": "p99 diff >50ms", "refId": "C", "instant": true
+        }
+      ]
+    }
+  ]
+}

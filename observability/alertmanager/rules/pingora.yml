@@ -1,0 +1,237 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — Prometheus alerting rules for ARMAGEDDON Pingora backend
+#
+# Source metrics (wired in commit 9363005 + 21f3e49 + 35a22c0):
+#   armageddon_shadow_requests_total{status}        — counter (shadow sampler outcomes)
+#   armageddon_shadow_diverged_total{field}         — counter (shadow diff by field)
+#   armageddon_shadow_latency_diff_seconds          — histogram (pingora vs hyper)
+#   armageddon_shadow_sample_rate{mode}             — gauge (current sample rate 0.0-1.0)
+#   armageddon_shadow_sink_emitted_total{backend}   — counter (diff events persisted)
+#   armageddon_shadow_sink_dropped_total{backend,reason} — counter (channel full, backend err)
+#   armageddon_traffic_split_decisions_total{route,variant,decision} — counter
+#   armageddon_forge_endpoint_up{cluster,endpoint}  — gauge 0/1
+#   armageddon_forge_health_transitions_total{cluster,endpoint,from,to} — counter
+#   armageddon_xds_updates_total{resource_type,action} — counter
+#   armageddon_xds_nack_total{resource_type,reason} — counter
+#   armageddon_mesh_svid_rotations_total{spiffe_id} — counter
+#   armageddon_mesh_svid_expires_seconds{spiffe_id} — gauge
+#   armageddon_mesh_svid_fetch_errors_total{reason} — counter
+#   armageddon_wasm_invocations_total{plugin,outcome} — counter
+#   armageddon_wasm_invocation_duration_seconds{plugin} — histogram
+#   armageddon_wasm_fuel_consumed_total{plugin}     — counter (fuel exhaustion events)
+#
+# Routing (alertmanager.yml):
+#   severity=critical → PagerDuty P1
+#   severity=warning  → Slack #faso-ops-alerts
+
+groups:
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Shadow mode — divergences between hyper (ground truth) and pingora
+  # ─────────────────────────────────────────────────────────────────────
+  - name: pingora_shadow
+    interval: 30s
+    rules:
+
+      # Critical: > 5% of shadow samples diverge over 5 min.
+      # If we see this sustained, pause the shadow ramp-up (see shadow gate).
+      - alert: PingoraShadowDivergenceCritical
+        expr: |
+          (
+            sum(rate(armageddon_shadow_requests_total{status="diverged"}[5m]))
+            /
+            clamp_min(sum(rate(armageddon_shadow_requests_total{status=~"accepted|diverged|match"}[5m])), 1)
+          ) > 0.05
+        for: 10m
+        labels:
+          severity: critical
+          team: platform
+          component: armageddon-pingora-shadow
+        annotations:
+          summary: "Pingora backend diverges from hyper on > 5% of shadow samples"
+          description: >
+            {{ $value | humanizePercentage }} of shadow-sampled requests produced a diff
+            (status / body_hash / headers) between hyper and pingora. Investigate before
+            increasing sample rate or cutover.
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/armageddon/armageddon-forge/CUTOVER.md#shadow-divergence-runbook"
+
+      # Warning: > 1% divergence — still acceptable but track.
+      - alert: PingoraShadowDivergenceWarn
+        expr: |
+          (
+            sum(rate(armageddon_shadow_requests_total{status="diverged"}[5m]))
+            /
+            clamp_min(sum(rate(armageddon_shadow_requests_total{status=~"accepted|diverged|match"}[5m])), 1)
+          ) > 0.01
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+          component: armageddon-pingora-shadow
+        annotations:
+          summary: "Pingora shadow divergence rate > 1%"
+          description: "{{ $value | humanizePercentage }} shadow samples diverged over 5 min. Review shadow diff sink (Redpanda topic armageddon.shadow.diffs.v1 or SQLite /tmp/armageddon-shadow-diffs.db)."
+
+      # Critical: shadow diff sink dropping events (channel full or backend error).
+      - alert: PingoraShadowSinkDropping
+        expr: sum(rate(armageddon_shadow_sink_dropped_total[5m])) > 10
+        for: 5m
+        labels:
+          severity: critical
+          team: platform
+          component: armageddon-pingora-shadow-sink
+        annotations:
+          summary: "Shadow diff sink dropping > 10 events/s"
+          description: >
+            Dropped reasons: {{ range $i, $l := .CommonLabels }}{{ $l.reason }} {{ end }}.
+            Diffs are not being persisted — incidents will be harder to root-cause. Check
+            Redpanda connectivity or SQLite disk space.
+
+      # Warning: shadow latency p99 delta > 50ms (pingora slower than hyper).
+      - alert: PingoraShadowLatencySlower
+        expr: |
+          histogram_quantile(0.99, sum(rate(armageddon_shadow_latency_diff_seconds_bucket[10m])) by (le)) > 0.05
+        for: 15m
+        labels:
+          severity: warning
+          team: platform
+          component: armageddon-pingora-shadow
+        annotations:
+          summary: "Pingora p99 latency > 50ms slower than hyper in shadow samples"
+          description: "p99 latency delta (pingora - hyper) is {{ $value }}s. Investigate hot-path."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # xDS control plane — config push health
+  # ─────────────────────────────────────────────────────────────────────
+  - name: pingora_xds
+    interval: 1m
+    rules:
+
+      # Critical: any xDS NACK means the data plane rejected a config push.
+      - alert: PingoraXdsNack
+        expr: increase(armageddon_xds_nack_total[5m]) > 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+          component: armageddon-xds
+        annotations:
+          summary: "xDS control plane config rejected by pingora data plane"
+          description: >
+            Resource type: {{ $labels.resource_type }}, reason: {{ $labels.reason }}.
+            The data plane is running with stale config for this resource — investigate
+            xds-controller logs and the offending resource.
+
+  # ─────────────────────────────────────────────────────────────────────
+  # SPIRE / SVID rotation — mTLS identity health
+  # ─────────────────────────────────────────────────────────────────────
+  - name: pingora_svid
+    interval: 30s
+    rules:
+
+      # Critical: persistent SVID fetch errors (SPIRE agent connectivity).
+      - alert: PingoraSvidFetchErrors
+        expr: sum(rate(armageddon_mesh_svid_fetch_errors_total[5m])) > 0.1
+        for: 5m
+        labels:
+          severity: critical
+          team: infra
+          component: armageddon-mesh-svid
+        annotations:
+          summary: "SPIRE SVID fetch errors > 0.1/s sustained 5 min"
+          description: >
+            Reason: {{ $labels.reason }}. The gateway may be serving stale certificates
+            or failing mTLS dial to upstreams. Check SPIRE agent socket
+            `/run/spire/sockets/agent.sock` and `spire-agent` container logs.
+
+      # Warning: SVID expires < 30 min and no recent rotation.
+      - alert: PingoraSvidExpiringSoon
+        expr: |
+          min(armageddon_mesh_svid_expires_seconds) < 1800
+          and
+          increase(armageddon_mesh_svid_rotations_total[1h]) == 0
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+          component: armageddon-mesh-svid
+        annotations:
+          summary: "SPIFFE SVID expires in < 30 min without rotation in last hour"
+          description: "SPIFFE ID {{ $labels.spiffe_id }} expires in {{ $value | humanizeDuration }} — rotation not happening."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # WASM runtime — plugin health
+  # ─────────────────────────────────────────────────────────────────────
+  - name: pingora_wasm
+    interval: 1m
+    rules:
+
+      # Warning: sustained fuel exhaustion — plugin bug or DoS attempt.
+      - alert: PingoraWasmFuelExhausting
+        expr: sum(rate(armageddon_wasm_fuel_consumed_total[5m])) > 1
+        for: 10m
+        labels:
+          severity: warning
+          team: platform
+          component: armageddon-wasm
+        annotations:
+          summary: "WASM plugin fuel exhaustion > 1 event/s sustained"
+          description: >
+            Plugin {{ $labels.plugin }} is hitting the fuel limit repeatedly. Either the
+            plugin has a pathological code path (infinite loop on certain inputs), or
+            someone is sending crafted requests to trigger it. Check recent plugin
+            deployments or audit request patterns.
+
+      # Critical: WASM invocation timeout rate > 1%.
+      - alert: PingoraWasmTimeouts
+        expr: |
+          (
+            sum(rate(armageddon_wasm_invocations_total{outcome="timeout"}[5m]))
+            /
+            clamp_min(sum(rate(armageddon_wasm_invocations_total[5m])), 1)
+          ) > 0.01
+        for: 10m
+        labels:
+          severity: critical
+          team: platform
+          component: armageddon-wasm
+        annotations:
+          summary: "WASM invocation timeout rate > 1%"
+          description: "{{ $value | humanizePercentage }} of WASM invocations timed out (100ms)."
+
+  # ─────────────────────────────────────────────────────────────────────
+  # Upstream health — circuit breaker + endpoint flapping
+  # ─────────────────────────────────────────────────────────────────────
+  - name: pingora_upstream
+    interval: 30s
+    rules:
+
+      # Critical: endpoint has flapped healthy↔unhealthy > 5 times in 5 min.
+      - alert: PingoraEndpointFlapping
+        expr: |
+          sum by (cluster, endpoint) (
+            rate(armageddon_forge_health_transitions_total[5m])
+          ) > 0.017
+        for: 10m
+        labels:
+          severity: critical
+          team: platform
+          component: armageddon-forge-health
+        annotations:
+          summary: "Upstream endpoint flapping ({{ $labels.cluster }}/{{ $labels.endpoint }})"
+          description: "Health transitions > 5 / 5 min on endpoint. Underlying service is unstable."
+
+      # Warning: all endpoints of a cluster are DOWN.
+      - alert: PingoraClusterAllEndpointsDown
+        expr: |
+          sum by (cluster) (armageddon_forge_endpoint_up) == 0
+          and
+          count by (cluster) (armageddon_forge_endpoint_up) > 0
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+          component: armageddon-forge-health
+        annotations:
+          summary: "Cluster {{ $labels.cluster }} has NO healthy upstream"
+          description: "All endpoints of cluster {{ $labels.cluster }} are unhealthy. Requests routed there will 503."
