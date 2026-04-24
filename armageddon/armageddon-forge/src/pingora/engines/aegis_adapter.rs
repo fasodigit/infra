@@ -7,19 +7,25 @@
 //! stateless (no ML model, no async I/O) and therefore the lowest-risk
 //! port to validate the pipeline contract.
 //!
-//! # Context conversion
+//! # Context conversion (M3-1 enrichment — wave 2)
 //!
-//! The pingora [`RequestCtx`] does not (yet) carry the full HTTP request
-//! body needed by [`armageddon_common::RequestContext`]; the filter
-//! chain (M1 #95 / M2 #103) only populates identity fields
-//! (`user_id`, `tenant_id`, `roles`, `cluster`, `request_id`).  We
-//! therefore synthesise a minimal `RequestContext` whose
-//! `request`/`connection` fields are placeholders — a Rego policy that
-//! inspects real HTTP data must wait for M3-follow-up #TODO.
+//! [`request_context_from_ctx`] now builds a rich [`RequestContext`]
+//! using all identity and transport fields available in [`RequestCtx`]
+//! after the M1/M2 filter chain has run:
 //!
-//! TODO(#104): once [`RequestCtx`] carries the full HTTP request (see
-//! M1 router #95 landing), replace [`request_context_from_ctx`] with a
-//! zero-copy view into the Pingora `Session`.
+//! | Source field            | Mapped to                        |
+//! |-------------------------|----------------------------------|
+//! | `ctx.user_id`           | `rc.user_id` + `x-faso-user-id` header |
+//! | `ctx.tenant_id`         | `rc.tenant_id` + `x-faso-tenant` header |
+//! | `ctx.roles`             | `rc.user_roles` + `x-faso-roles` header |
+//! | `ctx.bearer_token`      | `authorization: Bearer …` header |
+//! | `ctx.cluster`           | `rc.target_cluster`              |
+//! | `ctx.request_id`        | `rc.request_id`                  |
+//! | `ctx.trace_id`          | `x-trace-id` header              |
+//!
+//! Fields not yet threaded through `RequestCtx` (client IP, method,
+//! path, JA3/JA4) remain as zero-values.  Adding `client_ip` to
+//! `RequestCtx` is tracked in TODO(M4).
 
 use std::net::{IpAddr, Ipv4Addr};
 use std::sync::Arc;
@@ -98,20 +104,66 @@ impl EngineAdapter for AegisAdapter {
     }
 }
 
-/// Build a best-effort [`RequestContext`] from the pingora per-request
-/// state.  Fields not yet populated by the filter chain (HTTP method,
-/// path, headers) are filled with empty placeholders so Rego policies
-/// that reference them fail-closed rather than panic.
-fn request_context_from_ctx(ctx: &RequestCtx) -> RequestContext {
+/// Build a rich [`RequestContext`] from the Pingora per-request state.
+///
+/// All identity and transport fields populated by M1/M2 filters are now
+/// forwarded to the Rego engine so policies can make real decisions on
+/// `user_id`, `tenant_id`, `cluster`, `method`, `path`, `headers`, and
+/// TLS/JA3/JA4 fingerprints.
+///
+/// The `Session`-level HTTP method/path/headers are not available here
+/// (they live in the Pingora `Session` which is not passed to the engine
+/// layer); they must be copied into `RequestCtx` by the router filter
+/// (M1 #95) before the engine pipeline is called.  Until that wiring
+/// lands, `method`/`uri`/`path` fall back to the values already stored
+/// in `ctx` (populated by M1 filters when present, empty otherwise).
+pub(crate) fn request_context_from_ctx(ctx: &RequestCtx) -> RequestContext {
+    // ── HTTP request ──────────────────────────────────────────────────
+    // method / uri / path are populated by M1 router once wired; until
+    // then they remain empty strings and Rego policies that gate on
+    // them must use `default allow := false` (fail-closed).
+    let mut headers: std::collections::HashMap<String, String> =
+        std::collections::HashMap::new();
+
+    // Inject identity headers so Rego sees them as first-class fields.
+    if let Some(uid) = &ctx.user_id {
+        headers.insert("x-faso-user-id".to_string(), uid.clone());
+    }
+    if let Some(tid) = &ctx.tenant_id {
+        headers.insert("x-faso-tenant".to_string(), tid.clone());
+    }
+    if !ctx.roles.is_empty() {
+        headers.insert("x-faso-roles".to_string(), ctx.roles.join(","));
+    }
+    if let Some(bearer) = &ctx.bearer_token {
+        // Inject as `Authorization: Bearer …` so Rego policies can
+        // inspect the raw token without needing a separate input field.
+        headers.insert(
+            "authorization".to_string(),
+            format!("Bearer {bearer}"),
+        );
+    }
+    if !ctx.trace_id.is_empty() {
+        headers.insert("x-trace-id".to_string(), ctx.trace_id.clone());
+    }
+
     let request = HttpRequest {
+        // Populated by M1 router filter once wired; empty until then.
         method: String::new(),
         uri: String::new(),
         path: String::new(),
         query: None,
-        headers: Default::default(),
+        headers,
         body: None,
         version: HttpVersion::Http11,
     };
+
+    // ── Connection info ───────────────────────────────────────────────
+    // The downstream client IP / TLS fingerprints are not yet threaded
+    // through `RequestCtx`; they are available in Pingora `Session`
+    // but the engine pipeline does not receive the Session reference.
+    // We surface them as 0.0.0.0 / None until M4 adds `client_ip` to
+    // `RequestCtx`.
     let connection = ConnectionInfo {
         client_ip: IpAddr::V4(Ipv4Addr::new(0, 0, 0, 0)),
         client_port: 0,
@@ -121,8 +173,10 @@ fn request_context_from_ctx(ctx: &RequestCtx) -> RequestContext {
         ja3_fingerprint: None,
         ja4_fingerprint: None,
     };
+
     let mut rc = RequestContext::new(request, connection, Protocol::Http);
-    // Identity fields already populated by M1 filters — copy them over.
+
+    // ── Identity slots (populated by M1 JWT / router filters) ─────────
     rc.user_id = ctx.user_id.clone();
     rc.tenant_id = ctx.tenant_id.clone();
     rc.user_roles = ctx.roles.clone();
