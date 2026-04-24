@@ -115,6 +115,34 @@ pub struct RequestCtx {
     /// Webhook / CDC outbox correlation identifier (M4).
     pub cdc_outbox_id: Option<String>,
 
+    // ── M5 HTTP raw fields (headers bridge) ──────────────────────────────────
+
+    /// HTTP method extracted from the inbound request in `request_filter`
+    /// (first-pass, before any other filter runs).
+    ///
+    /// Examples: `"GET"`, `"POST"`, `"DELETE"`.
+    /// `None` until the request filter populates it.
+    pub http_method: Option<String>,
+
+    /// Full request path including the query string, extracted from the
+    /// inbound request in `request_filter`.
+    ///
+    /// Example: `"/api/v1/users?page=2"`.
+    /// `None` until the request filter populates it.
+    pub http_path: Option<String>,
+
+    /// Inbound HTTP headers snapshot populated by `request_filter`.
+    ///
+    /// Keys are lower-cased header names; multi-value headers are joined
+    /// with `", "` (RFC 7230 § 3.2.2).
+    ///
+    /// Sensitive headers (`Authorization`, `Cookie`, `X-Api-Key`) are
+    /// replaced with `"<redacted>"` when `wasm.scrub_sensitive_headers`
+    /// is `true` (default).
+    ///
+    /// Empty until the request filter populates it.
+    pub http_headers: std::collections::BTreeMap<String, String>,
+
     // ── M4 protocol scratch slots ────────────────────────────────────────────
 
     /// Per-request compression encoder state, held between `response_filter`
@@ -198,6 +226,10 @@ impl Default for RequestCtx {
             waf_score: 0.0,
             ai_score: 0.0,
             cdc_outbox_id: None,
+            // M5 HTTP raw fields — None/empty until request_filter populates them.
+            http_method: None,
+            http_path: None,
+            http_headers: std::collections::BTreeMap::new(),
             #[cfg(feature = "pingora")]
             compression_session: None,
             grpc_web_mode: None,
@@ -243,6 +275,10 @@ impl Clone for RequestCtx {
             waf_score: self.waf_score,
             ai_score: self.ai_score,
             cdc_outbox_id: self.cdc_outbox_id.clone(),
+            // M5 HTTP raw fields — cloned normally.
+            http_method: self.http_method.clone(),
+            http_path: self.http_path.clone(),
+            http_headers: self.http_headers.clone(),
             // Encoder state is per-request; intentionally not cloned.
             #[cfg(feature = "pingora")]
             compression_session: None,
@@ -272,6 +308,10 @@ mod tests {
         assert!(c.cluster.is_empty());
         assert!(c.roles.is_empty());
         assert_eq!(c.waf_score, 0.0);
+        // M5 fields must be None / empty by default.
+        assert!(c.http_method.is_none(), "http_method must be None by default");
+        assert!(c.http_path.is_none(), "http_path must be None by default");
+        assert!(c.http_headers.is_empty(), "http_headers must be empty by default");
     }
 
     #[test]
@@ -348,5 +388,43 @@ mod tests {
         // compression_session is None after clone (encoder not clonable).
         #[cfg(feature = "pingora")]
         assert!(c2.compression_session.is_none());
+    }
+
+    // ── M5 HTTP raw fields ─────────────────────────────────────────────────
+
+    #[test]
+    fn http_method_and_path_are_settable() {
+        let mut c = RequestCtx::new();
+        c.http_method = Some("POST".to_string());
+        c.http_path = Some("/api/v1/orders?page=1".to_string());
+        assert_eq!(c.http_method.as_deref(), Some("POST"));
+        assert_eq!(c.http_path.as_deref(), Some("/api/v1/orders?page=1"));
+    }
+
+    #[test]
+    fn http_headers_map_is_settable() {
+        let mut c = RequestCtx::new();
+        c.http_headers.insert("authorization".to_string(), "<redacted>".to_string());
+        c.http_headers.insert("x-forwarded-for".to_string(), "10.0.0.1".to_string());
+        assert_eq!(
+            c.http_headers.get("authorization").map(String::as_str),
+            Some("<redacted>"),
+        );
+        assert_eq!(
+            c.http_headers.get("x-forwarded-for").map(String::as_str),
+            Some("10.0.0.1"),
+        );
+    }
+
+    #[test]
+    fn clone_preserves_http_fields() {
+        let mut c = RequestCtx::new();
+        c.http_method = Some("DELETE".to_string());
+        c.http_path = Some("/resource/42".to_string());
+        c.http_headers.insert("accept".to_string(), "application/json".to_string());
+        let c2 = c.clone();
+        assert_eq!(c2.http_method.as_deref(), Some("DELETE"));
+        assert_eq!(c2.http_path.as_deref(), Some("/resource/42"));
+        assert_eq!(c2.http_headers.get("accept").map(String::as_str), Some("application/json"));
     }
 }

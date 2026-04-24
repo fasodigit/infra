@@ -128,6 +128,40 @@ impl WasmAdapterMetrics {
     }
 }
 
+// ── Sensitive header scrubbing ────────────────────────────────────────────────
+
+/// Headers that are redacted when `scrub_sensitive_headers = true`.
+///
+/// The list covers the standard credential-bearing headers.  Custom headers
+/// (e.g. `X-Internal-Auth`) are NOT scrubbed by default; plugins that need
+/// raw credentials must opt in via config.
+const SENSITIVE_HEADERS: &[&str] = &[
+    "authorization",
+    "cookie",
+    "set-cookie",
+    "x-api-key",
+    "x-auth-token",
+    "proxy-authorization",
+];
+
+/// Return a scrubbed copy of `headers`.
+///
+/// Each entry whose key appears in [`SENSITIVE_HEADERS`] is replaced by
+/// `"<redacted>"`.  Non-sensitive headers are copied verbatim.
+fn scrub_headers(headers: &std::collections::BTreeMap<String, String>) -> HashMap<String, String> {
+    headers
+        .iter()
+        .map(|(k, v)| {
+            let value = if SENSITIVE_HEADERS.contains(&k.as_str()) {
+                "<redacted>".to_string()
+            } else {
+                v.clone()
+            };
+            (k.clone(), value)
+        })
+        .collect()
+}
+
 // ── Wire-format types ─────────────────────────────────────────────────────────
 
 /// Cloneable snapshot of the request state that can be sent over the
@@ -149,11 +183,34 @@ pub struct WasmCtxSnapshot {
     /// Request path (e.g. `"/api/v1/users"`).
     pub path: String,
     /// Normalised request headers (lower-cased names).
+    ///
+    /// Sensitive headers are scrubbed to `"<redacted>"` unless the adapter
+    /// is configured with `scrub_sensitive_headers = false`.
     pub headers: HashMap<String, String>,
 }
 
 impl WasmCtxSnapshot {
-    fn from_ctx(ctx: &RequestCtx) -> Self {
+    /// Build a snapshot from a [`RequestCtx`], **scrubbing** sensitive headers.
+    ///
+    /// This is the default call-site used by [`WasmAdapter::analyze`].
+    pub(crate) fn from_ctx(ctx: &RequestCtx) -> Self {
+        Self::from_ctx_with_scrub(ctx, true)
+    }
+
+    /// Build a snapshot, optionally skipping the sensitive-header scrub.
+    ///
+    /// Set `scrub` to `false` only when a plugin explicitly requires raw
+    /// credential values (rare, opt-in via gateway config).
+    pub fn from_ctx_with_scrub(ctx: &RequestCtx, scrub: bool) -> Self {
+        let headers = if scrub {
+            scrub_headers(&ctx.http_headers)
+        } else {
+            ctx.http_headers
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect()
+        };
+
         Self {
             request_id: ctx.request_id.clone(),
             user_id: ctx.user_id.clone(),
@@ -161,12 +218,11 @@ impl WasmCtxSnapshot {
             cluster: ctx.cluster.clone(),
             waf_score: ctx.waf_score,
             ai_score: ctx.ai_score,
-            // HTTP fields — not yet populated on RequestCtx (populated by
-            // Pingora core request filter before engines run).  Default to
-            // safe empty values so the channel type is complete.
-            method: String::new(),
-            path: String::new(),
-            headers: HashMap::new(),
+            // Use the M5 http_* fields populated by request_filter.
+            // Fall back to safe empty strings when not yet set.
+            method: ctx.http_method.clone().unwrap_or_default(),
+            path: ctx.http_path.clone().unwrap_or_default(),
+            headers,
         }
     }
 
@@ -839,5 +895,99 @@ mod tests {
         assert!(r.block);
         assert!((r.score - 0.99).abs() < f32::EPSILON);
         assert_eq!(r.label.as_deref(), Some("sql_injection"));
+    }
+
+    // ── M5 HTTP headers bridge tests ─────────────────────────────────────────
+
+    // Test 13: WasmCtxSnapshot::from_ctx populates method/path/headers from ctx.
+    #[test]
+    fn wasm_ctx_snapshot_from_ctx_populates_http_fields() {
+        let mut ctx = RequestCtx::new();
+        ctx.http_method = Some("GET".to_string());
+        ctx.http_path = Some("/api/v1/items".to_string());
+        ctx.http_headers.insert("x-forwarded-for".to_string(), "1.2.3.4".to_string());
+        ctx.http_headers.insert("content-type".to_string(), "application/json".to_string());
+
+        let snap = WasmCtxSnapshot::from_ctx(&ctx);
+        assert_eq!(snap.method, "GET");
+        assert_eq!(snap.path, "/api/v1/items");
+        assert_eq!(snap.headers.get("x-forwarded-for").map(String::as_str), Some("1.2.3.4"));
+        assert_eq!(snap.headers.get("content-type").map(String::as_str), Some("application/json"));
+    }
+
+    // Test 14: from_ctx with empty ctx → snapshot has empty/default values.
+    #[test]
+    fn wasm_ctx_snapshot_from_empty_ctx_has_safe_defaults() {
+        let ctx = RequestCtx::new(); // no http_method / http_path / http_headers
+        let snap = WasmCtxSnapshot::from_ctx(&ctx);
+        assert!(snap.method.is_empty(), "method must default to empty");
+        assert!(snap.path.is_empty(), "path must default to empty");
+        assert!(snap.headers.is_empty(), "headers must default to empty");
+    }
+
+    // Test 15: scrub_sensitive_headers replaces Authorization/Cookie/X-Api-Key.
+    #[test]
+    fn wasm_ctx_snapshot_scrubs_sensitive_headers() {
+        let mut ctx = RequestCtx::new();
+        ctx.http_method = Some("POST".to_string());
+        ctx.http_headers.insert("authorization".to_string(), "Bearer secret-token".to_string());
+        ctx.http_headers.insert("cookie".to_string(), "session=abc123".to_string());
+        ctx.http_headers.insert("x-api-key".to_string(), "key-xyz".to_string());
+        ctx.http_headers.insert("x-forwarded-for".to_string(), "10.0.0.1".to_string());
+
+        let snap = WasmCtxSnapshot::from_ctx(&ctx); // scrub = true by default
+        assert_eq!(
+            snap.headers.get("authorization").map(String::as_str),
+            Some("<redacted>"),
+            "authorization must be redacted"
+        );
+        assert_eq!(
+            snap.headers.get("cookie").map(String::as_str),
+            Some("<redacted>"),
+            "cookie must be redacted"
+        );
+        assert_eq!(
+            snap.headers.get("x-api-key").map(String::as_str),
+            Some("<redacted>"),
+            "x-api-key must be redacted"
+        );
+        // Non-sensitive headers must pass through.
+        assert_eq!(
+            snap.headers.get("x-forwarded-for").map(String::as_str),
+            Some("10.0.0.1"),
+            "x-forwarded-for must not be redacted"
+        );
+    }
+
+    // Test 16: from_ctx_with_scrub(false) → raw values preserved.
+    #[test]
+    fn wasm_ctx_snapshot_no_scrub_preserves_sensitive_headers() {
+        let mut ctx = RequestCtx::new();
+        ctx.http_headers.insert("authorization".to_string(), "Bearer raw-token".to_string());
+
+        let snap = WasmCtxSnapshot::from_ctx_with_scrub(&ctx, false);
+        assert_eq!(
+            snap.headers.get("authorization").map(String::as_str),
+            Some("Bearer raw-token"),
+            "scrub=false must preserve raw value"
+        );
+    }
+
+    // Test 17: snapshot correctly converts populated method/path to RequestContext.
+    #[test]
+    fn wasm_ctx_snapshot_with_http_fields_converts_to_request_context() {
+        let mut ctx = RequestCtx::new();
+        ctx.http_method = Some("DELETE".to_string());
+        ctx.http_path = Some("/orders/42".to_string());
+        ctx.http_headers.insert("accept".to_string(), "application/json".to_string());
+
+        let snap = WasmCtxSnapshot::from_ctx(&ctx);
+        let rctx = snap.into_request_context();
+        assert_eq!(rctx.request.method, "DELETE");
+        assert_eq!(rctx.request.path, "/orders/42");
+        assert_eq!(
+            rctx.request.headers.get("accept").map(String::as_str),
+            Some("application/json")
+        );
     }
 }
