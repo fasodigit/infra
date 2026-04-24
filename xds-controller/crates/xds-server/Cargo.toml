@@ -28,5 +28,9 @@ xds-store = { workspace = true }
 xds-discovery = { workspace = true }
 xds-spire = { workspace = true }
 
+[dev-dependencies]
+http = "1"
+bytes = "1"
+
 [build-dependencies]
 tonic-build = { workspace = true }
