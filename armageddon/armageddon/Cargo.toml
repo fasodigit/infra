@@ -20,7 +20,7 @@ thiserror = { workspace = true }
 
 armageddon-common = { workspace = true }
 armageddon-config = { workspace = true }
-armageddon-forge = { workspace = true }
+armageddon-forge = { workspace = true, features = ["pingora"] }
 armageddon-ratelimit = { workspace = true }
 armageddon-sentinel = { workspace = true }
 armageddon-arbiter = { workspace = true }

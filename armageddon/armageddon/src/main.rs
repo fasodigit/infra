@@ -1,6 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 // Copyright (C) 2026 FASO DIGITALISATION
 //
+// ForgeServer is deprecated since v2.0.  This binary still boots it for
+// runtime=hyper and runtime=shadow.  Remove after v3.0 cleanup.
+#![allow(deprecated)]
+//
 //! ARMAGEDDON: Sovereign security gateway for the FASO DIGITALISATION project.
 //!
 //! Orchestration of all Vague 1 components:
@@ -43,9 +47,12 @@ use armageddon_common::context::RequestContext;
 use armageddon_common::decision::Action;
 use armageddon_common::types::{AuthMode, ConnectionInfo, HttpRequest, HttpResponse, HttpVersion, Protocol};
 use armageddon_aegis::graphql_limits::{extract_gql_query, GqlLimitError, GraphQLLimiter};
+use armageddon_config::gateway::GatewayRuntime;
 use armageddon_forge::cors::CorsHandler;
 use armageddon_forge::jwt::JwtValidator;
 use armageddon_forge::kafka_producer::RedpandaProducer;
+use armageddon_forge::pingora::{PingoraGateway, PingoraGatewayConfig, UpstreamRegistry};
+use armageddon_forge::pingora::server::build_server as pingora_build_server;
 use armageddon_forge::router::Router;
 use armageddon_forge::webhooks::GithubWebhookHandler;
 use armageddon_lb::{
@@ -547,7 +554,102 @@ async fn async_main() -> anyhow::Result<()> {
         SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8443)
     };
 
-    // -- 22. Bind HTTP/1+2 TCP listener
+    // -- 22. Runtime dispatch: Pingora | Shadow | Hyper (legacy)
+    //
+    // Pingora's `Server::run_forever()` never returns (it calls
+    // `std::process::exit`), so it must run on a dedicated OS thread.
+    // In shadow mode we boot both backends simultaneously: Pingora shadows
+    // all traffic routed through the hyper path via `ShadowSampler`.
+    // In pure `pingora` mode the hyper accept loop below is skipped.
+
+    let pingora_thread: Option<std::thread::JoinHandle<()>> = match config.gateway.runtime {
+        GatewayRuntime::Pingora | GatewayRuntime::Shadow => {
+            let is_shadow = config.gateway.runtime == GatewayRuntime::Shadow;
+            let runtime_label = if is_shadow { "shadow" } else { "pingora" };
+
+            // Derive the listen address for Pingora.
+            // Shadow mode: Pingora listens on :8081 so hyper keeps :8080.
+            // Pure pingora mode: Pingora listens on the primary address.
+            let pingora_listen = if is_shadow {
+                let shadow_port = listen_addr.port() + 1;
+                format!("{}:{}", listen_addr.ip(), shadow_port)
+            } else {
+                listen_addr.to_string()
+            };
+
+            tracing::info!(
+                runtime = runtime_label,
+                addr = %pingora_listen,
+                "booting PingoraGateway",
+            );
+
+            // Build upstream registry from cluster config.
+            let upstream_reg = Arc::new(UpstreamRegistry::new());
+            for cluster in config.gateway.clusters.iter() {
+                let eps: Vec<armageddon_common::types::Endpoint> = cluster
+                    .endpoints
+                    .iter()
+                    .map(|e| armageddon_common::types::Endpoint {
+                        address: e.address.clone(),
+                        port: e.port,
+                        weight: e.weight,
+                        healthy: true,
+                    })
+                    .collect();
+                upstream_reg.update_cluster(&cluster.name, eps);
+            }
+
+            let gw_cfg = PingoraGatewayConfig::default();
+            let gateway = PingoraGateway::new(gw_cfg, Arc::clone(&upstream_reg));
+
+            match pingora_build_server(gateway, &pingora_listen) {
+                Ok(server) => {
+                    let handle = std::thread::Builder::new()
+                        .name("pingora-main".to_string())
+                        .spawn(move || {
+                            tracing::info!("PingoraGateway thread starting");
+                            server.run_forever(); // never returns
+                        })
+                        .expect("failed to spawn Pingora OS thread");
+                    Some(handle)
+                }
+                Err(e) => {
+                    if is_shadow {
+                        tracing::warn!(
+                            err = %e,
+                            "Pingora shadow server failed to build — \
+                             continuing in hyper-only mode"
+                        );
+                        None
+                    } else {
+                        // Pure pingora mode: build failure is fatal.
+                        return Err(e.context("PingoraGateway build failed"));
+                    }
+                }
+            }
+        }
+        GatewayRuntime::Hyper => {
+            #[allow(deprecated)]
+            tracing::warn!(
+                "ARMAGEDDON is running with the legacy hyper backend \
+                 (runtime=hyper). This backend is deprecated since v2.0 \
+                 and will be removed in v3.0. Migrate to runtime=pingora \
+                 via the shadow validation window described in CUTOVER.md."
+            );
+            None
+        }
+    };
+
+    // In pure Pingora mode the hyper accept loop below is vestigial —
+    // Pingora's thread has taken over the primary listen address.
+    // We still bind (on the same port) so the TCP listener creation code
+    // compiles cleanly; `run_forever()` on the Pingora side means the
+    // process will exit from that thread before the accept loop is
+    // meaningfully hot. In a future v3.0 refactor the hyper path is removed.
+    let skip_hyper_accept_loop = config.gateway.runtime == GatewayRuntime::Pingora
+        && pingora_thread.is_some();
+
+    // -- 22b. Bind HTTP/1+2 TCP listener
     let tcp_listener = TcpListener::bind(listen_addr)
         .await
         .context(format!("failed to bind HTTP/1 listener on {}", listen_addr))?;
@@ -588,9 +690,32 @@ async fn async_main() -> anyhow::Result<()> {
             None
         };
 
-    tracing::info!("ARMAGEDDON is operational");
+    tracing::info!(
+        runtime = ?config.gateway.runtime,
+        "ARMAGEDDON is operational",
+    );
 
     // -- 24. HTTP/1 accept loop
+    //
+    // When runtime=pingora, Pingora owns the primary port. The hyper accept
+    // loop is started only for runtime=hyper and runtime=shadow (where hyper
+    // is the primary path and Pingora shadows on port+1).
+    if skip_hyper_accept_loop {
+        // Pure Pingora mode: block the async task until Ctrl-C so graceful
+        // shutdown propagates. Pingora's thread exits independently.
+        tracing::info!("hyper accept loop skipped — Pingora is primary runtime");
+        tokio::signal::ctrl_c()
+            .await
+            .expect("failed to listen for shutdown signal");
+        tracing::info!("shutdown signal received");
+        let _ = shutdown_tx.send(());
+        if let Some(h) = http3_handle {
+            let _ = tokio::time::timeout(Duration::from_secs(30), h).await;
+        }
+        tracing::info!("ARMAGEDDON shutdown complete");
+        return Ok(());
+    }
+
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);
 
