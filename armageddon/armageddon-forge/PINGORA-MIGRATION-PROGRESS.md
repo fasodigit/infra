@@ -37,9 +37,13 @@ la vague 1 autonome (2026-04-20).
 | daaa2eb | feat(armageddon-forge,nexus): port aggregator adapter — fuse engine signals into verdict (close M3-5 wave 2) | #104 | +348 / -21 sur 1 fichier | 213/213 |
 | 3eec3db | feat(armageddon-forge,ai): port AI-assisted triage adapter (close M3-6 wave 2) | #104 | +381 / -16 sur 2 fichiers | 220/220 |
 | 1004628 | feat(armageddon-forge,wasm): port Proxy-Wasm adapter with dedicated thread + channel (close M3-7 wave 2) | #104 | +387 / -15 sur 1 fichier | 226/226 |
+| 74b173c | feat(armageddon-forge,compression): wire CompressionFilter into Pingora response filters (close M4-1 wave 2) | #105 | +389 / -10 sur 3 fichiers | 231/231 |
+| bd0b2f5 | feat(armageddon-forge,grpc-web): port gRPC-Web translation layer (close M4-2 wave 2) | #105 | +518 / -3 sur 1 fichier | 248/248 |
+| 34d922d | feat(armageddon-forge,websocket): port WebSocket handler via manual handshake (close M4-3 wave 2) | #105 | +646 / -3 sur 3 fichiers | 260/260 |
+| b6244bd | feat(armageddon-forge,traffic-split): port canary/ab/shadow routing (close M4-4 wave 2) | #105 | +542 / -3 sur 1 fichier | 280/280 |
 
-**Total code ajouté** : environ 11 332 LOC net nouveaux + 898 LOC sécurité préservée.
-**Total tests** : 213/213 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
+**Total code ajouté** : environ 13 427 LOC net nouveaux + 898 LOC sécurité préservée.
+**Total tests** : 280/280 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
 
 ## État par gate
 
@@ -166,21 +170,60 @@ Drop = cancel des futures en vol → short-circuit Deny efficace.
 `armageddon-sentinel`, `armageddon-arbiter`, `armageddon-nexus` (batch A) ;
 `armageddon-ai`, `armageddon-wasm`, `async-channel = "2"` (batch B).
 
-### Gate #105 — M4 Protocoles **(vague 1, 1/4 modules)**
+### Gate #105 — M4 Protocoles **(wave 2, 4/4 modules — TERMINÉ)**
 
 | Module | État | LOC | Tests |
 |---|---|---:|---:|
-| `compression.rs` | **done wave 1** | 708 | 16/16 |
-| `grpc_web.rs` | stub M0 — **M4 wave 2** | — | — |
-| `websocket.rs` | stub M0 — **M4 wave 2** | — | — |
-| `traffic_split.rs` | stub M0 — **M4 wave 2** | — | — |
+| `compression.rs` | **done wave 1 + wired M4-1** | 708+wiring | 16+5 |
+| `grpc_web.rs` | **done wave 2 M4-2** | ~520 | 17/17 |
+| `websocket.rs` | **done wave 2 M4-3** | ~440 | 12/12 |
+| `traffic_split.rs` | **done wave 2 M4-4** | ~380 | 18/18 |
 
-**TODO(#105) ligne 474** : wiring `CompressionFilter` + `CompressionStream`
-dans `ProxyHttp::response_filter` + `response_body_filter` une fois `ctx.rs`
-enrichi d'un slot scratch par requête.
+**M4-1 (compression wiring)** — commits `74b173c`:
+- `ctx.rs` : `CompressionSession` (pingora-gated), `GrpcWebMode`, `ws_upgrade`,
+  `traffic_split_shadow` ; manual `Clone` (encoder not clonable) ; explicit
+  `Default` impl.
+- `gateway.rs` : `PingoraGatewayConfig::compression: Option<CompressionFilter>` ;
+  `response_filter` wire : negotiate + mutate headers + stash session ; new
+  `response_body_filter` impl driving `CompressionStream::write/finish`.
+- Skip conditions : `Content-Encoding` present, non-compressible Content-Type,
+  body < min_size, no Accept-Encoding.
+- 5 new ctx tests.
+
+**M4-2 (gRPC-Web)** — commit `bd0b2f5`:
+- `GrpcWebVariant::from_content_type` ; `detect_grpc_web` helper.
+- Frame codec: `parse_grpc_frame` / `build_grpc_frame` / `build_trailer_frame`
+  / `parse_trailer_payload`.
+- `assemble_grpc_web_body` : data frames + trailer frame + optional base64.
+- `decode_grpc_web_text_body`, CORS helpers, `upstream_grpc_content_type`.
+- Body accumulation strategy (no streaming) due to Pingora 0.3 API.
+  **TODO(M5)**: chunk-level framing when Pingora 0.4 exposes body streaming.
+- 17 unit tests.
+
+**M4-3 (WebSocket)** — commit `34d922d`:
+- `check_upgrade_headers` (RFC 6455 §4.2.1) ; `detect_ws_upgrade` (slice API).
+- `compute_websocket_accept` : SHA-1 + base64, test vector from RFC 6455 §1.3.
+- `WebSocketConfig` : `max_frame_size`, `idle_timeout_ms`, `ping_interval_ms`.
+- `WebSocketProxy::upgrade_and_proxy` : 4 tokio tasks + mpsc backpressure
+  + `tokio::select!` idle timeout.
+- `sha1 = "0.10"` added to workspace.
+- **`session.upgrade_to_ws()` not available in Pingora 0.3** — manual
+  handshake helpers provided. **TODO(M5)**: use native API in Pingora 0.4.
+- 12 tests including RFC 6455 test vector, text roundtrip, close propagation.
+
+**M4-4 (traffic_split)** — commit `b6244bd`:
+- `SplitMode` : Canary / AbTest / Shadow ; `SplitSpec::validate`.
+- `decide_with` : blake3 deterministic bucket; 10 000-bucket resolution for
+  shadow sample rates.
+- `TrafficSplitter` : `ArcSwap` hot-reload ; `decide` / `update` / `snapshot`.
+- Integration: `ctx.cluster` (primary), `ctx.traffic_split_shadow` (shadow).
+- **Metrics TODO(M5)**: `armageddon_traffic_split_decisions_total{route,variant,decision}`
+  once Prometheus registry wiring is complete.
+- 18 tests : validation, distribution 50/50 and 10 %, sticky, shadow 100/0/no-target,
+  A-B mode, hot-reload.
 
 **Vérification roundtrip** : décompression byte-exact sur payload 11 000
-octets (`"hello world " × 1000`) pour gzip / brotli / zstd.
+octets (`"hello world " × 1000`) pour gzip / brotli / zstd (wave 1 tests inchangés).
 
 ### Gate #106 — M5 xDS + mesh + bench **(vague 1, 2/5 livrables)**
 
@@ -279,6 +322,14 @@ pipx install cmake   # fallback si paquet système pas dispo
 | `cargo check -p armageddon` | ✅ clean |
 | `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **226/226 passed** (+13 nouveaux tests M3 batch B: 6 AI + 7 WASM) |
 
+### Fin M4 wave 2 (4/4 modules) (2026-04-24)
+
+| Commande | Résultat |
+|---|---|
+| `cargo check -p armageddon-forge --features pingora` | ✅ clean (1 warning pré-existant dans `feature_flags.rs`) |
+| `cargo check -p armageddon` | ✅ clean |
+| `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **280/280 passed** (+54 nouveaux tests M4: 5 ctx + 17 gRPC-Web + 12 WS + 18 traffic_split) |
+
 ## TODOs documentés (M3 wave 2 et au-delà)
 
 - **JWT session cache** (`jwt:session:<sha256(token)>`): le spec M1 wave 2
@@ -312,40 +363,54 @@ pipx install cmake   # fallback si paquet système pas dispo
   provider HTTP (Anthropic/OpenAI) peut être ajouté en M5/M6 derrière
   un feature flag sans modifier l'adapter.
 - **LB Weighted + P2C** (`upstream/lb.rs`) : `todo!()` depuis wave 1.
-  Déféré à M3 wave 2.
+  Déféré à M5 wave 2.
 - **Prometheus histogram** (`upstream/health.rs:emit_probe_duration`) :
   OnceLock registration non terminée. Câbler en M5 wave 2 avec le wiring
   Prometheus complet du gateway.
+- **WebSocket native upgrade** (`protocols/websocket.rs:upgrade_and_proxy`) :
+  Pingora 0.3 n'expose pas `session.upgrade_to_ws()`. Les helpers de handshake
+  manuel (`check_upgrade_headers`, `compute_websocket_accept`) sont fournis.
+  Migrer vers l'API native en M5 quand Pingora 0.4 sera disponible.
+  Déféré à **TODO(M5)** dans le fichier source.
+- **WebSocket ping/idle** (`protocols/websocket.rs`) : `ping_interval_ms` dans
+  `WebSocketConfig` est configuré mais pas encore actionné par une tâche dédiée.
+  Implémenter un `tokio::time::interval` Ping task en M5.
+- **gRPC-Web chunk streaming** (`protocols/grpc_web.rs`) : l'implémentation
+  accumule le corps upstream en mémoire avant de re-framer. Non idéal pour les
+  réponses server-streaming volumineuses. TODO(M5): switch vers framing
+  chunk-par-chunk quand Pingora 0.4 expose un buffer d'accumulation dans
+  `response_body_filter`.
+- **traffic_split metrics** (`protocols/traffic_split.rs`) :
+  `armageddon_traffic_split_decisions_total{route,variant,decision}` counter
+  marqué TODO(M5). Câbler avec le wiring Prometheus complet en M5.
+- **gRPC health probe native** (`upstream/health.rs:probe_grpc`) : toujours
+  fallback TCP. Port réel du protocole gRPC Health Check prévu en M5 avec
+  l'intégration gRPC-Web terminée.
 
-## Ce qui reste (wave 2, après M3 batch A)
+## Ce qui reste (wave 2, après M4)
 
 Classement par ordre d'impact, pour reprise de session :
 
 1. **M1 wave 2 — TERMINÉE** (commits e5ef107 → 4807944 + 8cef15e)
 
 2. **M2 wave 2 — TERMINÉE** (commits 314a89d → 0f2ede3)
-   - mtls: SpiffeChecker + UpstreamMtlsFilter + ctx.spiffe_peer_expected
-   - circuit_breaker: Closed/Open/HalfOpen + DashMap + CircuitBreakerManager
-   - health: PingoraHealthChecker + ArcSwap publish + Http/Tcp/Grpc probes
-   - retry: PingoraRetryPolicy + armageddon-retry adapter + Retry-After
+   - mtls, circuit_breaker, health, retry
 
 3. **M3 — TERMINÉE (7/7)** (commits 997af61 → 1004628)
-   - aegis: enrichissement RequestCtx → Rego (M3-1)
-   - sentinel: IPS + GeoIP + JA3/JA4 + DLP (M3-2)
-   - arbiter: Aho-Corasick CRS WAF (M3-3)
-   - oracle: ONNX 22-feature + OTEL propagation (M3-4)
-   - nexus: aggregator brain composite scoring (M3-5)
-   - ai: threat-intel IoC + prompt-injection + AiProvider trait (M3-6)
-   - wasm: OS thread + async_channel + empty plugin runtime (M3-7)
+   - aegis, sentinel, arbiter, oracle, nexus, ai, wasm
 
-4. **M4 wave 2** — gRPC-Web (798 LOC à reporter), WebSocket (via
-   `session.upgrade_to_ws()` natif Pingora), traffic_split, wiring
-   compression.
+4. **M4 wave 2 — TERMINÉE (4/4)** (commits 74b173c → b6244bd)
+   - compression wiring (M4-1)
+   - gRPC-Web translation (M4-2)
+   - WebSocket manual handshake + proxy (M4-3)
+   - traffic_split canary/A-B/shadow (M4-4)
 
-5. **M5 wave 2** — xDS, SPIFFE rotation, shadow mode runtime, bins bench
-   serveurs.
+5. **M5 wave 2** — xDS ADS client wire-up, SPIFFE cert rotation hook,
+   shadow mode runtime, bench server bins, Prometheus full registry wiring,
+   `upgrade_to_ws()` migration to Pingora 0.4 native API,
+   gRPC-Web chunk-level streaming, WASM plugin loading.
 
-6. **M6** — flip `default = ["pingora"]`, deprecate hyper, cutover doc.
+6. **M6** — flip `default = ["pingora"]`, deprecate hyper path, cutover doc.
 
 ## Points de vigilance pour la reprise
 
