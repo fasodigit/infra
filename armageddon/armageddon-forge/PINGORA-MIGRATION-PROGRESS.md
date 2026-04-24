@@ -35,6 +35,8 @@ la vague 1 autonome (2026-04-20).
 | bf2ac37 | feat(armageddon-forge,arbiter): port anomaly detection adapter (close M3-3 wave 2) | #104 | +214 / -21 sur 1 fichier | 213/213 |
 | 9084e33 | feat(armageddon-forge,oracle): port ML scoring adapter with OTEL propagation (close M3-4 wave 2) | #104 | +249 / -21 sur 1 fichier | 213/213 |
 | daaa2eb | feat(armageddon-forge,nexus): port aggregator adapter — fuse engine signals into verdict (close M3-5 wave 2) | #104 | +348 / -21 sur 1 fichier | 213/213 |
+| 3eec3db | feat(armageddon-forge,ai): port AI-assisted triage adapter (close M3-6 wave 2) | #104 | +381 / -16 sur 2 fichiers | 220/220 |
+| 1004628 | feat(armageddon-forge,wasm): port Proxy-Wasm adapter with dedicated thread + channel (close M3-7 wave 2) | #104 | +387 / -15 sur 1 fichier | 226/226 |
 
 **Total code ajouté** : environ 11 332 LOC net nouveaux + 898 LOC sécurité préservée.
 **Total tests** : 213/213 pass sur `cargo test -p armageddon-forge --features pingora --lib pingora`.
@@ -112,11 +114,29 @@ Pas de reliquat. Prêt pour M1 consolidation.
 | `arbiter_adapter.rs` | **done wave 2** (Aho-Corasick CRS) | ~220 | 6/6 |
 | `oracle_adapter.rs` | **done wave 2** (ONNX + OTEL) | ~260 | 6/6 |
 | `nexus_adapter.rs` | **done wave 2** (aggregator brain) | ~390 | 8/8 |
-| `ai_adapter.rs` | stub adapter — **batch B** | 41 | — |
-| `wasm_adapter.rs` | stub adapter — **batch B** | 41 | — |
+| `ai_adapter.rs` | **done wave 2** (threat-intel + prompt-injection) | ~280 | 6/6 |
+| `wasm_adapter.rs` | **done wave 2** (OS thread + channel, empty runtime) | ~390 | 7/7 |
 
 Pipeline utilise `FuturesUnordered` + `tokio::time::timeout` par moteur.
 Drop = cancel des futures en vol → short-circuit Deny efficace.
+
+**M3 batch B — TERMINÉ** (commits 3eec3db → 1004628, 2026-04-24) :
+
+- **M3-6 (AI)** : délègue à `armageddon_ai::AiEngine::inspect()`.
+  Threat-intel IoC lookups + prompt-injection heuristic scorer.
+  Short-circuit si `ctx.ai_score >= 0.9`. Trait `AiProvider` +
+  `NoopAiProvider` (production) + `MockAiProvider` (tests) pour
+  contextualisation LLM future sans toucher l'adapter. Timeout 30 ms.
+
+- **M3-7 (WASM)** : thread OS dédié + `async_channel::unbounded`.
+  Wasmtime `Store`/`Instance` sont `!Send` — ils restent confinés au
+  thread worker qui tourne son propre `new_current_thread` tokio runtime.
+  `WasmCtxSnapshot` serialise les champs de `RequestCtx` pour traverser
+  le channel. Runtime vide (plugin loading est TODO dans
+  `armageddon-wasm/src/runtime.rs`) → retourne toujours `Allow{0.0}`.
+  Fail-open sur timeout 100 ms. Voir TODO(M5) ci-dessous.
+
+**M3 COMPLET — 7/7 adapters** (commits 997af61 → 1004628).
 
 **M3 batch A — TERMINÉ** (commits 997af61 → daaa2eb, 2026-04-24) :
 
@@ -143,10 +163,8 @@ Drop = cancel des futures en vol → short-circuit Deny efficace.
   Challenge/LogOnly→Allow. Timeout 10 ms.
 
 **Nouvelles dépendances** (ajoutées au `Cargo.toml` forge) :
-`armageddon-sentinel`, `armageddon-arbiter`, `armageddon-nexus`.
-
-**TODO(M3 batch B)** : `ai_adapter.rs` + `wasm_adapter.rs` (agent ultérieur).
-Le WASM requiert un thread OS dédié (Wasmtime non-`Send`) + channel mpsc.
+`armageddon-sentinel`, `armageddon-arbiter`, `armageddon-nexus` (batch A) ;
+`armageddon-ai`, `armageddon-wasm`, `async-channel = "2"` (batch B).
 
 ### Gate #105 — M4 Protocoles **(vague 1, 1/4 modules)**
 
@@ -253,6 +271,14 @@ pipx install cmake   # fallback si paquet système pas dispo
 | `cargo check -p armageddon` | ✅ clean (GqlLimitError fix inchangé) |
 | `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **213/213 passed** (+27 nouveaux tests M3 batch A) |
 
+### Fin M3 batch B (7/7 adapters) wave 2 (2026-04-24)
+
+| Commande | Résultat |
+|---|---|
+| `cargo check -p armageddon-forge --features pingora` | ✅ clean (1 warning pré-existant dans `feature_flags.rs`) |
+| `cargo check -p armageddon` | ✅ clean |
+| `cargo test -p armageddon-forge --features pingora --lib pingora` | ✅ **226/226 passed** (+13 nouveaux tests M3 batch B: 6 AI + 7 WASM) |
+
 ## TODOs documentés (M3 wave 2 et au-delà)
 
 - **JWT session cache** (`jwt:session:<sha256(token)>`): le spec M1 wave 2
@@ -274,6 +300,17 @@ pipx install cmake   # fallback si paquet système pas dispo
 - **gRPC health probe** (`upstream/health.rs:probe_grpc`) : actuellement
   fallback TCP. Port réel du protocole gRPC Health (grpc.health.v1.Health/Check)
   prévu en M4 wave 2 avec le module grpc_web.rs.
+- **WASM plugin loading** (`engines/wasm_adapter.rs:run_plugins_sync`
+  + `armageddon-wasm/src/runtime.rs:TODO`): le scan de `plugins_dir`
+  et l'exécution réelle des modules `.wasm` sont marqués TODO dans
+  `PluginRuntime`. L'adapter retourne actuellement `EngineVerdict::Allow
+  {score:0.0}` pour toute requête (empty runtime). Implémenter en M5
+  avec `PluginRuntime::load_plugin` loop + fuel/gas hérité de la config
+  wasmtime existante. Référence: issue #106.
+- **AI LLM provider** (`engines/ai_adapter.rs:HttpAiProvider`): le trait
+  `AiProvider` est en place mais seul `NoopAiProvider` est câblé. Un
+  provider HTTP (Anthropic/OpenAI) peut être ajouté en M5/M6 derrière
+  un feature flag sans modifier l'adapter.
 - **LB Weighted + P2C** (`upstream/lb.rs`) : `todo!()` depuis wave 1.
   Déféré à M3 wave 2.
 - **Prometheus histogram** (`upstream/health.rs:emit_probe_duration`) :
@@ -292,15 +329,14 @@ Classement par ordre d'impact, pour reprise de session :
    - health: PingoraHealthChecker + ArcSwap publish + Http/Tcp/Grpc probes
    - retry: PingoraRetryPolicy + armageddon-retry adapter + Retry-After
 
-3. **M3 batch A — TERMINÉE** (commits 997af61 → daaa2eb, 5/7 adapters)
+3. **M3 — TERMINÉE (7/7)** (commits 997af61 → 1004628)
    - aegis: enrichissement RequestCtx → Rego (M3-1)
    - sentinel: IPS + GeoIP + JA3/JA4 + DLP (M3-2)
    - arbiter: Aho-Corasick CRS WAF (M3-3)
    - oracle: ONNX 22-feature + OTEL propagation (M3-4)
    - nexus: aggregator brain composite scoring (M3-5)
-
-4. **M3 batch B** — `ai_adapter.rs` + `wasm_adapter.rs` (agent ultérieur).
-   WASM requiert un thread OS dédié (Wasmtime non-`Send`) + channel mpsc.
+   - ai: threat-intel IoC + prompt-injection + AiProvider trait (M3-6)
+   - wasm: OS thread + async_channel + empty plugin runtime (M3-7)
 
 4. **M4 wave 2** — gRPC-Web (798 LOC à reporter), WebSocket (via
    `session.upgrade_to_ws()` natif Pingora), traffic_split, wiring
