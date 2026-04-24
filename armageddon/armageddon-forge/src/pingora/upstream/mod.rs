@@ -29,3 +29,15 @@ pub mod selector;
 
 pub use lb::{LbPolicy, PowerOfTwoChoices, RoundRobin, Weighted};
 pub use selector::{ClusterResolver, ClusterState, PoolKey, ResolvedPeer};
+
+// -- M2 wave-2 re-exports ---------------------------------------------------
+
+pub use circuit_breaker::{BreakerConfig, BreakerState, CircuitBreakerManager, CircuitState};
+pub use health::{
+    ClusterHealthMap, EndpointHealth, EndpointId, HealthCheckType, HealthConfig,
+    PingoraHealthChecker, ProbeResult,
+};
+pub use mtls::{SpiffeChecker, SpiffeVerificationResult, UpstreamMtlsConfig, UpstreamMtlsFilter};
+pub use retry::{
+    is_retriable_status, PingoraRetryPolicy, RetryDecision, RetryStats,
+};

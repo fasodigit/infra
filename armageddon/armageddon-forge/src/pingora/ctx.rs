@@ -67,7 +67,11 @@ pub struct RequestCtx {
     /// **Never log or include in responses.**
     pub bearer_token: Option<String>,
 
-    /// Peer SPIFFE ID observed during upstream mTLS handshake (M2).
+    /// Expected peer SPIFFE ID set by the upstream selector when the cluster
+    /// carries `tls_required = true` (M2).  Read by `UpstreamMtlsFilter`.
+    pub spiffe_peer_expected: Option<String>,
+
+    /// Peer SPIFFE ID observed / validated during upstream mTLS handshake (M2).
     pub spiffe_peer: Option<String>,
 
     /// Feature-flag identifiers injected by the feature-flag filter (M1 #98).
