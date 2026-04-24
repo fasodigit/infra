@@ -25,11 +25,18 @@ licence open-source Red Hat stable) ; cohérence avec l'environnement cible
 Kubernetes où les conteneurs tournent sous runtime OCI (CRI-O / containerd),
 pas Docker Engine.
 
+**Fichiers conteneur** : utiliser **`Containerfile`** (et non `Dockerfile`)
+pour toutes les images OCI du projet. Renommer immédiatement tout fichier
+`Dockerfile` reçu en `Containerfile`. La syntaxe est identique (100%
+compatible Buildah/Podman/Docker), seul le nom change. Les commandes de
+build utilisent `podman build -f Containerfile .`.
+
 **Commandes conteneur individuelles** : utiliser `podman exec`, `podman run`,
-`podman ps`, `podman logs`, `podman network` — **jamais** `docker exec`/`run`
-dans la documentation. Sur une machine contributeur sans `podman` CLI installé,
-`docker exec` fonctionne en compat (mêmes conteneurs, même API), mais tout
-nouveau doc/runbook doit être écrit avec `podman`.
+`podman ps`, `podman logs`, `podman network`, `podman build` — **jamais**
+`docker exec`/`run`/`build` dans la documentation. Sur une machine
+contributeur sans `podman` CLI installé, `docker` fonctionne en compat
+(mêmes conteneurs, même API), mais tout nouveau doc/runbook doit être
+écrit avec `podman`.
 
 Fichiers compose canoniques (au 2026-04-17) :
 

@@ -119,5 +119,5 @@ mvn test
 - [ ] Implémenter `PouletsActivitiesImpl` (appels HTTP vers services FASO)
 - [ ] WorkflowAdminController (endpoints admin pour BFF)
 - [ ] Tests Temporal avec `TestWorkflowEnvironment`
-- [ ] Dockerfile/Containerfile
+- [ ] Containerfile
 - [ ] Entrée dans `podman-compose.yml` stack principale

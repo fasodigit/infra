@@ -27,7 +27,7 @@ synthetic-monitoring/
 │   └── run-all.sh                    # loop 5 min, parallel, timeout 2 min
 ├── deploy/
 │   └── Deployment.yaml               # K8s CronJob + ServiceAccount + NetPol
-├── Dockerfile                        # image ghcr.io/.../synthetic-monitoring
+├── Containerfile                     # image ghcr.io/.../synthetic-monitoring
 └── README.md
 ```
 
