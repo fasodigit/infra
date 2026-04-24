@@ -10,6 +10,7 @@ armageddon-config = { workspace = true }
 armageddon-mesh = { workspace = true }
 armageddon-oracle = { workspace = true }
 armageddon-ratelimit = { workspace = true }
+armageddon-retry = { workspace = true }
 tokio-rustls = "0.26"
 tokio = { workspace = true }
 
