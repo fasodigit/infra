@@ -4,13 +4,20 @@
 
 server:
   port: ${PORT:8800}
+  shutdown: graceful
   netty:
     connection-timeout: 10s
     idle-timeout: 60s
+    max-initial-line-length: 16KB
+    max-http-request-header-size: 16KB
 
 spring:
   application:
     name: ec-certificate-renderer
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  codec:
+    max-in-memory-size: 25MB
   threads:
     virtual:
       enabled: true
@@ -32,7 +39,7 @@ renderer:
   cache-max-size: ${RENDERER_CACHE_MAX_SIZE:500}
   chromium-path: ${CHROMIUM_PATH:}
   chromium-args: []
-  hmac-secret: ${INTERNAL_AUTH_SECRET:dev-renderer-secret}
+  hmac-secret: ${INTERNAL_AUTH_SECRET}
   hmac-timestamp-drift-ms: ${HMAC_DRIFT_MS:30000}
   rate-limit-window-seconds: 60
   rate-limit-max-requests: ${RATE_LIMIT_MAX_REQUESTS:200}
