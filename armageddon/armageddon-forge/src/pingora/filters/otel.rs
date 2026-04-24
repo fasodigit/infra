@@ -193,7 +193,7 @@ impl ForgeFilter for OtelFilter {
         // Instead we log the span open event and let `on_logging` close it.
         // For production OTEL export, the opentelemetry SDK reads the tracing
         // span attributes via the `tracing-opentelemetry` subscriber layer.
-        tracing::info!(
+        tracing::debug!(
             target: "armageddon.pingora.proxy",
             span_name = SPAN_NAME,
             "http.method" = %method,
@@ -222,14 +222,13 @@ impl ForgeFilter for OtelFilter {
             return Decision::Continue;
         }
 
-        // Generate a fresh span_id for the outbound hop using the request_id
-        // as entropy (first 16 hex chars of the UUID without dashes).
-        let upstream_span_id: String = ctx
-            .request_id
-            .replace('-', "")
-            .chars()
-            .take(16)
-            .collect();
+        // Generate a cryptographically random span_id for the outbound hop.
+        // Using CSPRNG prevents clients from predicting the traceparent sent
+        // to upstreams (the request_id is exposed in x-forge-id).
+        let rng = ring::rand::SystemRandom::new();
+        let mut buf = [0u8; 8];
+        ring::rand::SecureRandom::fill(&rng, &mut buf).expect("CSPRNG failure");
+        let upstream_span_id = hex::encode(buf);
 
         let tp = Traceparent {
             trace_id: ctx.trace_id.clone(),
@@ -278,7 +277,7 @@ impl ForgeFilter for OtelFilter {
                 "otel: proxy span closed (error)"
             );
         } else {
-            tracing::info!(
+            tracing::debug!(
                 target: "armageddon.pingora.proxy",
                 span_name = SPAN_NAME,
                 "http.status_code" = status,
@@ -399,8 +398,11 @@ mod tests {
         ctx.trace_id = "4bf92f3577b34da6a3ce929d0e0e4736".to_string();
         ctx.span_id = "00f067aa0ba902b7".to_string();
 
-        // Replicate on_upstream_request logic.
-        let upstream_span_id: String = ctx.request_id.replace('-', "").chars().take(16).collect();
+        // Replicate on_upstream_request logic (CSPRNG span_id).
+        let rng = ring::rand::SystemRandom::new();
+        let mut buf = [0u8; 8];
+        ring::rand::SecureRandom::fill(&rng, &mut buf).expect("CSPRNG failure");
+        let upstream_span_id = hex::encode(buf);
         let tp = Traceparent {
             trace_id: ctx.trace_id.clone(),
             span_id: upstream_span_id,
@@ -412,6 +414,7 @@ mod tests {
         let parsed = Traceparent::parse(&hv).expect("injected traceparent must be valid");
         assert_eq!(parsed.trace_id, ctx.trace_id);
         assert_eq!(parsed.flags, 0x01);
+        assert_eq!(parsed.span_id.len(), 16, "span_id must be 16 hex chars");
     }
 
     #[test]
@@ -434,8 +437,10 @@ mod tests {
 
         // Simulate on_upstream_request injection (without a live Session).
         if !ctx.trace_id.is_empty() {
-            let upstream_span_id: String =
-                ctx.request_id.replace('-', "").chars().take(16).collect();
+            let rng = ring::rand::SystemRandom::new();
+            let mut buf = [0u8; 8];
+            ring::rand::SecureRandom::fill(&rng, &mut buf).expect("CSPRNG failure");
+            let upstream_span_id = hex::encode(buf);
             let tp = Traceparent {
                 trace_id: ctx.trace_id.clone(),
                 span_id: upstream_span_id,
@@ -444,6 +449,7 @@ mod tests {
             let hv = tp.to_header_value();
             assert!(hv.starts_with("00-4bf92f3577b34da6a3ce929d0e0e4736-"));
             assert!(hv.ends_with("-01"));
+            assert_eq!(tp.span_id.len(), 16, "span_id must be 16 hex chars");
         }
     }
 

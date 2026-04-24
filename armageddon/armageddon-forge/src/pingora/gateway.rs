@@ -53,14 +53,14 @@ impl UpstreamRegistry {
 
     /// Replace the endpoint list for `cluster`.
     pub fn update_cluster(&self, cluster: &str, endpoints: Vec<Endpoint>) {
-        let mut guard = self.inner.write().expect("upstream registry poisoned");
+        let mut guard = self.inner.write().unwrap_or_else(|e| e.into_inner());
         guard.insert(cluster.to_string(), endpoints);
         tracing::debug!(cluster, "upstream registry updated");
     }
 
     /// Return the first healthy endpoint for `cluster`.
     pub fn first_healthy(&self, cluster: &str) -> Option<Endpoint> {
-        let guard = self.inner.read().expect("upstream registry poisoned");
+        let guard = self.inner.read().unwrap_or_else(|e| e.into_inner());
         guard
             .get(cluster)
             .and_then(|eps| eps.iter().find(|e| e.healthy).cloned())
@@ -68,7 +68,7 @@ impl UpstreamRegistry {
 
     /// Return all endpoints for `cluster` regardless of health state.
     pub fn all(&self, cluster: &str) -> Vec<Endpoint> {
-        let guard = self.inner.read().expect("upstream registry poisoned");
+        let guard = self.inner.read().unwrap_or_else(|e| e.into_inner());
         guard.get(cluster).cloned().unwrap_or_default()
     }
 }
@@ -290,8 +290,17 @@ impl ProxyHttp for PingoraGateway {
                 }
                 Decision::Deny(code) => {
                     tracing::debug!(filter = filter.name(), code, "filter deny");
-                    // Let Pingora convert this into an error response.
-                    return Err(Error::new_str("forge filter denied request"));
+                    // Send the proper HTTP status code downstream before
+                    // returning — avoids losing the code in Pingora's
+                    // default error page.
+                    if let Err(e) = session.respond_error(code).await {
+                        tracing::warn!(
+                            code,
+                            error = %e,
+                            "failed to send deny response downstream"
+                        );
+                    }
+                    return Ok(true);
                 }
             }
         }

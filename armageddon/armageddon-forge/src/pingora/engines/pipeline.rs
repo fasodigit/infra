@@ -98,6 +98,11 @@ pub enum PipelineVerdict {
 pub struct Pipeline {
     engines: Vec<Arc<dyn EngineAdapter>>,
     deny_threshold: f32,
+    /// Maximum ratio of `Skipped` verdicts before the pipeline fails
+    /// closed.  When `skipped / total > max_skipped_ratio`, the pipeline
+    /// returns `Deny` to prevent silent security bypass under load or
+    /// attack conditions where all engines time out.  Default: `0.5`.
+    max_skipped_ratio: f32,
 }
 
 impl Pipeline {
@@ -109,7 +114,15 @@ impl Pipeline {
         Self {
             engines: Vec::new(),
             deny_threshold,
+            max_skipped_ratio: 0.5,
         }
+    }
+
+    /// Set the maximum allowed ratio of `Skipped` verdicts.  When
+    /// exceeded the pipeline denies the request (fail-closed).
+    pub fn with_max_skipped_ratio(mut self, ratio: f32) -> Self {
+        self.max_skipped_ratio = ratio.clamp(0.0, 1.0);
+        self
     }
 
     /// Register an engine.  Engines are evaluated in parallel, so order
@@ -169,12 +182,19 @@ impl Pipeline {
 
         let mut aggregate: f32 = 0.0;
         let mut top_engine: &'static str = "";
+        let mut skipped_count: usize = 0;
+        let total_engines = self.engines.len();
         // Per-bucket bookkeeping so we stamp the caller's ctx once at
         // the end and don't fight over `waf_score` / `ai_score`.
         let mut waf_score: f32 = 0.0;
         let mut ai_score: f32 = 0.0;
 
         while let Some((name, verdict, _local_ctx)) = futs.next().await {
+            // Track skipped verdicts for fail-closed ratio check.
+            if matches!(verdict, EngineVerdict::Skipped) {
+                skipped_count += 1;
+            }
+
             // Track the per-bucket maxima by engine name.
             let score = verdict.score_for_aggregate();
             match name {
@@ -212,6 +232,26 @@ impl Pipeline {
 
         ctx.waf_score = ctx.waf_score.max(waf_score);
         ctx.ai_score = ctx.ai_score.max(ai_score);
+
+        // Fail-closed: when too many engines were skipped (timeout /
+        // unavailable), deny the request to prevent silent security bypass.
+        let skipped_ratio = skipped_count as f32 / total_engines as f32;
+        if skipped_ratio > self.max_skipped_ratio {
+            tracing::warn!(
+                skipped_count,
+                total_engines,
+                max_skipped_ratio = self.max_skipped_ratio,
+                "too many engines skipped; failing closed"
+            );
+            return PipelineVerdict::Deny {
+                reason: format!(
+                    "too many engines skipped ({skipped_count}/{total_engines} = {skipped_ratio:.2} > {:.2})",
+                    self.max_skipped_ratio
+                ),
+                engine: "pipeline",
+                score: 0.0,
+            };
+        }
 
         if aggregate >= self.deny_threshold && self.deny_threshold > 0.0 {
             PipelineVerdict::Deny {
@@ -397,6 +437,41 @@ mod tests {
                 assert!((score - 0.6).abs() < f32::EPSILON);
             }
             other => panic!("expected Deny by aggregate threshold, got {other:?}"),
+        }
+    }
+
+    /// Adapter that always returns `Skipped`.
+    struct SkippedAdapter {
+        name: &'static str,
+    }
+
+    #[async_trait]
+    impl EngineAdapter for SkippedAdapter {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+        async fn analyze(&self, _ctx: &mut RequestCtx) -> EngineVerdict {
+            EngineVerdict::Skipped
+        }
+        fn timeout(&self) -> Duration {
+            Duration::from_millis(50)
+        }
+    }
+
+    #[tokio::test]
+    async fn all_engines_skipped_denies_when_max_skipped_ratio_exceeded() {
+        let mut p = Pipeline::new(0.9).with_max_skipped_ratio(0.5);
+        p.add(Arc::new(SkippedAdapter { name: "sentinel" }));
+        p.add(Arc::new(SkippedAdapter { name: "arbiter" }));
+        p.add(Arc::new(SkippedAdapter { name: "oracle" }));
+        let mut ctx = RequestCtx::new();
+        let v = p.evaluate(&mut ctx).await;
+        match v {
+            PipelineVerdict::Deny { reason, engine, .. } => {
+                assert!(reason.contains("too many engines skipped"), "reason: {reason}");
+                assert_eq!(engine, "pipeline");
+            }
+            other => panic!("expected Deny due to skipped ratio, got {other:?}"),
         }
     }
 }
