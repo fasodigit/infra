@@ -47,12 +47,17 @@ use armageddon_common::context::RequestContext;
 use armageddon_common::decision::Action;
 use armageddon_common::types::{AuthMode, ConnectionInfo, HttpRequest, HttpResponse, HttpVersion, Protocol};
 use armageddon_aegis::graphql_limits::{extract_gql_query, GqlLimitError, GraphQLLimiter};
-use armageddon_config::gateway::GatewayRuntime;
+use armageddon_config::gateway::{GatewayRuntime, ShadowSinkType};
 use armageddon_forge::cors::CorsHandler;
 use armageddon_forge::jwt::JwtValidator;
 use armageddon_forge::kafka_producer::RedpandaProducer;
 use armageddon_forge::pingora::{PingoraGateway, PingoraGatewayConfig, UpstreamRegistry};
 use armageddon_forge::pingora::server::build_server as pingora_build_server;
+use armageddon_forge::pingora::shadow::ShadowSampler;
+use armageddon_forge::pingora::shadow_sink::{
+    MultiSink, NoopSink, RedpandaSink, ShadowDiffDispatcher, ShadowDiffSink, SinkMetrics,
+    SqliteSink,
+};
 use armageddon_forge::router::Router;
 use armageddon_forge::webhooks::GithubWebhookHandler;
 use armageddon_lb::{
@@ -137,6 +142,11 @@ struct GatewayState {
     gql_limiter: Option<Arc<GraphQLLimiter>>,
     /// Counter for requests denied before reaching upstream (labeled by reason).
     requests_denied: Arc<prometheus::IntCounterVec>,
+    /// Shadow mode sampler.  Present only when `runtime = shadow` and shadow
+    /// mode is enabled in config.  Used by the hyper request path to decide
+    /// whether to mirror a request to the Pingora shadow backend and to
+    /// dispatch diff events via the wired `DiffEventSender`.
+    shadow_sampler: Option<Arc<ShadowSampler>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -427,6 +437,141 @@ async fn async_main() -> anyhow::Result<()> {
         }
     };
 
+    // -- 15c. Determine HTTP/1 listen address (needed by shadow sampler port config).
+    // Note: the full TCP listener is bound later at step 22b; here we only
+    // derive the SocketAddr for port arithmetic in shadow mode.
+    let listen_addr_early: SocketAddr = if let Some(listener) = config.gateway.listeners.first() {
+        SocketAddr::new(
+            listener
+                .address
+                .parse()
+                .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
+            listener.port,
+        )
+    } else {
+        SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 8443)
+    };
+
+    // -- 15d. Shadow mode dispatcher + sampler (runtime=shadow only)
+    //
+    // The dispatcher owns the bounded mpsc channel and spawns the background
+    // drain task that flushes diff events to the configured sink backend.
+    // On graceful shutdown, dropping the dispatcher closes the channel which
+    // signals the drain task to exit after flushing remaining in-flight events.
+    //
+    // The `ShadowSampler` is cheap-clone (inner state is Arc/Atomic) and is
+    // shared across all request handlers via `GatewayState::shadow_sampler`.
+    let shadow_sampler: Option<Arc<ShadowSampler>> =
+        if config.gateway.runtime == GatewayRuntime::Shadow
+            && config.gateway.shadow_mode.enabled
+        {
+            let sink_cfg = &config.gateway.shadow_mode.sink;
+
+            // Build the concrete sink backend from config.
+            let sink: Arc<dyn ShadowDiffSink> = match sink_cfg.sink_type {
+                ShadowSinkType::Redpanda => {
+                    let producer = RedpandaProducer::new_logging(); // stub; real broker via rdkafka feature
+                    Arc::new(RedpandaSink::new(producer, sink_cfg.redpanda.topic.clone()))
+                }
+                ShadowSinkType::Sqlite => {
+                    match SqliteSink::open(
+                        sink_cfg.sqlite.path.clone(),
+                        sink_cfg.sqlite.max_rows,
+                    ) {
+                        Ok(s) => Arc::new(s),
+                        Err(e) => {
+                            tracing::warn!(
+                                path = %sink_cfg.sqlite.path,
+                                error = %e,
+                                "SQLite shadow sink open failed — falling back to noop"
+                            );
+                            Arc::new(NoopSink)
+                        }
+                    }
+                }
+                ShadowSinkType::Multi => {
+                    let producer = RedpandaProducer::new_logging();
+                    let redpanda: Arc<dyn ShadowDiffSink> =
+                        Arc::new(RedpandaSink::new(producer, sink_cfg.redpanda.topic.clone()));
+                    let sqlite: Arc<dyn ShadowDiffSink> =
+                        match SqliteSink::open(
+                            sink_cfg.sqlite.path.clone(),
+                            sink_cfg.sqlite.max_rows,
+                        ) {
+                            Ok(s) => Arc::new(s),
+                            Err(e) => {
+                                tracing::warn!(
+                                    path = %sink_cfg.sqlite.path,
+                                    error = %e,
+                                    "SQLite shadow sink open failed in multi-sink"
+                                );
+                                Arc::new(NoopSink)
+                            }
+                        };
+                    Arc::new(MultiSink::new(vec![redpanda, sqlite]))
+                }
+                ShadowSinkType::Noop => Arc::new(NoopSink),
+            };
+
+            // Register sink metrics on the shared Prometheus registry.
+            let sink_metrics = match SinkMetrics::new(&registry) {
+                Ok(m) => {
+                    tracing::info!("shadow sink metrics registered");
+                    Some(Arc::new(m))
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "shadow sink metrics registration failed");
+                    None
+                }
+            };
+
+            // Spawn the background drain task.
+            let dispatcher = ShadowDiffDispatcher::start(
+                sink,
+                sink_cfg.channel_capacity,
+                sink_metrics,
+            );
+            let sender = dispatcher.sender();
+
+            // Build the sampler from the shadow_mode config.
+            let shadow_rate_percent =
+                (config.gateway.shadow_mode.sample_rate * 100.0).round() as u32;
+            let shadow_config = armageddon_forge::pingora::shadow::ShadowModeConfig {
+                enabled: true,
+                hyper_port: listen_addr_early.port(),
+                pingora_port: listen_addr_early.port() + 1,
+                sample_rate_percent: shadow_rate_percent,
+                shadow_timeout_ms: 5_000,
+            };
+
+            let sampler = ShadowSampler::new(&shadow_config).with_sink(sender);
+
+            tracing::info!(
+                sample_rate_percent = shadow_rate_percent,
+                sink_type = ?config.gateway.shadow_mode.sink.sink_type,
+                "shadow mode dispatcher + sampler ready"
+            );
+
+            // Keep the dispatcher alive for the process lifetime by leaking it
+            // into a Box.  The drain task exits when the last DiffEventSender
+            // (owned by the sampler) is dropped at process shutdown.
+            // We deliberately hold the dispatcher in a Box so its Drop runs
+            // only when the owning Box is dropped — currently we keep it alive
+            // until process exit by mem::forget, since graceful shutdown of the
+            // Pingora thread calls std::process::exit before Rust destructors run.
+            //
+            // For the hyper path (shadow mode), the drain task is joined
+            // implicitly when the tokio runtime shuts down.
+            std::mem::forget(dispatcher);
+
+            Some(sampler)
+        } else {
+            if config.gateway.runtime == GatewayRuntime::Shadow {
+                tracing::info!("shadow mode runtime active but shadow_mode.enabled=false — sampler not created");
+            }
+            None
+        };
+
     // -- 16. Shared gateway state
     let state = Arc::new(GatewayState {
         pipeline: Arc::clone(&pentagon),
@@ -442,6 +587,7 @@ async fn async_main() -> anyhow::Result<()> {
         mesh: mesh.clone(),
         gql_limiter,
         requests_denied: rl_denied_counter,
+        shadow_sampler,
     });
 
     // -- 17. Shutdown broadcast channel

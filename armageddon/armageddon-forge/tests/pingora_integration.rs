@@ -423,3 +423,142 @@ fn live_cors_preflight_correct() {
         "must include Access-Control-Allow-Origin, got: {resp:?}"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Test 13 — ShadowDiffDispatcher end-to-end with SqliteSink
+//
+// Shadow mode enabled, sink=Sqlite, temp path.
+// Sends a diff event, waits 100 ms, asserts the row appears in SQLite.
+// ---------------------------------------------------------------------------
+
+/// ShadowDiffDispatcher wired to SqliteSink: event must persist within 100 ms.
+///
+/// This test exercises the full dispatcher → channel → drain-loop → SqliteSink
+/// pipeline without a live HTTP server.  It validates:
+/// 1. `ShadowDiffDispatcher::start` spawns a drain task.
+/// 2. `DiffEventSender::try_send` enqueues the event.
+/// 3. The drain task calls `SqliteSink::emit` and the row is queryable.
+#[tokio::test]
+async fn shadow_dispatcher_sqlite_event_persists() {
+    use armageddon_forge::pingora::shadow_sink::{
+        ShadowDiffDispatcher, ShadowDiffEvent, SqliteSink,
+    };
+    use std::sync::Arc;
+    use tokio::time::{sleep, Duration};
+
+    let dir = tempfile::TempDir::new().expect("tmpdir");
+    let db_path = dir.path().join("shadow_test.db").to_string_lossy().into_owned();
+
+    let sink = SqliteSink::open(&db_path, 1_000).expect("SqliteSink open");
+    let dispatcher = ShadowDiffDispatcher::start(Arc::new(sink), 128, None);
+    let sender = dispatcher.sender();
+
+    let event = ShadowDiffEvent {
+        timestamp_unix_ms: ShadowDiffEvent::now_unix_ms(),
+        request_id: "test-req-shadow-01".to_string(),
+        route: "/api/v1/poulets".to_string(),
+        method: "GET".to_string(),
+        hyper_status: 200,
+        pingora_status: 500,
+        hyper_body_hash: "abc".to_string(),
+        pingora_body_hash: "def".to_string(),
+        hyper_latency_ms: 5,
+        pingora_latency_ms: 10,
+        diverged_fields: vec!["status".to_string()],
+        headers_diff: None,
+        tenant_id: Some("faso-test".to_string()),
+    };
+
+    let sent = sender.try_send(event);
+    assert!(sent, "try_send must succeed on an empty channel");
+
+    // Give the background drain task time to flush.
+    sleep(Duration::from_millis(100)).await;
+
+    // Verify the row exists in SQLite.
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM shadow_diffs WHERE request_id = 'test-req-shadow-01'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("query");
+    assert_eq!(count, 1, "event must be persisted in SQLite within 100ms");
+}
+
+/// ShadowSampler + ShadowDiffDispatcher: sampler wires sender correctly.
+///
+/// Verifies the `with_sink()` builder chain and that `record_diff()` forwards
+/// a divergence event to the dispatcher.
+#[tokio::test]
+async fn shadow_sampler_with_sink_dispatches_event() {
+    use armageddon_forge::pingora::shadow::{
+        DiffBucket, MirroredResponse, ShadowModeConfig, ShadowSampler,
+    };
+    use armageddon_forge::pingora::shadow_sink::{
+        ShadowDiffDispatcher, SqliteSink,
+    };
+    use std::sync::Arc;
+    use std::time::Instant;
+    use tokio::time::{sleep, Duration};
+
+    let dir = tempfile::TempDir::new().expect("tmpdir");
+    let db_path = dir.path().join("sampler_test.db").to_string_lossy().into_owned();
+
+    let sink = SqliteSink::open(&db_path, 1_000).expect("SqliteSink open");
+    let dispatcher = ShadowDiffDispatcher::start(Arc::new(sink), 128, None);
+    let sender = dispatcher.sender();
+
+    let cfg = ShadowModeConfig {
+        enabled: true,
+        hyper_port: 8080,
+        pingora_port: 8081,
+        sample_rate_percent: 100, // shadow all requests for test
+        shadow_timeout_ms: 5_000,
+    };
+    let sampler = ShadowSampler::new(&cfg).with_sink(sender);
+
+    // Build two diverging responses (status differs).
+    let body = b"response body";
+    let body_hash = *blake3::hash(body).as_bytes();
+    let primary = MirroredResponse {
+        status: 200,
+        headers: vec![],
+        body_hash,
+        body_len: body.len(),
+        finished_at: Instant::now(),
+    };
+    let shadow_resp = MirroredResponse {
+        status: 500,
+        headers: vec![],
+        body_hash,
+        body_len: body.len(),
+        finished_at: Instant::now(),
+    };
+
+    sampler.record_diff(
+        "req-sampler-01",
+        "/api/v1/test",
+        "GET",
+        &primary,
+        &shadow_resp,
+        DiffBucket::StatusDiffer,
+        Some("faso-sampler".to_string()),
+    );
+
+    sleep(Duration::from_millis(150)).await;
+
+    let conn = rusqlite::Connection::open(&db_path).expect("open db");
+    let count: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM shadow_diffs WHERE request_id = 'req-sampler-01'",
+            [],
+            |r| r.get(0),
+        )
+        .expect("query");
+    assert_eq!(
+        count, 1,
+        "sampler must forward the divergence event to SqliteSink via the dispatcher"
+    );
+}
