@@ -35,7 +35,7 @@ use tracing::{debug, error};
 
 use armageddon_common::types::Endpoint;
 
-use super::lb::{LbPolicy, PowerOfTwoChoices, RoundRobin, Weighted};
+use super::lb::{LbPolicy, LeastConn, PowerOfTwoChoices, RoundRobin, Weighted};
 
 // -- pool key --
 
@@ -163,6 +163,8 @@ pub struct ClusterResolver {
     weighted_lbs: dashmap::DashMap<String, Arc<Weighted>>,
     /// Per-cluster P2C state (active-connection counters), keyed by cluster name.
     p2c_lbs: dashmap::DashMap<String, Arc<PowerOfTwoChoices>>,
+    /// Per-cluster pure LeastConn state (active-connection counters).
+    least_conn_lbs: dashmap::DashMap<String, Arc<LeastConn>>,
 }
 
 impl std::fmt::Debug for ClusterResolver {
@@ -199,6 +201,7 @@ impl ClusterResolver {
             rr_cursors: dashmap::DashMap::new(),
             weighted_lbs: dashmap::DashMap::new(),
             p2c_lbs: dashmap::DashMap::new(),
+            least_conn_lbs: dashmap::DashMap::new(),
         }
     }
 
@@ -295,6 +298,14 @@ impl ClusterResolver {
                     .p2c_lbs
                     .entry(cluster.to_string())
                     .or_insert_with(|| Arc::new(PowerOfTwoChoices::new()))
+                    .clone();
+                lb.pick(&state.endpoints).cloned()
+            }
+            LbPolicy::LeastConn => {
+                let lb = self
+                    .least_conn_lbs
+                    .entry(cluster.to_string())
+                    .or_insert_with(|| Arc::new(LeastConn::new()))
                     .clone();
                 lb.pick(&state.endpoints).cloned()
             }

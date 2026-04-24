@@ -77,6 +77,10 @@ pub enum LbPolicy {
     /// Power-of-two-choices — sample two random healthy endpoints, pick the
     /// one with fewer in-flight connections.
     PowerOfTwoChoices,
+    /// Pure least-connections — scan ALL healthy endpoints, select the one
+    /// with the fewest in-flight connections.  O(N) per pick; best for
+    /// clusters with < 100 rps where P2C may concentrate load by coincidence.
+    LeastConn,
 }
 
 impl Default for LbPolicy {
@@ -385,6 +389,122 @@ impl PowerOfTwoChoices {
     }
 }
 
+// -- pure least-connections --
+
+/// Pure Least-Connections balancer.
+///
+/// On every pick, **all** healthy endpoints are scanned and the one with the
+/// fewest active in-flight connections is selected.  Connection counters are
+/// shared with [`PowerOfTwoChoices`] using the same `(address, port)` key so
+/// the two algorithms can be hot-swapped without resetting counters.
+///
+/// # Complexity
+///
+/// O(N) per pick — suitable for clusters with < ~50 endpoints.  For large
+/// clusters (100+) prefer [`PowerOfTwoChoices`] (O(1)) since the P2C
+/// approximation converges to least-conn at scale.
+///
+/// # Tie-breaking
+///
+/// When two or more endpoints share the minimum connection count the one with
+/// the **lowest index** in the slice is selected.  This is deterministic and
+/// avoids unnecessary randomness in the tie-break path.
+///
+/// # Thread safety
+///
+/// Connection counters are `AtomicI64` with `Relaxed` ordering (same policy
+/// as P2C).  Stale reads are tolerable because the algorithm is a heuristic —
+/// a marginally-stale count leads to a sub-optimal (but not incorrect) pick.
+///
+/// # Active connection tracking
+///
+/// The caller must pair every `pick` call with a corresponding
+/// [`LeastConn::connection_acquired`] / [`LeastConn::connection_released`]
+/// call, identical to the P2C contract.
+///
+/// # Failure modes
+///
+/// - All endpoints unhealthy → `None`.
+/// - Single healthy endpoint → returned without scanning.
+/// - Empty slice → `None`.
+#[derive(Debug, Default)]
+pub struct LeastConn {
+    counters: dashmap::DashMap<EndpointKey, Arc<AtomicI64>>,
+}
+
+impl LeastConn {
+    /// Create a new LeastConn balancer with empty counters.
+    pub fn new() -> Self {
+        Self {
+            counters: dashmap::DashMap::new(),
+        }
+    }
+
+    /// Return the current active-connection count for `ep`.
+    fn connections(&self, ep: &Endpoint) -> i64 {
+        let key = EndpointKey::from_ep(ep);
+        match self.counters.get(&key) {
+            Some(c) => c.load(Ordering::Relaxed).max(0),
+            None => 0,
+        }
+    }
+
+    /// Increment the connection counter for `(address, port)`.
+    pub fn connection_acquired(&self, address: &str, port: u16) {
+        let key = EndpointKey {
+            address: Arc::from(address),
+            port,
+        };
+        self.counters
+            .entry(key)
+            .or_insert_with(|| Arc::new(AtomicI64::new(0)))
+            .fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Decrement the connection counter for `(address, port)`.
+    /// Floor-clamped at zero to guard against spurious releases.
+    pub fn connection_released(&self, address: &str, port: u16) {
+        let key = EndpointKey {
+            address: Arc::from(address),
+            port,
+        };
+        if let Some(c) = self.counters.get(&key) {
+            let mut old = c.load(Ordering::Relaxed);
+            loop {
+                if old <= 0 {
+                    break;
+                }
+                match c.compare_exchange_weak(old, old - 1, Ordering::Relaxed, Ordering::Relaxed) {
+                    Ok(_) => break,
+                    Err(cur) => old = cur,
+                }
+            }
+        }
+    }
+
+    /// Pick the healthy endpoint with the fewest active connections.
+    ///
+    /// Returns `None` when the slice is empty or all endpoints are unhealthy.
+    /// On a tie, the endpoint with the **lowest slice index** wins.
+    pub fn pick<'a>(&self, endpoints: &'a [Endpoint]) -> Option<&'a Endpoint> {
+        let mut best: Option<(i64, usize)> = None; // (min_connections, index)
+
+        for (idx, ep) in endpoints.iter().enumerate() {
+            if !ep.healthy {
+                continue;
+            }
+            let conns = self.connections(ep);
+            match best {
+                None => best = Some((conns, idx)),
+                Some((min_conns, _)) if conns < min_conns => best = Some((conns, idx)),
+                _ => {} // tie → keep lower index (already set)
+            }
+        }
+
+        best.map(|(_, idx)| &endpoints[idx])
+    }
+}
+
 // -- tests --
 
 #[cfg(test)]
@@ -688,5 +808,97 @@ mod tests {
         let lb = PowerOfTwoChoices::new();
         let endpoints: Vec<Endpoint> = vec![];
         assert!(lb.pick(&endpoints).is_none());
+    }
+
+    // -- LeastConn -----------------------------------------------------------
+
+    /// LeastConn selects the endpoint with the fewest active connections.
+    #[test]
+    fn least_conn_selects_least_loaded() {
+        let endpoints = vec![
+            ep("10.0.0.1", 8080, true),
+            ep("10.0.0.2", 8080, true),
+            ep("10.0.0.3", 8080, true),
+        ];
+        let lb = LeastConn::new();
+
+        // Assign different connection counts: 5, 1, 3.
+        for _ in 0..5 { lb.connection_acquired("10.0.0.1", 8080); }
+        lb.connection_acquired("10.0.0.2", 8080);
+        for _ in 0..3 { lb.connection_acquired("10.0.0.3", 8080); }
+
+        let picked = lb.pick(&endpoints).expect("must pick");
+        assert_eq!(
+            picked.address, "10.0.0.2",
+            "endpoint with 1 connection must win"
+        );
+    }
+
+    /// Single healthy endpoint is always returned.
+    #[test]
+    fn least_conn_single_endpoint() {
+        let endpoints = vec![
+            ep("10.0.0.1", 8080, false),
+            ep("10.0.0.2", 8080, true),
+        ];
+        let lb = LeastConn::new();
+        for _ in 0..20 {
+            let picked = lb.pick(&endpoints).expect("single healthy must always pick");
+            assert_eq!(picked.address, "10.0.0.2");
+        }
+    }
+
+    /// Zero healthy endpoints returns None.
+    #[test]
+    fn least_conn_zero_healthy_returns_none() {
+        let endpoints = vec![
+            ep("10.0.0.1", 8080, false),
+            ep("10.0.0.2", 8080, false),
+        ];
+        let lb = LeastConn::new();
+        assert!(lb.pick(&endpoints).is_none());
+    }
+
+    /// Empty slice returns None.
+    #[test]
+    fn least_conn_empty_slice_returns_none() {
+        let lb = LeastConn::new();
+        let endpoints: Vec<Endpoint> = vec![];
+        assert!(lb.pick(&endpoints).is_none());
+    }
+
+    /// Tie-breaker: lowest index wins when connections are equal.
+    #[test]
+    fn least_conn_tie_breaker_is_lowest_index() {
+        let endpoints = vec![
+            ep("10.0.0.1", 8080, true), // index 0 — same conn count
+            ep("10.0.0.2", 8080, true), // index 1 — same conn count
+            ep("10.0.0.3", 8080, true), // index 2 — same conn count
+        ];
+        let lb = LeastConn::new();
+        // All start at 0 connections — index 0 must win.
+        let picked = lb.pick(&endpoints).expect("must pick");
+        assert_eq!(
+            picked.address, "10.0.0.1",
+            "lowest index must win on tie"
+        );
+    }
+
+    /// LeastConn connection_acquired / connection_released clamp at zero.
+    #[test]
+    fn least_conn_counter_clamp_at_zero() {
+        let lb = LeastConn::new();
+        lb.connection_acquired("10.0.0.1", 8080);
+        lb.connection_acquired("10.0.0.1", 8080);
+        assert_eq!(lb.connections(&ep("10.0.0.1", 8080, true)), 2);
+        lb.connection_released("10.0.0.1", 8080);
+        assert_eq!(lb.connections(&ep("10.0.0.1", 8080, true)), 1);
+        lb.connection_released("10.0.0.1", 8080);
+        lb.connection_released("10.0.0.1", 8080); // spurious
+        assert_eq!(
+            lb.connections(&ep("10.0.0.1", 8080, true)),
+            0,
+            "counter must not underflow"
+        );
     }
 }
