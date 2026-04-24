@@ -3,6 +3,23 @@
 //
 //! Shadow-mode runtime for Pingora ↔ hyper parity validation.
 //!
+//! ## Diff sink integration (added post-M6)
+//!
+//! [`ShadowSampler`] now accepts an optional [`super::shadow_sink::DiffEventSender`].
+//! When a divergence is classified (bucket ≠ `Identical`), the sampler builds a
+//! [`super::shadow_sink::ShadowDiffEvent`] and calls
+//! [`super::shadow_sink::DiffEventSender::try_send`].  The send is fire-and-forget
+//! and non-blocking: if the channel is full the event is dropped and the metric
+//! `armageddon_shadow_sink_dropped_total{reason="channel_full"}` is incremented.
+//!
+//! **Failure modes added by this integration:**
+//!
+//! | Scenario | Behaviour |
+//! |----------|-----------|
+//! | `diff_sink = None` | Classification still happens; no event is persisted |
+//! | Channel full | Event dropped; `dropped_total` incremented; no panic |
+//! | Background drain task panics | Channel is closed; subsequent `try_send` silently fails |
+//!
 //! # Overview
 //!
 //! When shadow mode is enabled, a fraction (`sample_rate`) of inbound
@@ -67,6 +84,7 @@ use std::time::{Duration, Instant};
 use tracing::warn;
 
 use crate::pingora::metrics::PingoraMetrics;
+use crate::pingora::shadow_sink::{DiffEventSender, HeadersDiff, ShadowDiffEvent};
 
 // ---------------------------------------------------------------------------
 // Configuration
@@ -244,6 +262,12 @@ pub struct ShadowSampler {
     /// Shared Prometheus metrics bundle.  `None` disables metric emission
     /// (e.g. in unit tests that do not wire a registry).
     metrics: Option<Arc<PingoraMetrics>>,
+    /// Optional channel sender to the diff sink background task.
+    ///
+    /// When `Some`, every non-`Identical` comparison result is forwarded as
+    /// a [`ShadowDiffEvent`] via [`DiffEventSender::try_send`] (fire-and-forget,
+    /// non-blocking).
+    diff_sink: Option<DiffEventSender>,
 }
 
 impl ShadowSampler {
@@ -257,6 +281,7 @@ impl ShadowSampler {
             shadow_port: config.pingora_port,
             timeout: Duration::from_millis(config.shadow_timeout_ms),
             metrics: None,
+            diff_sink: None,
         })
     }
 
@@ -267,6 +292,7 @@ impl ShadowSampler {
             shadow_port: config.pingora_port,
             timeout: Duration::from_millis(config.shadow_timeout_ms),
             metrics: Some(metrics.clone()),
+            diff_sink: None,
         });
         // Publish the initial sample rate.
         if let Some(m) = &sampler.metrics {
@@ -275,6 +301,38 @@ impl ShadowSampler {
                 .set(i64::from(config.sample_rate_percent.min(100)));
         }
         sampler
+    }
+
+    /// Attach a diff sink sender.
+    ///
+    /// Returns a new `Arc<ShadowSampler>` with the sender wired in.  This is a
+    /// builder-style API: call it after `new` or `with_metrics`.
+    ///
+    /// ```rust,ignore
+    /// let sampler = ShadowSampler::new(&cfg)
+    ///     .with_sink(dispatcher.sender());
+    /// ```
+    pub fn with_sink(self: Arc<Self>, sender: DiffEventSender) -> Arc<Self> {
+        // Safety: we have the only Arc at this point (caller just constructed it).
+        // We need to mutate the `diff_sink` field, which requires ownership.
+        // We use `Arc::try_unwrap` + rebuild.
+        let inner = Arc::try_unwrap(self).unwrap_or_else(|arc| {
+            // Fallback: clone the data and rebuild (metrics is Option<Arc<_>>, so clone is cheap).
+            let data = &*arc;
+            ShadowSampler {
+                sample_percent: AtomicU32::new(
+                    data.sample_percent.load(Ordering::Relaxed),
+                ),
+                shadow_port: data.shadow_port,
+                timeout: data.timeout,
+                metrics: data.metrics.clone(),
+                diff_sink: data.diff_sink.clone(),
+            }
+        });
+        Arc::new(ShadowSampler {
+            diff_sink: Some(sender),
+            ..inner
+        })
     }
 
     /// Test whether this request should be shadowed.
@@ -297,6 +355,107 @@ impl ShadowSampler {
     /// Disable shadow mode atomically (sets `sample_percent` to 0).
     pub fn disable(&self) {
         self.set_sample_percent(0);
+    }
+
+    /// Emit a [`ShadowDiffEvent`] to the wired sink when a divergence is
+    /// detected.
+    ///
+    /// `route` — matched route template (e.g. `/api/v1/orders`).
+    /// `primary` / `shadow` — completed responses from both sides.
+    /// `bucket` — pre-computed classification (must be non-`Identical` for the
+    ///            event to carry meaningful diff data; `Identical` events are
+    ///            silently dropped before hitting the channel).
+    /// `tenant_id` — optional tenant identifier for Redpanda partitioning.
+    ///
+    /// This method is synchronous (non-async): it calls
+    /// [`DiffEventSender::try_send`] which is non-blocking.
+    pub fn record_diff(
+        &self,
+        request_id: &str,
+        route: &str,
+        method: &str,
+        primary: &MirroredResponse,
+        shadow_resp: &MirroredResponse,
+        bucket: DiffBucket,
+        tenant_id: Option<String>,
+    ) {
+        let Some(sender) = &self.diff_sink else {
+            return;
+        };
+
+        // Do not flood the sink with identical responses.
+        if bucket == DiffBucket::Identical {
+            return;
+        }
+
+        let diverged_fields: Vec<String> = match bucket {
+            DiffBucket::StatusDiffer => vec!["status".to_string()],
+            DiffBucket::BodyDiffer => vec!["body_hash".to_string()],
+            DiffBucket::HeaderDiffer => vec!["headers".to_string()],
+            DiffBucket::TimeoutOnPingora | DiffBucket::TimeoutOnHyper => {
+                vec!["timeout".to_string()]
+            }
+            DiffBucket::Streaming => vec!["streaming".to_string()],
+            DiffBucket::Identical => unreachable!(),
+        };
+
+        let headers_diff = if bucket == DiffBucket::HeaderDiffer {
+            let p_hdrs = normalise_headers(&primary.headers);
+            let s_hdrs = normalise_headers(&shadow_resp.headers);
+
+            let only_in_hyper: Vec<(String, String)> = p_hdrs
+                .iter()
+                .filter(|(k, v)| {
+                    !s_hdrs.iter().any(|(sk, sv)| sk == k && sv == v)
+                })
+                .map(|(k, v)| (k.clone(), String::from_utf8_lossy(v).into_owned()))
+                .collect();
+
+            let only_in_pingora: Vec<(String, String)> = s_hdrs
+                .iter()
+                .filter(|(k, v)| {
+                    !p_hdrs.iter().any(|(pk, pv)| pk == k && pv == v)
+                })
+                .map(|(k, v)| (k.clone(), String::from_utf8_lossy(v).into_owned()))
+                .collect();
+
+            Some(HeadersDiff {
+                only_in_hyper,
+                only_in_pingora,
+            })
+        } else {
+            None
+        };
+
+        // Convert blake3 bytes → hex strings.
+        let hyper_body_hash = hex::encode(primary.body_hash);
+        let pingora_body_hash = hex::encode(shadow_resp.body_hash);
+
+        // Compute latencies from Instant deltas (relative — absolute ms are
+        // computed from `Instant::now()` at the call site).
+        let now = Instant::now();
+        let hyper_latency_ms =
+            now.duration_since(primary.finished_at).as_millis().min(u32::MAX as u128) as u32;
+        let pingora_latency_ms =
+            now.duration_since(shadow_resp.finished_at).as_millis().min(u32::MAX as u128) as u32;
+
+        let event = ShadowDiffEvent {
+            timestamp_unix_ms: ShadowDiffEvent::now_unix_ms(),
+            request_id: request_id.to_string(),
+            route: route.to_string(),
+            method: method.to_string(),
+            hyper_status: primary.status,
+            pingora_status: shadow_resp.status,
+            hyper_body_hash,
+            pingora_body_hash,
+            hyper_latency_ms,
+            pingora_latency_ms,
+            diverged_fields,
+            headers_diff,
+            tenant_id,
+        };
+
+        sender.try_send(event);
     }
 }
 

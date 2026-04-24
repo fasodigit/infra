@@ -1,4 +1,33 @@
 //! Gateway (proxy) configuration: listeners, routes, clusters, TLS.
+//!
+//! ## Shadow mode sink configuration (`gateway.shadow_mode.sink`)
+//!
+//! Controls where divergence events detected during shadow-mode parity
+//! validation are persisted.  Supported backends:
+//!
+//! | `type` | Backend |
+//! |--------|---------|
+//! | `"redpanda"` | Produce JSON to `armageddon.shadow.diffs.v1` |
+//! | `"sqlite"` | Write to a local SQLite file (dev / no-broker fallback) |
+//! | `"multi"` | Fan-out to Redpanda **and** SQLite simultaneously |
+//! | `"noop"` | Discard all events (unit tests / CI) |
+//!
+//! Example `armageddon.yaml` snippet:
+//!
+//! ```yaml
+//! gateway:
+//!   shadow_mode:
+//!     enabled: true
+//!     sample_rate: 0.01
+//!     sink:
+//!       type: "redpanda"
+//!       redpanda:
+//!         brokers: ["redpanda:9092"]
+//!         topic: "armageddon.shadow.diffs.v1"
+//!       sqlite:
+//!         path: "/tmp/armageddon-shadow-diffs.db"
+//!         max_rows: 10000
+//! ```
 
 use armageddon_common::types::{AdminApiConfig, AuthMode, Cluster, CorsConfig, JwtConfig, KratosConfig, RateLimitConfig, Route};
 use serde::{Deserialize, Serialize};
@@ -134,6 +163,13 @@ pub struct GatewayConfig {
     /// disable rate limiting entirely — zero overhead on the hot path.
     #[serde(default)]
     pub rate_limit: Option<RateLimitConfig>,
+
+    /// Shadow mode sampling + sink configuration.
+    ///
+    /// Relevant when `runtime = "shadow"`.  Controls which fraction of requests
+    /// are mirrored to Pingora and where divergence events are persisted.
+    #[serde(default)]
+    pub shadow_mode: ShadowModeExtConfig,
 }
 
 fn default_auth_mode() -> AuthMode {
@@ -603,4 +639,159 @@ fn default_admin_addr() -> String {
 
 fn default_admin_port() -> u16 {
     9901
+}
+
+// ---------------------------------------------------------------------------
+// Shadow mode sink configuration
+// ---------------------------------------------------------------------------
+
+/// Selects the diff-event persistence backend for shadow mode.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum ShadowSinkType {
+    /// Produce diff events as JSON to a Redpanda topic.
+    Redpanda,
+    /// Write diff events to a local SQLite file (fallback / dev).
+    Sqlite,
+    /// Fan-out to both Redpanda and SQLite simultaneously.
+    Multi,
+    /// Discard all events (unit tests / CI — zero overhead).
+    #[default]
+    Noop,
+}
+
+/// Redpanda-specific sink configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RedpandaSinkConfig {
+    /// Kafka bootstrap brokers (internal Docker/container address).
+    #[serde(default = "default_shadow_brokers")]
+    pub brokers: Vec<String>,
+
+    /// Redpanda topic for diff events.
+    ///
+    /// Partitioned by `tenant_id` (or `request_id` when absent) for
+    /// per-tenant ordering.  Retention is controlled by Redpanda topic config
+    /// (recommended: 7 days / 10 GiB).
+    #[serde(default = "default_shadow_topic")]
+    pub topic: String,
+}
+
+impl Default for RedpandaSinkConfig {
+    fn default() -> Self {
+        Self {
+            brokers: default_shadow_brokers(),
+            topic: default_shadow_topic(),
+        }
+    }
+}
+
+fn default_shadow_brokers() -> Vec<String> {
+    vec!["redpanda:9092".to_string()]
+}
+
+fn default_shadow_topic() -> String {
+    "armageddon.shadow.diffs.v1".to_string()
+}
+
+/// SQLite-specific sink configuration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SqliteSinkConfig {
+    /// Absolute path to the SQLite database file.
+    #[serde(default = "default_sqlite_path")]
+    pub path: String,
+
+    /// Maximum number of rows to retain.  Older rows are deleted on insert via
+    /// an `id NOT IN (SELECT id … LIMIT max_rows)` delete.
+    #[serde(default = "default_sqlite_max_rows")]
+    pub max_rows: usize,
+}
+
+impl Default for SqliteSinkConfig {
+    fn default() -> Self {
+        Self {
+            path: default_sqlite_path(),
+            max_rows: default_sqlite_max_rows(),
+        }
+    }
+}
+
+fn default_sqlite_path() -> String {
+    "/tmp/armageddon-shadow-diffs.db".to_string()
+}
+
+fn default_sqlite_max_rows() -> usize {
+    10_000
+}
+
+/// Top-level sink configuration block (`gateway.shadow_mode.sink`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShadowSinkConfig {
+    /// Which backend to use.
+    #[serde(rename = "type", default)]
+    pub sink_type: ShadowSinkType,
+
+    /// Redpanda backend settings.  Relevant when `type = "redpanda"` or `"multi"`.
+    #[serde(default)]
+    pub redpanda: RedpandaSinkConfig,
+
+    /// SQLite backend settings.  Relevant when `type = "sqlite"` or `"multi"`.
+    #[serde(default)]
+    pub sqlite: SqliteSinkConfig,
+
+    /// Bounded channel capacity between the request path and the sink background
+    /// task.  Events are dropped (not retried) when the channel is full.
+    #[serde(default = "default_sink_channel_capacity")]
+    pub channel_capacity: usize,
+}
+
+impl Default for ShadowSinkConfig {
+    fn default() -> Self {
+        Self {
+            sink_type: ShadowSinkType::Noop,
+            redpanda: RedpandaSinkConfig::default(),
+            sqlite: SqliteSinkConfig::default(),
+            channel_capacity: default_sink_channel_capacity(),
+        }
+    }
+}
+
+fn default_sink_channel_capacity() -> usize {
+    10_000
+}
+
+/// Shadow mode configuration block (`gateway.shadow_mode`).
+///
+/// Used when `gateway.runtime = "shadow"` to control the sampling rate and
+/// diff-event persistence.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShadowModeExtConfig {
+    /// Enable shadow mode globally.  When `false`, no requests are mirrored
+    /// regardless of `sample_rate`.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Fraction of requests to mirror (0.0 – 1.0, default 0.01 = 1%).
+    ///
+    /// Stored as a float for config ergonomics; converted to an integer
+    /// percentage (0–100) when passed to [`ShadowSampler`].
+    #[serde(default = "default_shadow_sample_rate")]
+    pub sample_rate: f64,
+
+    /// Diff-event persistence backend.
+    #[serde(default)]
+    pub sink: ShadowSinkConfig,
+}
+
+impl Default for ShadowModeExtConfig {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            sample_rate: default_shadow_sample_rate(),
+            sink: ShadowSinkConfig::default(),
+        }
+    }
+}
+
+fn default_shadow_sample_rate() -> f64 {
+    0.01
 }

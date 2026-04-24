@@ -205,6 +205,9 @@ nix = { version = "0.29", features = ["zerocopy"] }
 # Criterion benchmarking
 criterion = { version = "0.5", features = ["html_reports"] }
 
+# SQLite (bundled build — no system libsqlite3 required)
+rusqlite = { version = "0.32", features = ["bundled"] }
+
 # Pingora — optional alternative proxy backend (armageddon-forge feature "pingora")
 # Enable with: cargo build --release --features pingora
 pingora = "0.3"

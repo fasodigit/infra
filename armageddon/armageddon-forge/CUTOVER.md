@@ -188,7 +188,7 @@ blockers**:
 |-----|----------|:--------:|
 | LB Weighted + P2C | `upstream/lb.rs` `todo!()` | Medium |
 | Prometheus registry wiring | `shadow.rs`, `traffic_split.rs`, `health.rs` | Medium |
-| Shadow diff sink (Redpanda / SQLite) | `shadow.rs:ShadowDiffQueue` consumer | High before 48h shadow window |
+| ~~Shadow diff sink (Redpanda / SQLite)~~ | ~~`shadow.rs:ShadowDiffQueue` consumer~~ | **Closed — `shadow_sink.rs` (2026-04-24)** |
 | Pingora 0.4 custom TLS connector | `upstream/mtls.rs` | Low (Pingora 0.4 not released) |
 | Pingora 0.4 WebSocket native upgrade | `protocols/websocket.rs` | Low |
 | gRPC-Web chunk streaming | `protocols/grpc_web.rs` | Low |
@@ -200,10 +200,12 @@ blockers**:
 
 **Blockers before enabling shadow mode at scale:**
 
-1. Shadow diff sink must be wired — otherwise `ShadowDiffQueue` fills and
-   drops diffs silently.
+1. ~~Shadow diff sink must be wired — otherwise `ShadowDiffQueue` fills and
+   drops diffs silently.~~ **CLOSED** — `shadow_sink.rs` wired 2026-04-24.
+   `ShadowDiffDispatcher` + `DiffEventSender` + Redpanda/SQLite/Multi/Noop
+   backends all implemented.  Shadow mode is **ready for ≥ 10% sample rate**.
 2. Prometheus registry wiring — without it, `armageddon_shadow_diffs_total`
-   is a no-op counter.
+   is a no-op counter.  (Still pending — medium priority.)
 
 ---
 

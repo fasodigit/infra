@@ -67,6 +67,9 @@ tracing-subscriber = { workspace = true }
 # Optional rdkafka backend; enable with feature "rdkafka-backend"
 rdkafka = { workspace = true, optional = true }
 
+# SQLite fallback sink for shadow diffs (bundled, no libsqlite3 required)
+rusqlite = { workspace = true }
+
 # Optional io_uring backend; Linux only; enable with feature "io_uring"
 tokio-uring = { version = "0.5", optional = true }
 
@@ -100,6 +103,7 @@ tokio = { workspace = true }
 tokio-stream = { version = "0.1", features = ["net"] }
 # Enable ServiceExt::oneshot & service_fn for feature_flag_filter unit tests
 tower = { workspace = true, features = ["util"] }
+tempfile = { workspace = true }
 
 [dev-dependencies.criterion]
 workspace = true
