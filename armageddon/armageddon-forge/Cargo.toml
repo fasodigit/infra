@@ -104,6 +104,7 @@ tokio-stream = { version = "0.1", features = ["net"] }
 # Enable ServiceExt::oneshot & service_fn for feature_flag_filter unit tests
 tower = { workspace = true, features = ["util"] }
 tempfile = { workspace = true }
+wat = { workspace = true }
 
 [dev-dependencies.criterion]
 workspace = true
