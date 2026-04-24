@@ -47,6 +47,7 @@ use tokio::sync::mpsc;
 use tracing::{error, warn};
 
 use crate::kafka_producer::RedpandaProducer;
+use super::shadow_redaction::RedactionPolicy;
 
 // ---------------------------------------------------------------------------
 // ShadowDiffEvent
@@ -290,6 +291,14 @@ impl SqliteSink {
         })
     }
 
+    /// Return the total number of rows in `shadow_diffs`.
+    ///
+    /// Used in tests and for observability; cheap COUNT(*) over the index.
+    pub async fn row_count(&self) -> rusqlite::Result<i64> {
+        let conn = self.conn.lock().await;
+        conn.query_row("SELECT COUNT(*) FROM shadow_diffs", [], |r| r.get(0))
+    }
+
     /// Trim rows so that at most `max_rows` remain.
     fn trim(conn: &rusqlite::Connection, max_rows: usize) -> rusqlite::Result<()> {
         conn.execute(
@@ -500,6 +509,8 @@ impl DiffEventSender {
 /// let dispatcher = ShadowDiffDispatcher::start(sink, capacity, Some(metrics));
 /// let sender = dispatcher.sender(); // inject into ShadowSampler
 /// ```
+///
+/// To enable PII redaction, use [`ShadowDiffDispatcher::start_with_redaction`].
 pub struct ShadowDiffDispatcher {
     sender: DiffEventSender,
 }
@@ -508,16 +519,33 @@ impl ShadowDiffDispatcher {
     /// Spawn the background task and return the dispatcher.
     ///
     /// `capacity` bounds the in-memory queue (recommended: 10_000).
+    ///
+    /// Events are forwarded to the sink **without** redaction.  For production
+    /// use, prefer [`start_with_redaction`](Self::start_with_redaction).
     pub fn start(
         sink: Arc<dyn ShadowDiffSink>,
         capacity: usize,
         metrics: Option<Arc<SinkMetrics>>,
     ) -> Self {
+        Self::start_with_redaction(sink, capacity, metrics, None)
+    }
+
+    /// Spawn the background task with an optional [`RedactionPolicy`].
+    ///
+    /// When `redaction` is `Some(policy)`, every [`ShadowDiffEvent`] is
+    /// redacted in place via [`RedactionPolicy::apply`] **before** being
+    /// forwarded to the sink.  This ensures no raw PII ever reaches storage.
+    pub fn start_with_redaction(
+        sink: Arc<dyn ShadowDiffSink>,
+        capacity: usize,
+        metrics: Option<Arc<SinkMetrics>>,
+        redaction: Option<Arc<RedactionPolicy>>,
+    ) -> Self {
         let backend = sink.backend_name();
         let (tx, rx) = mpsc::channel::<ShadowDiffEvent>(capacity);
         let metrics_arc = metrics.clone();
 
-        tokio::spawn(drain_loop(rx, sink, metrics_arc));
+        tokio::spawn(drain_loop(rx, sink, metrics_arc, redaction));
 
         Self {
             sender: DiffEventSender {
@@ -535,14 +563,17 @@ impl ShadowDiffDispatcher {
 }
 
 /// Background task: drain the channel and call `sink.emit`.
+///
+/// If `redaction` is `Some`, applies [`RedactionPolicy::apply`] before emit.
 async fn drain_loop(
     mut rx: mpsc::Receiver<ShadowDiffEvent>,
     sink: Arc<dyn ShadowDiffSink>,
     metrics: Option<Arc<SinkMetrics>>,
+    redaction: Option<Arc<RedactionPolicy>>,
 ) {
     let backend = sink.backend_name();
 
-    while let Some(event) = rx.recv().await {
+    while let Some(mut event) = rx.recv().await {
         // Compute lag between event timestamp and now.
         let now_ms = ShadowDiffEvent::now_unix_ms();
         let lag_secs = now_ms.saturating_sub(event.timestamp_unix_ms) / 1_000;
@@ -551,6 +582,11 @@ async fn drain_loop(
             m.lag_seconds
                 .with_label_values(&[backend])
                 .set(lag_secs as i64);
+        }
+
+        // Apply PII redaction before forwarding to any backend.
+        if let Some(policy) = &redaction {
+            policy.apply(&mut event);
         }
 
         sink.emit(&event).await;
