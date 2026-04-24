@@ -104,15 +104,20 @@ export async function middleware(request: NextRequest) {
     return addCorsHeaders(NextResponse.next());
   }
 
-  // Other public routes that don't require authentication
-  // Mobile-money initiation is deliberately public here to support SMS
-  // deep-links (payment links sent outside an authenticated session).
-  // A subsequent Kratos-guarded `confirm` endpoint can verify the buyer.
+  // Other public routes that don't require authentication.
+  //
+  // NOTE: `/api/payments/mobile-money` was previously in this list to support
+  // SMS deep-link payment flows. That created a HIGH-severity vulnerability
+  // (attacker could trigger arbitrary push-payment prompts to any phone with
+  // attacker-chosen `reference`). Fixed 2026-04-20 — route now requires a
+  // valid Kratos session like every other `/api/*` path. SMS deep-link UX
+  // must be reimplemented via HMAC-signed single-use intent tokens issued at
+  // order creation time (tracked as follow-up — see
+  // `app/api/payments/mobile-money/route.ts` TODO).
   const publicPaths = [
     '/api/auth/session',
     '/api/auth/logout',
     '/api/health',
-    '/api/payments/mobile-money',
   ];
 
   if (publicPaths.some((p) => pathname.startsWith(p))) {
