@@ -51,7 +51,7 @@ jobs:
           cargo build --release -p kaya-server -p kaya-cli
 
       - name: Upload binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: kaya-binaries
           path: |
@@ -100,7 +100,7 @@ jobs:
 
       - name: Upload smoke log on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: smoke-log-${{ matrix.fsync_policy }}
           path: smoke-${{ matrix.fsync_policy }}.log
@@ -154,7 +154,7 @@ jobs:
 
       - name: Upload logs on failure
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: rust-replay-logs-${{ matrix.fsync_policy }}
           path: |
