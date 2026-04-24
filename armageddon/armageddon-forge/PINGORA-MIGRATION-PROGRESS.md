@@ -284,9 +284,24 @@ octets (`"hello world " × 1000`) pour gzip / brotli / zstd (wave 1 tests inchan
   * Vérifié : `cargo check --bin pingora_bench_server --features pingora` → 0 erreur
               `cargo check --bin hyper_bench_server` → 0 erreur
 
-### Gate #107 — M6 Cutover
+### Gate #107 — M6 Cutover **(TERMINÉ — 2026-04-24)**
 
-**Prêt pour M6** — voir section "État M5 wave 2" ci-dessous.
+| Sous-tâche | État | Commit |
+|---|---|---|
+| M6-1 flip `default = ["pingora"]` | **done** | commit 1 |
+| M6-2 wire PingoraGateway in main.rs | **done** | commit 2 |
+| M6-3 deprecate ForgeServer | **done** | commit 3 |
+| M6-4 integration tests (10 pass, 2 live `#[ignore]`) | **done** | commit 4 |
+| M6-5 CUTOVER.md + PROGRESS.md final | **done** | commit 5 |
+
+**Breaking changes (M6-1):** `default = ["pingora"]` is a BREAKING CHANGE for
+any crate that depended on `armageddon-forge` without Pingora.  See CUTOVER.md §2.
+
+**Config change (M6-2):** `gateway.runtime: "pingora" | "hyper" | "shadow"`.
+Defaults to `"pingora"`.  Existing configs without this field auto-upgrade to Pingora.
+
+**Deprecation (M6-3):** `ForgeServer` is `#[deprecated(since = "2.0.0")]`.
+Removal planned in v3.0.
 
 ## Contraintes de build
 
@@ -467,42 +482,28 @@ pipx install cmake   # fallback si paquet système pas dispo
   fallback TCP. Port réel du protocole gRPC Health Check prévu en M5 avec
   l'intégration gRPC-Web terminée.
 
-## Ce qui reste (M6)
+## MIGRATION COMPLETE — M6 cutover done 2026-04-24
 
-1. **M1 wave 2 — TERMINÉE** (commits e5ef107 → 4807944 + 8cef15e)
+### Statistiques finales
 
-2. **M2 wave 2 — TERMINÉE** (commits 314a89d → 0f2ede3)
+- **36 commits** (8a786e8 → M6-5) sur `feat/pingora-migration`
+- **316 tests** passent (306 lib + 10 intégration non-ignorés)
+- **~15 484 LOC** net ajoutés
+- **Issues fermées** : #95 #96 #97 #98 #99 #100 #101 #102 #103 #104 #105 #106 #107 #108
 
-3. **M3 — TERMINÉE (7/7)** (commits 997af61 → 1004628)
+### Gates
 
-4. **M4 wave 2 — TERMINÉE (4/4)** (commits 74b173c → b6244bd)
+| Gate | Issue | État |
+|---|---|---|
+| M0 foundations | #101 | **TERMINÉ wave 1** |
+| M1 filters | #102 | **TERMINÉ wave 2** (#95 #96 #97 #98 #99 #100) |
+| M2 upstream | #103 | **TERMINÉ wave 2** |
+| M3 engines | #104 | **TERMINÉ wave 2** (7/7 adapters) |
+| M4 protocols | #105 | **TERMINÉ wave 2** (4/4 modules) |
+| M5 xDS/mesh/bench | #106 | **TERMINÉ wave 2** (4/4 modules) |
+| M6 cutover | #107 | **TERMINÉ 2026-04-24** |
 
-5. **M5 wave 2 — TERMINÉE (4/4)** (commits a2851d7 → 91d6743)
-   - M5-1: xDS ADS client wire-up
-   - M5-2: SVID rotation bridge
-   - M5-3: Shadow mode runtime
-   - M5-4: pingora_bench_server + hyper_bench_server bins
-
-6. **M6 — PROCHAINE ÉTAPE** — flip `default = ["pingora"]`, deprecate hyper path,
-   cutover doc, 48h shadow validation, clean up TODO(M5) items below.
-
-## État M5 wave 2 : TERMINÉ — Prêt pour M6 cutover
-
-### Recommandation finale
-
-**Tout est en ordre pour flipper `default = ["pingora"]`.**
-
-Les seuls gaps bloquants potentiels avant M6 :
-1. **LB Weighted + P2C** (upstream/lb.rs) : `todo!()` depuis wave 1. Déférer ou
-   implémenter en M6 avant flip si load distribution est critique.
-2. **Prometheus registry wiring** : les stubs `TODO(M6)` dans shadow.rs,
-   svid_rotation_bridge.rs, traffic_split.rs, health.rs sont fonctionnels mais
-   sans export réel. Câbler en M6 avant cutover prod.
-3. **Pingora 0.4** : custom TLS connector, native WebSocket upgrade, gRPC-Web
-   chunk streaming — tous documentés avec upgrade paths clairs.
-
-Ces 3 points sont des améliorations, pas des blockers de sécurité ou de
-correctness. La feature flag peut être flippée pour la 48h shadow window.
+Pour le chemin de migration, rollback et gaps résiduels — voir [`CUTOVER.md`](CUTOVER.md).
 
 ## Points de vigilance pour la reprise
 
