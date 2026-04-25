@@ -1,0 +1,86 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION - Ministere du Numerique, Burkina Faso
+# ============================================================
+# Vault Agent Injector — Kubernetes pod annotations template.
+#
+# These annotations are added to Helm values or raw Deployment manifests
+# to enable automatic secret injection via Vault Agent sidecar.
+#
+# Vault Agent retrieves dynamic database credentials and renders
+# them as Spring Boot properties inside the pod filesystem.
+# ============================================================
+#
+# --- auth-ms Deployment annotations ---
+# spec.template.metadata.annotations:
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-agent-annotations-reference
+  namespace: faso
+  labels:
+    app.kubernetes.io/part-of: faso-digitalisation
+    app.kubernetes.io/component: vault-config
+data:
+  # ================================================================
+  # auth-ms — Authentication microservice
+  # ================================================================
+  auth-ms-annotations.yaml: |
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "auth-ms"
+    vault.hashicorp.com/agent-pre-populate-only: "false"
+    # --- Dynamic database credentials ---
+    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/auth-ms-role"
+    vault.hashicorp.com/agent-inject-template-db-creds: |
+      {{- with secret "database/creds/auth-ms-role" -}}
+      spring.datasource.username={{ .Data.username }}
+      spring.datasource.password={{ .Data.password }}
+      {{- end }}
+    # --- KV secrets (JWT, gRPC token) ---
+    vault.hashicorp.com/agent-inject-secret-app-secrets: "faso/data/auth-ms/jwt"
+    vault.hashicorp.com/agent-inject-template-app-secrets: |
+      {{- with secret "faso/data/auth-ms/jwt" -}}
+      auth.jwt.encryption-key-b64={{ .Data.data.encryption_key_b64 }}
+      {{- end }}
+
+  # ================================================================
+  # poulets-api — Chicken platform API
+  # ================================================================
+  poulets-api-annotations.yaml: |
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "poulets-api"
+    vault.hashicorp.com/agent-pre-populate-only: "false"
+    # --- Dynamic database credentials ---
+    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/poulets-api-role"
+    vault.hashicorp.com/agent-inject-template-db-creds: |
+      {{- with secret "database/creds/poulets-api-role" -}}
+      spring.datasource.username={{ .Data.username }}
+      spring.datasource.password={{ .Data.password }}
+      {{- end }}
+    # --- KV secrets (gRPC token) ---
+    vault.hashicorp.com/agent-inject-secret-app-secrets: "faso/data/poulets-api/grpc"
+    vault.hashicorp.com/agent-inject-template-app-secrets: |
+      {{- with secret "faso/data/poulets-api/grpc" -}}
+      grpc.service-token={{ .Data.data.service_token }}
+      {{- end }}
+
+  # ================================================================
+  # notifier-ms — Notification microservice
+  # ================================================================
+  notifier-ms-annotations.yaml: |
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "notifier-ms"
+    vault.hashicorp.com/agent-pre-populate-only: "false"
+    # --- Dynamic database credentials ---
+    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/notifier-ms-role"
+    vault.hashicorp.com/agent-inject-template-db-creds: |
+      {{- with secret "database/creds/notifier-ms-role" -}}
+      spring.datasource.username={{ .Data.username }}
+      spring.datasource.password={{ .Data.password }}
+      {{- end }}
+    # --- KV secrets (SMTP creds) ---
+    vault.hashicorp.com/agent-inject-secret-smtp-creds: "faso/data/notifier-ms/smtp"
+    vault.hashicorp.com/agent-inject-template-smtp-creds: |
+      {{- with secret "faso/data/notifier-ms/smtp" -}}
+      spring.mail.username={{ .Data.data.username }}
+      spring.mail.password={{ .Data.data.password }}
+      {{- end }}

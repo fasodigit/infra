@@ -103,7 +103,7 @@ repos:
       - id: shellcheck
         types: [shell]
 
-  # ─── Hadolint (Dockerfile / Containerfile) ───────────────────────────────
+  # ─── Hadolint (Containerfile / Dockerfile compat) ────────────────────────
   - repo: https://github.com/hadolint/hadolint
     rev: v2.12.0
     hooks:

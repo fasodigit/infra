@@ -48,6 +48,27 @@ pub const DEFAULT_FINGERPRINT_STRIP: &[&str] = &[
 #[deprecated(note = "use RequestCtx::veil_nonce directly")]
 pub const CSP_NONCE_STASH_PREFIX: &str = "veil:nonce:";
 
+/// How VEIL determines whether the incoming request arrived over TLS.
+///
+/// Controls whether `Strict-Transport-Security` is emitted. The safest
+/// default is [`AlwaysOn`](TlsDetection::AlwaysOn) which assumes the
+/// gateway **is** the TLS terminator (the documented ARMAGEDDON
+/// architecture).  [`ForwardedProto`](TlsDetection::ForwardedProto)
+/// is opt-in for deployments behind an external TLS terminator that
+/// sets `X-Forwarded-Proto`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsDetection {
+    /// Trust the `X-Forwarded-Proto` header set by an upstream TLS
+    /// terminator.  Only enable when the gateway sits behind a known
+    /// trusted reverse proxy.
+    ForwardedProto,
+    /// Always treat every request as TLS (gateway IS the TLS terminator).
+    /// This is the safest default — HSTS is always emitted.
+    AlwaysOn,
+    /// Never inject HSTS.  Useful for testing or plaintext-only deploys.
+    AlwaysOff,
+}
+
 /// VEIL configuration.
 #[derive(Debug, Clone)]
 pub struct VeilConfig {
@@ -59,6 +80,9 @@ pub struct VeilConfig {
     /// Generate a per-request CSP nonce and substitute `{nonce}`
     /// placeholders in [`Self::security_headers`] values.
     pub inject_csp_nonce: bool,
+    /// How to detect whether the incoming request is TLS-protected.
+    /// Default: [`TlsDetection::AlwaysOn`] (safest — HSTS always emitted).
+    pub trusted_tls_detection: TlsDetection,
 }
 
 impl Default for VeilConfig {
@@ -92,6 +116,7 @@ impl Default for VeilConfig {
                 .collect(),
             security_headers: headers,
             inject_csp_nonce: false,
+            trusted_tls_detection: TlsDetection::AlwaysOn,
         }
     }
 }
@@ -142,21 +167,28 @@ fn generate_nonce() -> String {
     B64NP.encode(bytes)
 }
 
-/// Check whether the **incoming** request was received over TLS.
+/// Check whether the **incoming** request was received over TLS,
+/// according to the configured [`TlsDetection`] strategy.
 ///
-/// Pingora 0.3's `Session` does not expose a stable `is_tls()` method;
-/// we approximate by inspecting the `X-Forwarded-Proto` header which the
-/// gateway's front-end TLS terminator (or an upstream load balancer) is
-/// expected to set.  When the header is absent we assume plain HTTP
-/// (conservatively omitting HSTS).
-fn is_request_tls(session: &pingora_proxy::Session) -> bool {
-    session
-        .req_header()
-        .headers
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.eq_ignore_ascii_case("https"))
-        .unwrap_or(false)
+/// - [`TlsDetection::AlwaysOn`] — always returns `true` (safest default;
+///   assumes the gateway terminates TLS).
+/// - [`TlsDetection::AlwaysOff`] — always returns `false` (testing /
+///   plaintext-only deployments).
+/// - [`TlsDetection::ForwardedProto`] — inspects `X-Forwarded-Proto`.
+///   Only safe when the gateway sits behind a **trusted** TLS terminator
+///   that sets this header.
+fn is_request_tls(session: &pingora_proxy::Session, mode: TlsDetection) -> bool {
+    match mode {
+        TlsDetection::AlwaysOn => true,
+        TlsDetection::AlwaysOff => false,
+        TlsDetection::ForwardedProto => session
+            .req_header()
+            .headers
+            .get("x-forwarded-proto")
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.eq_ignore_ascii_case("https"))
+            .unwrap_or(false),
+    }
 }
 
 /// Case-insensitive check: does `res` already have a header under `name`?
@@ -199,7 +231,7 @@ impl ForgeFilter for VeilFilter {
         };
 
         // 3. Inject security headers (only if upstream didn't set them).
-        let tls = is_request_tls(session);
+        let tls = is_request_tls(session, config.trusted_tls_detection);
         for (name, value) in &config.security_headers {
             // HSTS only over TLS (avoid poisoning plain-HTTP clients).
             if name.eq_ignore_ascii_case("strict-transport-security") && !tls {

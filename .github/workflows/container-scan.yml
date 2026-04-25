@@ -1,0 +1,59 @@
+# SPDX-FileCopyrightText: 2026 FASO DIGITALISATION
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: Container Image Security Scan
+
+on:
+  push:
+    paths:
+      - '**/Dockerfile'
+      - '.github/workflows/container-scan.yml'
+  pull_request:
+    paths:
+      - '**/Dockerfile'
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly Monday 6 AM UTC
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service:
+          - { name: auth-ms, context: auth-ms }
+          - { name: poulets-api, context: poulets-platform/backend }
+          - { name: notifier-ms, context: notifier-ms }
+          - { name: armageddon, context: armageddon }
+          - { name: kaya, context: kaya }
+          - { name: poulets-bff, context: poulets-platform/bff }
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build image
+        run: |
+          podman build -t faso/${{ matrix.service.name }}:scan \
+            ${{ matrix.service.context }}
+
+      - name: Trivy vulnerability scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          image-ref: faso/${{ matrix.service.name }}:scan
+          format: table
+          exit-code: 1
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Trivy SBOM generation
+        uses: aquasecurity/trivy-action@master
+        if: always()
+        with:
+          image-ref: faso/${{ matrix.service.name }}:scan
+          format: cyclonedx
+          output: sbom-${{ matrix.service.name }}.json
+
+      - name: Upload SBOM
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: sbom-${{ matrix.service.name }}
+          path: sbom-${{ matrix.service.name }}.json
+          retention-days: 90

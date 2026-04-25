@@ -1,5 +1,5 @@
 # =============================================================================
-# Dockerfile - ARMAGEDDON API Gateway
+# Containerfile - ARMAGEDDON API Gateway
 # =============================================================================
 # Multi-stage build: Rust compilation -> minimal Debian runtime
 # =============================================================================

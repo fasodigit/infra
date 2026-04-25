@@ -1,0 +1,161 @@
+# SPDX-FileCopyrightText: 2026 FASO DIGITALISATION
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# FASO DIGITALISATION — Prometheus alerting rules for backup infrastructure
+#
+# Source metrics (pushed via Pushgateway by backup scripts):
+#   faso_backup_last_success_timestamp        — gauge (pg-backup.sh)
+#   faso_backup_last_status                   — gauge 0/1
+#   faso_backup_size_bytes                    — gauge
+#   faso_kaya_backup_last_success_timestamp   — gauge (kaya-backup.sh)
+#   faso_kaya_backup_last_status              — gauge 0/1
+#   faso_vault_backup_last_success_timestamp  — gauge (vault-backup.sh)
+#   faso_vault_backup_last_status             — gauge 0/1
+#   faso_consul_backup_last_success_timestamp — gauge (consul-backup.sh)
+#   faso_consul_backup_last_status            — gauge 0/1
+#   faso_wal_archive_last_success_timestamp   — gauge (pg-wal-archive.sh)
+#
+# Routing (alertmanager.yml):
+#   severity=critical → PagerDuty P1
+#   severity=warning  → Slack #faso-ops-alerts
+
+groups:
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # PostgreSQL backup staleness
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: backup_postgres
+    interval: 5m
+    rules:
+
+      # Critical: no successful PostgreSQL backup in 25 hours
+      # Weekly full backup should run every Sunday 03:00 UTC;
+      # during the week WAL archiving is the safety net.
+      # This alert fires if the last full backup is >25h old AND
+      # WAL archiving has also stalled.
+      - alert: FasoBackupPostgresStale
+        expr: |
+          (time() - faso_backup_last_success_timestamp) > 90000
+        for: 10m
+        labels:
+          severity: critical
+          team: infra
+          component: pg-backup
+        annotations:
+          summary: "PostgreSQL backup stale — no successful backup in > 25 hours"
+          description: >
+            The last successful PostgreSQL full backup was
+            {{ $value | humanizeDuration }} ago. Check the faso-pg-backup CronJob
+            in namespace faso-backup and review pod logs.
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/backup/RESTORE-RUNBOOK.md#backup-stale"
+
+      # Warning: WAL archiving has not succeeded in 10 minutes
+      # archive_timeout is 300s, so a gap > 600s means archiving is broken.
+      - alert: FasoWalArchiveStale
+        expr: |
+          (time() - faso_wal_archive_last_success_timestamp) > 600
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+          component: pg-wal-archive
+        annotations:
+          summary: "PostgreSQL WAL archiving stale — no segment archived in > 10 min"
+          description: >
+            WAL archiving has not succeeded for {{ $value | humanizeDuration }}.
+            This increases the RPO window. Check archive_command in PostgreSQL logs
+            and verify S3 connectivity.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # KAYA backup staleness
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: backup_kaya
+    interval: 5m
+    rules:
+
+      # Warning: no successful KAYA backup in 2 hours
+      # Hourly snapshots are expected; 2h means at least one was missed.
+      - alert: FasoBackupKayaStale
+        expr: |
+          (time() - faso_kaya_backup_last_success_timestamp) > 7200
+        for: 5m
+        labels:
+          severity: warning
+          team: infra
+          component: kaya-backup
+        annotations:
+          summary: "KAYA backup stale — no successful snapshot in > 2 hours"
+          description: >
+            The last successful KAYA snapshot was {{ $value | humanizeDuration }} ago.
+            Check the faso-kaya-backup CronJob and KAYA BGSAVE capability.
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Vault backup staleness
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: backup_vault
+    interval: 5m
+    rules:
+
+      # Critical: no successful Vault Raft snapshot in 25 hours
+      - alert: FasoBackupVaultStale
+        expr: |
+          (time() - faso_vault_backup_last_success_timestamp) > 90000
+        for: 10m
+        labels:
+          severity: critical
+          team: infra
+          component: vault-backup
+        annotations:
+          summary: "Vault backup stale — no successful snapshot in > 25 hours"
+          description: >
+            The last successful Vault Raft snapshot was {{ $value | humanizeDuration }} ago.
+            Vault stores all FASO secrets — a stale backup risks secret loss.
+            Check the faso-vault-backup CronJob and Vault seal status.
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/backup/RESTORE-RUNBOOK.md#vault-restore"
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # Generic backup failure + storage alerts
+  # ─────────────────────────────────────────────────────────────────────────
+  - name: backup_general
+    interval: 5m
+    rules:
+
+      # Warning: any backup job reported failure (status=0)
+      - alert: FasoBackupFailed
+        expr: |
+          faso_backup_last_status == 0
+          or
+          faso_kaya_backup_last_status == 0
+          or
+          faso_vault_backup_last_status == 0
+          or
+          faso_consul_backup_last_status == 0
+        for: 1m
+        labels:
+          severity: warning
+          team: infra
+          component: backup
+        annotations:
+          summary: "FASO backup job reported failure"
+          description: >
+            One or more backup jobs have a last_status of 0 (failure).
+            Check CronJob pod logs in namespace faso-backup for details.
+          runbook_url: "https://github.com/faso-digitalisation/infra/blob/main/backup/RESTORE-RUNBOOK.md#backup-failure"
+
+      # Warning: S3 backup storage > 80% of quota
+      # Requires a custom metric exposed by a storage quota checker sidecar
+      # or cloud provider API. Adjust the metric name as appropriate.
+      - alert: FasoBackupStorageHigh
+        expr: |
+          (faso_backup_s3_used_bytes / faso_backup_s3_quota_bytes) > 0.80
+        for: 30m
+        labels:
+          severity: warning
+          team: infra
+          component: backup-storage
+        annotations:
+          summary: "S3 backup storage exceeds 80% of quota"
+          description: >
+            Backup storage usage is at {{ $value | humanizePercentage }}.
+            Review retention policies or increase quota on OVH Object Storage.
+            Current usage: {{ with printf "faso_backup_s3_used_bytes" | query }}{{ . | first | value | humanize1024 }}B{{ end }}.

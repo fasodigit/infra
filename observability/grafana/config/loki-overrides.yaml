@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Loki per-tenant retention overrides — tiered for compliance.
+#
+# faso-audit:     ~5 years (audit trail regulatory requirement)
+# faso-financial: 2 years  (financial data retention)
+# default:        90 days  (standard operational logs)
+overrides:
+  faso-audit:
+    retention_period: 43800h  # ~5 years (audit logs)
+  faso-financial:
+    retention_period: 17520h  # 2 years (financial data)
+  default:
+    retention_period: 2160h   # 90 days (standard logs)

@@ -14,7 +14,7 @@ spring:
     clean-disabled: true
 
   datasource:
-    password: ${DB_PASSWORD:poulets_dev}
+    password: ${DB_PASSWORD}
 
 auth:
   jwks-uri: http://localhost:8801/.well-known/jwks.json

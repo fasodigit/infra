@@ -7,10 +7,16 @@
 server:
   port: 8803
   shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 25MB
+    max-swallow-size: 25MB
+  max-http-request-header-size: 16KB
 
 spring:
   application:
     name: notifier-ms
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -19,23 +25,34 @@ spring:
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:notifier}
     username: ${POSTGRES_USER:notifier}
-    password: ${POSTGRES_PASSWORD:notifier}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      connection-timeout: 20000
+      validation-timeout: 3000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      leak-detection-threshold: 30000
+      data-source-properties:
+        options: "-c statement_timeout=10000"
 
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
     properties:
+      jakarta:
+        persistence:
+          query:
+            timeout: 5000
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
+        jdbc:
+          batch_size: 25
+        default_batch_fetch_size: 16
 
   # ── Flyway ──────────────────────────────────────────────────
   flyway:
@@ -56,6 +73,7 @@ spring:
       max-poll-records: 10
       properties:
         isolation.level: read_committed
+        max.poll.interval.ms: 300000
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
@@ -63,8 +81,8 @@ spring:
       retries: 3
     listener:
       ack-mode: MANUAL_IMMEDIATE
-      concurrency: 3
-      auto-startup: ${FASO_KAFKA_ENABLED:false}
+      concurrency: ${FASO_KAFKA_PARTITIONS:3}
+      auto-startup: ${FASO_KAFKA_ENABLED:true}
 
   # ── KAYA (sovereign in-memory store, Redis-protocol) ────────
   data:
@@ -115,10 +133,15 @@ management:
       show-details: when_authorized
       probes:
         enabled: true
+      group:
+        readiness:
+          include: db, kafka, diskSpace
   health:
     livenessstate:
       enabled: true
     readinessstate:
+      enabled: true
+    kafka:
       enabled: true
   metrics:
     export:
@@ -139,7 +162,51 @@ management:
 
 # ── Resilience4j ────────────────────────────────────────────────
 resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+          - org.springframework.mail.MailException
+    instances:
+      smtp:
+        baseConfig: default
+        waitDurationInOpenState: 60s
+      kaya:
+        baseConfig: default
+        slidingWindowSize: 20
+        waitDurationInOpenState: 10s
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+    instances:
+      kaya:
+        timeoutDuration: 1s
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 500ms
+
   retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 500ms
+        retryExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
     instances:
       mail-dispatch:
         max-attempts: 3
@@ -150,6 +217,9 @@ resilience4j:
           - java.io.IOException
         ignore-exceptions:
           - bf.gov.faso.notifier.service.TemplateNotFoundException
+      kaya:
+        maxAttempts: 3
+        waitDuration: 200ms
 
 # ── Notifier configuration ──────────────────────────────────────
 notifier:

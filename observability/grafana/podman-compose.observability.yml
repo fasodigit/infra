@@ -1,7 +1,7 @@
 version: "3.9"
 
 # FASO DIGITALISATION — Observability Stack (dev override)
-# Usage: docker compose -f docker-compose.yml -f observability/grafana/docker-compose.observability.yml up
+# Usage: podman-compose -f podman-compose.yml -f observability/grafana/podman-compose.observability.yml up
 
 x-common-labels: &common-labels
   labels:
@@ -32,6 +32,8 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.min-block-duration=2h"
+      - "--storage.tsdb.max-block-duration=2h"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-lifecycle"
@@ -40,6 +42,7 @@ services:
       - "--web.listen-address=127.0.0.1:9090"
     volumes:
       - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/alertmanager/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     # Host network mode so Prometheus can scrape Java services on the host
     # (containerized firewall blocks cross-bridge traffic to host ports)
@@ -63,6 +66,7 @@ services:
       - "-config.file=/etc/loki/local-config.yaml"
     volumes:
       - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/loki.yaml:/etc/loki/local-config.yaml:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/loki-overrides.yaml:/etc/loki/overrides.yaml:ro
       - loki_data:/loki
     ports:
       - "127.0.0.1:3100:3100"

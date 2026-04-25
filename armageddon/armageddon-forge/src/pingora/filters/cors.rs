@@ -85,8 +85,15 @@ impl CorsConfig {
     }
 
     /// Whether `origin` is accepted by this policy.
+    ///
+    /// Both the configured origins and the request origin are normalised
+    /// (default ports stripped) before comparison so that
+    /// `https://app.faso.dev:443` matches `https://app.faso.dev`.
     pub fn is_origin_allowed(&self, origin: &str) -> bool {
-        self.allowed_origins.iter().any(|o| o == "*" || o == origin)
+        let norm = normalize_origin(origin);
+        self.allowed_origins
+            .iter()
+            .any(|o| o == "*" || normalize_origin(o) == norm)
     }
 
     /// Echo header value for `Access-Control-Allow-Origin`:
@@ -198,6 +205,25 @@ impl CorsFilter {
         resp.insert_header("Content-Length", "0")
             .map_err(|_| ())?;
         Ok(Box::new(resp))
+    }
+}
+
+/// Normalise an origin by stripping the default port for its scheme.
+///
+/// `https://app.faso.dev:443` becomes `https://app.faso.dev` and
+/// `http://localhost:80` becomes `http://localhost`.  Origins without a
+/// port or with non-default ports are returned unchanged.
+fn normalize_origin(origin: &str) -> String {
+    if let Some(rest) = origin.strip_prefix("https://") {
+        rest.strip_suffix(":443")
+            .map(|h| format!("https://{h}"))
+            .unwrap_or_else(|| origin.to_string())
+    } else if let Some(rest) = origin.strip_prefix("http://") {
+        rest.strip_suffix(":80")
+            .map(|h| format!("http://{h}"))
+            .unwrap_or_else(|| origin.to_string())
+    } else {
+        origin.to_string()
     }
 }
 
@@ -462,6 +488,35 @@ mod tests {
     }
 
     // --- ctx origin stash helper --------------------------------------------
+
+    // --- origin normalization -------------------------------------------------
+
+    #[test]
+    fn normalize_strips_default_https_port() {
+        assert_eq!(normalize_origin("https://app.faso.dev:443"), "https://app.faso.dev");
+    }
+
+    #[test]
+    fn normalize_strips_default_http_port() {
+        assert_eq!(normalize_origin("http://localhost:80"), "http://localhost");
+    }
+
+    #[test]
+    fn normalize_keeps_non_default_port() {
+        assert_eq!(normalize_origin("https://app.faso.dev:8443"), "https://app.faso.dev:8443");
+    }
+
+    #[test]
+    fn normalize_keeps_no_port() {
+        assert_eq!(normalize_origin("https://app.faso.dev"), "https://app.faso.dev");
+    }
+
+    #[test]
+    fn is_origin_allowed_normalizes_port() {
+        let c = cfg_credentialed_allowlist(); // allows "https://app.faso.dev"
+        assert!(c.is_origin_allowed("https://app.faso.dev:443"),
+            "https://app.faso.dev:443 must match configured https://app.faso.dev");
+    }
 
     #[test]
     fn origin_stash_round_trip() {

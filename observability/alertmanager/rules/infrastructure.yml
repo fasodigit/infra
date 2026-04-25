@@ -1,0 +1,138 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Prometheus alerting rules — infrastructure (disk, CPU, memory, DB, Kafka, TLS, observability).
+
+groups:
+  - name: faso.infrastructure.disk
+    rules:
+      - alert: FasoDiskSpaceCritical
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.10
+        for: 5m
+        labels:
+          severity: critical
+          team: sre
+        annotations:
+          summary: "Disk space critical on {{ $labels.instance }}"
+          description: "Only {{ $value | humanizePercentage }} disk space remaining"
+          runbook_url: "https://runbooks.faso.gov.bf/disk-space"
+
+      - alert: FasoDiskSpaceWarning
+        expr: (node_filesystem_avail_bytes{mountpoint="/"} / node_filesystem_size_bytes{mountpoint="/"}) < 0.20
+        for: 15m
+        labels:
+          severity: warning
+          team: sre
+
+  - name: faso.infrastructure.resources
+    rules:
+      - alert: FasoCpuHigh
+        expr: (1 - rate(node_cpu_seconds_total{mode="idle"}[5m])) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU sustained > 85% on {{ $labels.instance }}"
+
+      - alert: FasoMemoryHigh
+        expr: (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) > 0.90
+        for: 5m
+        labels:
+          severity: critical
+
+      - alert: FasoPodRestartLoop
+        expr: increase(kube_pod_container_status_restarts_total[15m]) > 3
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Pod {{ $labels.pod }} restarting > 3 times in 15m"
+
+  - name: faso.infrastructure.database
+    rules:
+      - alert: FasoHikariPoolExhausted
+        expr: hikaricp_connections_pending > 5
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HikariCP pool pressure on {{ $labels.application }}"
+
+      - alert: FasoHikariPoolCritical
+        expr: hikaricp_connections_pending > 10
+        for: 30s
+        labels:
+          severity: critical
+
+      - alert: FasoPostgresConnectionsHigh
+        expr: pg_stat_activity_count > 80
+        for: 5m
+        labels:
+          severity: warning
+
+  - name: faso.infrastructure.kafka
+    rules:
+      - alert: FasoKafkaConsumerLagWarning
+        expr: kafka_consumer_group_lag > 1000
+        for: 5m
+        labels:
+          severity: warning
+
+      - alert: FasoKafkaConsumerLagCritical
+        expr: kafka_consumer_group_lag > 10000
+        for: 5m
+        labels:
+          severity: critical
+
+      - alert: FasoKafkaConsumerGroupDown
+        expr: up{job="kafka-consumer"} == 0
+        for: 2m
+        labels:
+          severity: critical
+
+  - name: faso.infrastructure.certificates
+    rules:
+      - alert: FasoTlsCertExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 7
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "TLS cert expires in {{ $value | humanize }} days for {{ $labels.instance }}"
+
+      - alert: FasoTlsCertExpiryCritical
+        expr: (probe_ssl_earliest_cert_expiry - time()) / 86400 < 1
+        for: 10m
+        labels:
+          severity: critical
+
+  - name: faso.infrastructure.observability
+    rules:
+      - alert: FasoPrometheusStorageHigh
+        expr: prometheus_tsdb_storage_blocks_bytes / (1024*1024*1024) > 20
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus TSDB > 20GB"
+
+      - alert: FasoLokiIngestionDrop
+        expr: rate(loki_distributor_bytes_received_total[5m]) < (rate(loki_distributor_bytes_received_total[1h]) * 0.5)
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Loki ingestion dropped > 50% — log pipeline may be broken"
+
+      - alert: FasoOtelCollectorDropRate
+        expr: rate(otelcol_exporter_send_failed_spans_total[5m]) / rate(otelcol_exporter_sent_spans_total[5m]) > 0.01
+        for: 5m
+        labels:
+          severity: warning
+
+      - alert: FasoTempoIngestionHigh
+        expr: rate(tempo_distributor_bytes_received_total[5m]) > 50000000
+        for: 15m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tempo ingestion > 50MB/s — check sampling config"

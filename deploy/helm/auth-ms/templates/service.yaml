@@ -1,4 +1,4 @@
-{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -9,9 +9,13 @@ metadata:
 spec:
   type: {{ .Values.service.type }}
   ports:
-    - port: {{ .Values.service.port }}
+    - port: {{ .Values.service.httpPort }}
       targetPort: http
       protocol: TCP
       name: http
+    - port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
   selector:
     {{- include "auth-ms.selectorLabels" . | nindent 4 }}

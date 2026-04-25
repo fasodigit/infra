@@ -21,8 +21,8 @@ spring:
   # PostgreSQL Database
   datasource:
     url: jdbc:postgresql://localhost:5501/ec_impression_db?stringtype=unspecified
-    username: postgres
-    password: postgres
+    username: ${DB_USER:postgres}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 5
@@ -43,12 +43,12 @@ spring:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         default_schema: impression
 
-  # Local DragonflyDB
+  # Local KAYA (sovereign in-memory store, Redis-protocol)
   data:
     redis:
       host: localhost
       port: 6379
-      password: dragonfly_dev_secure_2026
+      password: ${KAYA_PASSWORD:}
 
   # Local Kafka/Redpanda (compression: none for KafkaJS E2E compat)
     producer:
@@ -124,8 +124,8 @@ grpc:
 minio:
   enabled: true
   endpoint: http://localhost:19100
-  access-key: minioadmin
-  secret-key: minioadmin_secret
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
   bucket: actes-documents
 
 # Demande service for notification enrichment
@@ -139,7 +139,7 @@ encryption:
 # ec-certificate-renderer (Java/Playwright sidecar — legacy fallback)
 ec-certificate-renderer:
   url: http://localhost:8800
-  auth-secret: dev-renderer-secret
+  auth-secret: ${INTERNAL_AUTH_SECRET}
 
 # Typst document-renderer (Rust, gRPC, PDF/A-3a) — preferred path
 renderer:

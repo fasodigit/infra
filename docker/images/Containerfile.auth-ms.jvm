@@ -1,5 +1,5 @@
 # =============================================================================
-# Dockerfile - auth-ms (Authentication Microservice)
+# Containerfile - auth-ms (Authentication Microservice)
 # =============================================================================
 # Multi-stage build: Maven + JDK 21 build -> JRE 21 runtime
 # =============================================================================

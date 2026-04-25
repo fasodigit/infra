@@ -1,4 +1,4 @@
-{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -31,7 +31,7 @@ spec:
       serviceAccountName: {{ include "kaya.serviceAccountName" . }}
       securityContext:
         {{- toYaml .Values.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: 60
+      terminationGracePeriodSeconds: {{ .Values.terminationGracePeriodSeconds }}
       containers:
         - name: kaya
           securityContext:
@@ -42,9 +42,21 @@ spec:
             - name: resp
               containerPort: {{ .Values.service.respPort }}
               protocol: TCP
+            - name: grpc
+              containerPort: {{ .Values.service.grpcPort }}
+              protocol: TCP
             - name: metrics
               containerPort: {{ .Values.service.metricsPort }}
               protocol: TCP
+          {{- with .Values.env }}
+          env:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          lifecycle:
+            preStop:
+              exec:
+                # Flush WAL to disk before shutdown to prevent data loss
+                command: ["/bin/sh", "-c", "/usr/local/bin/kaya-cli wal-flush && sleep 5"]
           livenessProbe:
             {{- toYaml .Values.livenessProbe | nindent 12 }}
           readinessProbe:

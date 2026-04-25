@@ -1,11 +1,18 @@
 server:
   port: ${SERVER_PORT:8108}
+  shutdown: graceful
   servlet:
     context-path: /
+  tomcat:
+    max-http-form-post-size: 25MB
+    max-swallow-size: 25MB
+  max-http-request-header-size: 16KB
 
 spring:
   application:
     name: impression-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
   # Virtual threads for high concurrency
   threads:
@@ -16,15 +23,19 @@ spring:
   datasource:
     url: jdbc:postgresql://${DB_HOST:localhost}:${DB_PORT:5501}/${DB_NAME:ec_impression_db}
     username: ${DB_USER:actes}
-    password: ${DB_PASSWORD:actes}
+    password: ${DB_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 20
-      minimum-idle: 5
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      minimum-idle: 2
+      connection-timeout: 20000
+      validation-timeout: 3000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      leak-detection-threshold: 30000
       pool-name: impression-hikari-pool
+      data-source-properties:
+        options: "-c statement_timeout=10000"
 
   flyway:
     schemas: impression
@@ -37,21 +48,33 @@ spring:
     hibernate:
       ddl-auto: validate
     properties:
+      jakarta:
+        persistence:
+          query:
+            timeout: 5000
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: true
         default_schema: impression
         jdbc:
           time_zone: UTC
+          batch_size: 25
+        default_batch_fetch_size: 16
     show-sql: false
     open-in-view: false
 
-  # Redis/DragonflyDB for queue
+  # Input validation & request size limits
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 25MB
+
+  # KAYA (sovereign in-memory store, Redis-protocol) for queue
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
-      port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      host: ${KAYA_HOST:localhost}
+      port: ${KAYA_PORT:6380}
+      password: ${KAYA_PASSWORD:}
       timeout: 5000ms
 
   # Kafka/Redpanda
@@ -80,8 +103,8 @@ spring:
 # MinIO WORM Storage
 minio:
   endpoint: ${MINIO_ENDPOINT:http://localhost:19100}
-  access-key: ${MINIO_ACCESS_KEY:minioadmin}
-  secret-key: ${MINIO_SECRET_KEY:minioadmin_secret}
+  access-key: ${MINIO_ACCESS_KEY}
+  secret-key: ${MINIO_SECRET_KEY}
   enabled: ${MINIO_ENABLED:true}
 
 # gRPC Configuration
@@ -89,6 +112,13 @@ grpc:
   server:
     port: 9108
   client:
+    GLOBAL:
+      negotiation-type: TLS
+      keep-alive-time: 30s
+      keep-alive-timeout: 10s
+      idle-timeout: 5m
+      max-inbound-message-size: 4194304
+      deadline: 5s
     document-security:
       host: ${DOCUMENT_SECURITY_HOST:localhost}
       port: ${DOCUMENT_SECURITY_PORT:9081}
@@ -101,7 +131,7 @@ grpc:
       address: static://${EC_VERIFICATION_HOST:localhost}:${EC_VERIFICATION_GRPC_PORT:9116}
       negotiation-type: PLAINTEXT
 
-# DragonflyDB Streams (ec-cache-lib)
+# KAYA Streams (ec-cache-lib)
 ec:
   cache:
     stream:
@@ -118,7 +148,7 @@ kafka:
 # QR Code Verification (HMAC-SHA256)
 # Le secret doit etre identique a celui de validation-acte-service
 verification:
-  hmac-secret: ${QR_HMAC_SECRET:change-me-in-production}
+  hmac-secret: ${QR_HMAC_SECRET}
   base-url: ${QR_VERIFICATION_URL:https://actes.gov.bf/verify/}
 
 # File encryption (AES-256-GCM) — same key as demande-service
