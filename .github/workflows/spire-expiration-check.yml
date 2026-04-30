@@ -97,7 +97,7 @@ jobs:
       # ── Incident creation on critical failure ─────────────────────────
       - name: Create P1 incident issue on critical SVID expiry
         if: failure()
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
           script: |
