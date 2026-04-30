@@ -32,7 +32,7 @@ jobs:
       run:
         working-directory: INFRA/${{ matrix.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable + rustfmt
         uses: dtolnay/rust-toolchain@stable
@@ -61,7 +61,7 @@ jobs:
       run:
         working-directory: INFRA/${{ matrix.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable + clippy
         uses: dtolnay/rust-toolchain@stable
@@ -90,7 +90,7 @@ jobs:
       run:
         working-directory: INFRA/${{ matrix.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -121,7 +121,7 @@ jobs:
       run:
         working-directory: INFRA/${{ matrix.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -150,7 +150,7 @@ jobs:
       run:
         working-directory: INFRA/${{ matrix.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install Rust stable + llvm-tools
         uses: dtolnay/rust-toolchain@stable
@@ -195,7 +195,7 @@ jobs:
       run:
         working-directory: INFRA/${{ matrix.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Generate SBOM (CycloneDX)
         uses: anchore/sbom-action@v0

@@ -26,7 +26,7 @@ jobs:
           - { name: kaya, context: kaya }
           - { name: poulets-bff, context: poulets-platform/bff }
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Build image
         run: |
