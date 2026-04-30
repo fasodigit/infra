@@ -132,6 +132,9 @@ future : `openbao` (fork Vault) si stable.
 - Password de test : via variable `E2E_TEST_PASSWORD` uniquement
 - Rotation SVID SPIRE 24 h, monitoring < 72 h (alerte auto)
 - Revue sécurité via GitHub Private Vulnerability Reporting
+- Bootstrap dev : `bash INFRA/scripts/bootstrap-dev.sh` (idempotent)
+- Bootstrap dev avec reset : `bash INFRA/scripts/bootstrap-dev.sh --reset` (DROPS auth_ms + poulets_db data)
+- Vault paths pour la prod : voir `INFRA/scripts/bootstrap-dev.README.md`
 
 ## 6. Documentation
 
@@ -228,6 +231,233 @@ PIDS=$(ps -eo pid,cmd | grep '<pattern>' | grep -v grep | awk '{print $1}')
 Si un `/cycle-fix` tourne dans une autre instance, **ne pas lancer**
 `/restart-impacted` concurremment — attendre fin du cycle-fix.
 
+## 10. Ordre des phases de validation : `cycle-fix` AVANT E2E
+
+**Règle absolue** : toute campagne de tests E2E (Playwright Full-Stack ou
+autre) doit être précédée d'une boucle `/cycle-fix` qui amène l'ensemble du
+stack à un état **GREEN** (compile OK, services healthy, ports listening,
+zéro erreur dans les logs Loki/podman).
+
+**Pourquoi** : un test E2E lancé sur un stack instable produit du bruit
+(faux positifs, faux négatifs, fixtures qui croient à une régression alors
+que c'est juste un service down). Ça gaspille du temps de debug et fait
+perdre confiance dans la suite. La discipline « stabiliser d'abord, tester
+ensuite » est non négociable.
+
+**Workflow obligatoire** :
+
+```
+[code modifications terminées]
+        │
+        ▼
+  /cycle-fix (loop)
+        ├─ podman-compose -f podman-compose.yml up -d (avec scripts seed)
+        ├─ wait services healthy (probes /health/ready)
+        ├─ scan logs (Loki + podman logs) pour erreurs root cause
+        ├─ fix root cause (compile / config / migrations / topics / Vault)
+        ├─ podman-compose restart <service-impacté>
+        └─ répète jusqu'à : tous ports listening + zéro erreur fatale
+        │
+        ▼ (stack GREEN)
+  Tests Playwright Full-Stack E2E
+        ├─ run specs (3 projets : chromium-headless, smoke, chrome-headless-new)
+        ├─ collecte traces Jaeger sur fail
+        └─ rapport coverage + P50/P95/P99
+        │
+        ▼
+  Si bug E2E détecté → retour cycle-fix (jamais "fix dans la suite E2E")
+```
+
+**Anti-patterns interdits** :
+- ❌ Lancer `playwright test` sur un stack pas validé `/cycle-fix`.
+- ❌ "Cycle-fix après E2E" pour fixer ce que les tests ont révélé — c'est
+  le test qui doit valider, pas découvrir des bugs de stabilité.
+- ❌ Skipper cycle-fix parce que "ça marchait hier" — chaque session ou
+  chaque modif de code redémarre la boucle.
+
+**Phasing canonique d'un projet FASO** :
+
+| Ordre | Phase | Output |
+|-------|-------|--------|
+| 1 | Implémentation | Code mergé, compile OK individuellement |
+| 2 | **Cycle-fix** | Stack GREEN, services healthy, zéro erreur |
+| 3 | E2E Playwright | Coverage rapport, traces Jaeger archivées |
+| 4 | Bug-fix sur findings E2E | Retour étape 2 si nouveau bug |
+
+Cette discipline est validée par `/status-faso` avant de lancer toute suite
+E2E. Si `/status-faso` ne montre pas tous services en `healthy` →
+**bloquer** l'exécution E2E.
+
+## 11. Couverture E2E systématique de toute nouvelle fonctionnalité
+
+**Règle absolue** : toute fonctionnalité ajoutée (endpoint REST/gRPC/WS,
+flow UI, topic Redpanda, capacité Keto, migration DB, setting Configuration
+Center, hook Kratos, schéma Avro, …) doit être livrée **avec** sa (ou ses)
+spec(s) Playwright correspondante(s). Pas de feature sans test E2E.
+
+**Pourquoi** : sans coverage écrite au moment de l'ajout, la feature dérive
+(régression silencieuse au prochain refactor, flow cassé qu'on ne détecte
+qu'en prod, faux sentiment de sécurité). La discipline « écrit la feature
+ET son E2E dans le même PR » est non négociable.
+
+**Comment** :
+
+1. Au moment d'écrire le code feature, l'auteur **écrit en miroir** la spec
+   Playwright sous `tests-e2e/<n°-suite>/<feature>.spec.ts`.
+2. La spec utilise des **données réelles** :
+   - OTP via Mailpit (`MailpitClient.waitForOtp`).
+   - PassKey via virtual authenticator CDP (`fixtures/webauthn.ts`).
+   - TOTP via `otplib` (`fixtures/totp.ts`).
+   - Acteurs déterministes via `fixtures/actors.ts` (seed=42).
+   - Pas de mocks backend — le test hit la stack réelle (cycle-fix Phase
+     4.c garantit qu'elle est GREEN).
+3. La spec doit couvrir au moins **1 happy path + 1 erreur principale**
+   (ex : code expiré, signature altérée, rate-limit dépassé).
+4. Référencer la spec dans la table de mapping documentaire du projet
+   (`ARCHITECTURE-SECURITE-COMPLETE.md` ou équivalent).
+5. Si la feature n'est pas testable directement (ex : scheduled job
+   interne, consumer Kafka sans effet UI visible), créer **un endpoint
+   d'observation** ou une **métrique Prometheus** interrogeable par le
+   test.
+
+**Anti-patterns interdits** :
+- ❌ Ajouter un endpoint REST sans la spec correspondante.
+- ❌ « On testera plus tard / en Phase X » sans inscrire un placeholder
+  daté + numéroté dans le mapping.
+- ❌ Mocker le backend dans Playwright (toujours real services en
+  containers — cf. PLAYWRIGHT-FULLSTACK-E2E-GUIDE.md).
+- ❌ Spec qui valide uniquement le happy path (au moins 1 erreur).
+- ❌ Spec qui n'est pas exécutable via `bunx playwright test
+  tests-e2e/<chemin>` directement.
+
+**Workflow obligatoire** :
+
+```
+[idée fonctionnalité]
+        │
+        ▼
+[implémentation backend + frontend]
+        │
+        ▼
+[écriture spec Playwright en miroir] ◄── MÊME PR
+        │
+        ▼
+[mise à jour table mapping doc]
+        │
+        ▼
+[cycle-fix → stack GREEN] ◄── §10
+        │
+        ▼
+[exécution spec → assertion OK]
+        │
+        ▼
+[merge]
+```
+
+**Conséquence sur ce projet (admin-UI)** : Phase 4.b couvre l'implémentation
+des 23 modules de sécurité ; chacun doit avoir sa spec dans la suite
+`tests-e2e/18-admin-workflows/` (33 specs au total mappées dans
+`ARCHITECTURE-SECURITE-COMPLETE-2026-04-30.md` §5). Toute feature future
+ajoutée à admin-UI suit la même discipline.
+
+## 12. Mode d'exécution Playwright : navigateur réel + comptes seedés
+
+**Règle absolue** : toute campagne Playwright lance un **navigateur Chromium
+réel et 100 % interactif** (clics, frappes clavier, navigation, XHR/fetch,
+WebSocket réels) en mode `--headless` (pas d'UI graphique visible mais
+toutes les capacités du browser actives). **Aucune simulation, aucun mock,
+aucun appel HTTP forgé.**
+
+**Pourquoi** : un test E2E qui n'exécute pas le vrai DOM, le vrai cycle de
+vie de session, la vraie négociation TLS, le vrai parsing JWT, n'apporte
+aucune garantie sur le comportement en production. La force de Playwright
+réside dans la fidélité du browser ; toute dérogation invalide la suite.
+
+### Pré-condition : comptes SUPER-ADMIN seedés
+
+**Email = identifiant primaire** pour tous les flows d'authentification
+(signup, login, récupération, MFA enrollment). Aucun flow ne peut être
+testé sans une boîte mail capturable (Mailpit en dev/CI, SMTP réel en
+prod). Toute notification de validation (OTP 8 chiffres, magic-link,
+password reset, recovery code) transite par email — cf.
+`ARCHITECTURE-SECURITE-COMPLETE-2026-04-30.md` §6 timeline canonique.
+
+**Conséquence pour Playwright** : la stack doit avoir
+- `notifier-ms` UP (consume Redpanda, send via SMTP)
+- `Mailpit :8025` accessible (capture côté E2E via `MailpitClient.waitForOtp`)
+- `SMTP_HOST` configuré (Mailpit :1025 en dev)
+
+Si `notifier-ms` ou `Mailpit` est down → bloquer la suite (cf. §10
+gate cycle-fix avant E2E).
+
+Les specs admin-UI (et toute spec qui exige un acteur SUPER-ADMIN)
+requièrent que les **2 identités SUPER-ADMIN** soient déjà créées en Kratos
+**avec mot de passe valide** + tuples Keto correspondants. Le seed est
+réalisé par le bootstrap Phase 4.c (cf. `Phase 4.c suite` runbook) :
+
+| Acteur | Email | UUID Kratos | Mot de passe par défaut (dev) | Variable d'env override (prod/CI) |
+|---|---|---|---|---|
+| Aminata Ouédraogo | `aminata.ouedraogo@faso.bf` | `253ec814-1e10-44c7-b7a7-fd44581e4393` | `ChangeMe!2026SuperAdmin` | `E2E_AMINATA_PASSWORD` |
+| Souleymane Sawadogo | `s.sawadogo@faso.bf` | `5d621b0c-f611-45d8-afe3-2d299d2eb82d` | `ChangeMe!2026SecurityLead` | `E2E_SOULEYMANE_PASSWORD` |
+
+Ces credentials **DOIVENT** apparaître dans `fixtures/actors.ts` (ou
+équivalent par projet) avec `password` lu depuis la variable d'env (cf. §5
+sécurité). Si la variable n'est pas définie, le test peut tomber sur le
+fallback dev — uniquement en local. CI prod : variable obligatoire (échec
+explicite si absente).
+
+### Configuration Playwright canonique
+
+```typescript
+// playwright.config.ts
+export default defineConfig({
+  use: {
+    headless: true,
+    trace: 'on-first-retry',
+    screenshot: 'only-on-failure',
+    video: 'retain-on-failure',
+    baseURL: 'http://localhost:8080',  // ARMAGEDDON — JAMAIS le frontend dev server directement
+  },
+  projects: [
+    { name: 'chromium-headless', use: { ...devices['Desktop Chrome'] } },
+    { name: 'smoke', testMatch: /\.smoke\.spec\.ts$/ },
+    { name: 'chrome-headless-new', use: { channel: 'chrome', launchOptions: { args: ['--headless=new'] } } },
+  ],
+});
+```
+
+**Exigence path browser → backend** : `baseURL` doit pointer sur ARMAGEDDON
+(souverain). Le browser ne doit JAMAIS appeler `:8801`/`:8901`/`:4433`
+directement (cf. `PLAYWRIGHT-FULLSTACK-E2E-GUIDE.md` §1.2). Toute requête
+XHR/fetch passe par `:8080` → ARMAGEDDON → ext_authz Keto → backend.
+
+### Anti-patterns interdits
+
+- ❌ `page.route(/.../, route => route.fulfill(...))` pour mocker un endpoint backend.
+- ❌ `headless: false` permanent (dev visuel OK, CI doit rester `headless: true`).
+- ❌ Hardcoder un mot de passe SUPER-ADMIN dans le code source de la spec.
+- ❌ Utiliser `expect(true).toBe(true)` ou des stubs qui ne touchent jamais le backend.
+- ❌ Skipper un test parce qu'un service backend est down — préférer **bloquer la suite** (gate Phase 4.c).
+
+### Workflow obligatoire
+
+```
+[stack GREEN cf. §10]
+        │
+        ▼
+[fixtures/actors.ts contient SUPER-ADMIN avec UUID + email + password env]
+        │
+        ▼
+[bunx playwright test --project=chromium-headless] → real browser, real backend
+        │
+        ▼
+[trace.zip + screenshot + video sur fail → Jaeger trace ID dans audit_log]
+```
+
+Cette discipline est validée à chaque session : si `fixtures/actors.ts`
+n'a pas les SUPER-ADMIN seedés OU si `playwright.config.ts` mocke des
+routes backend, **bloquer le merge** jusqu'à correction.
+
 ---
 
-*Dernière mise à jour : 2026-04-18*
+*Dernière mise à jour : 2026-04-30*
