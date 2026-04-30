@@ -1,0 +1,56 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — OPA-core (Open Policy Agent)
+# Usage:
+#   cd INFRA/docker/compose
+#   podman-compose -f podman-compose.yml -f ../../opa/podman-compose.opa.yml up -d opa
+
+networks:
+  faso-network:
+    external: true
+
+services:
+  opa:
+    image: openpolicyagent/opa:1.15.2
+    container_name: faso-opa
+    restart: unless-stopped
+    command:
+      - "run"
+      - "--server"
+      - "--log-level=error"
+      - "--log-format=json"
+      - "--addr=0.0.0.0:8181"
+      - "--diagnostic-addr=0.0.0.0:8282"
+      - "--config-file=/etc/opa/opa-config.yml"
+      - "--skip-version-check"
+      - "--optimize-store-for-read-speed"
+      - "--h2c"
+      - "/etc/opa/policies"
+      - "/etc/opa/data"
+    environment:
+      GOMAXPROCS: "4"
+      GOGC: "200"
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 2G
+        reservations:
+          cpus: '1.0'
+          memory: 512M
+    ports:
+      - "127.0.0.1:8181:8181"             # main API (data + decisions)
+      - "127.0.0.1:8282:8282"             # diagnostic (health, metrics)
+    volumes:
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/opa/policies:/etc/opa/policies:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/opa/data:/etc/opa/data:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/opa/opa-config.yml:/etc/opa/opa-config.yml:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - faso-network
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8282/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s

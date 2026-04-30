@@ -14,7 +14,7 @@
 version: "3.9"
 
 networks:
-  faso-net:
+  faso-network:
     external: true
 
 volumes:
@@ -35,14 +35,15 @@ services:
     command:
       - "-config"
       - "/opt/spire/conf/server/server.conf"
+      - "-expandEnv"
     environment:
       # Injected by Vault Agent or podman secret at runtime.
       SPIRE_POSTGRES_URL: "${SPIRE_POSTGRES_URL:-postgresql://spire:spire_dev@faso-postgres:5432/spire_server?sslmode=disable}"
     volumes:
-      - ./server/server.conf:/opt/spire/conf/server/server.conf:ro,Z
-      - ./certs/ca.crt:/opt/spire/conf/server/ca.crt:ro,Z
-      - ./certs/ca.key:/opt/spire/conf/server/ca.key:ro,Z
-      - spire-server-data:/opt/spire/data/server:Z
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/spire/server/server.conf:/opt/spire/conf/server/server.conf:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/spire/certs/ca.crt:/opt/spire/conf/server/ca.crt:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/spire/certs/ca.key:/opt/spire/conf/server/ca.key:ro
+      - spire-server-data:/opt/spire/data/server
     ports:
       # 8081 registration API — bind to loopback only in prod
       - "127.0.0.1:8081:8081"
@@ -52,7 +53,7 @@ services:
       - "8081"
       - "8082"   # federation (future)
     networks:
-      - faso-net
+      - faso-network
     healthcheck:
       test:
         - "CMD"
@@ -77,6 +78,9 @@ services:
     command:
       - "-config"
       - "/opt/spire/conf/agent/agent.conf"
+      - "-expandEnv"
+      - "-joinToken"
+      - "${SPIRE_JOIN_TOKEN}"
     depends_on:
       faso-spire-server:
         condition: service_healthy
@@ -84,18 +88,22 @@ services:
       # Join token written by bootstrap.sh into this env var.
       SPIRE_JOIN_TOKEN: "${SPIRE_JOIN_TOKEN:-}"
     volumes:
-      - ./agent/agent.conf:/opt/spire/conf/agent/agent.conf:ro,Z
-      - ./certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro,Z
-      - spire-agent-data:/opt/spire/data/agent:Z
-      # Shared socket volume — mounted by workload containers at /run/spire/sockets/agent.sock
-      - spire-sockets:/run/spire/sockets:Z
-      # Podman socket for docker workload attestor
-      - /run/podman/podman.sock:/run/podman/podman.sock:ro,Z
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/spire/agent/agent.conf:/opt/spire/conf/agent/agent.conf:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/spire/certs/ca.crt:/opt/spire/conf/agent/bootstrap.crt:ro
+      - spire-agent-data:/opt/spire/data/agent
+      # Shared socket — bind-mounted to host path so host-runtime workloads
+      # (Java services in dev) and containerised workloads both see the same
+      # /run/spire/sockets/agent.sock. Host path is created at compose-up
+      # time; ensure the SPIRE_HOST_SOCKET_DIR env points at a writable
+      # directory (defaults to ./spire/sockets relative to compose file).
+      - ${SPIRE_HOST_SOCKET_DIR:-./sockets}:/run/spire/sockets
+      # Podman socket for docker workload attestor (compat: docker.sock when on docker host)
+      - /var/run/docker.sock:/run/podman/podman.sock:ro
     ports:
       # 9989 Prometheus metrics
       - "127.0.0.1:9989:9989"
     networks:
-      - faso-net
+      - faso-network
     healthcheck:
       test:
         - "CMD"

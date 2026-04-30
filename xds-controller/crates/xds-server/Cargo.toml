@@ -28,6 +28,13 @@ xds-store = { workspace = true }
 xds-discovery = { workspace = true }
 xds-spire = { workspace = true }
 
+# CLI for the entry-point binary (src/bin/xds-server.rs)
+clap = { workspace = true, features = ["derive"] }
+
+[[bin]]
+name = "xds-server"
+path = "src/bin/xds-server.rs"
+
 [dev-dependencies]
 http = "1"
 bytes = "1"

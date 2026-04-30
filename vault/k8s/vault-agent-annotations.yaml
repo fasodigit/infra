@@ -29,11 +29,19 @@ data:
     vault.hashicorp.com/role: "auth-ms"
     vault.hashicorp.com/agent-pre-populate-only: "false"
     # --- Dynamic database credentials ---
-    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/auth-ms-role"
+    # Runtime DML-only credentials (HikariCP pool)
+    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/auth-ms-runtime-role"
     vault.hashicorp.com/agent-inject-template-db-creds: |
-      {{- with secret "database/creds/auth-ms-role" -}}
+      {{- with secret "database/creds/auth-ms-runtime-role" -}}
       spring.datasource.username={{ .Data.username }}
       spring.datasource.password={{ .Data.password }}
+      {{- end }}
+    # Flyway DDL credentials (one-shot at boot, separate principal)
+    vault.hashicorp.com/agent-inject-secret-flyway-creds: "database/creds/auth-ms-flyway-role"
+    vault.hashicorp.com/agent-inject-template-flyway-creds: |
+      {{- with secret "database/creds/auth-ms-flyway-role" -}}
+      spring.flyway.user={{ .Data.username }}
+      spring.flyway.password={{ .Data.password }}
       {{- end }}
     # --- KV secrets (JWT, gRPC token) ---
     vault.hashicorp.com/agent-inject-secret-app-secrets: "faso/data/auth-ms/jwt"
@@ -50,11 +58,19 @@ data:
     vault.hashicorp.com/role: "poulets-api"
     vault.hashicorp.com/agent-pre-populate-only: "false"
     # --- Dynamic database credentials ---
-    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/poulets-api-role"
+    # Runtime DML-only credentials (HikariCP pool)
+    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/poulets-api-runtime-role"
     vault.hashicorp.com/agent-inject-template-db-creds: |
-      {{- with secret "database/creds/poulets-api-role" -}}
+      {{- with secret "database/creds/poulets-api-runtime-role" -}}
       spring.datasource.username={{ .Data.username }}
       spring.datasource.password={{ .Data.password }}
+      {{- end }}
+    # Flyway DDL credentials (one-shot at boot, separate principal)
+    vault.hashicorp.com/agent-inject-secret-flyway-creds: "database/creds/poulets-api-flyway-role"
+    vault.hashicorp.com/agent-inject-template-flyway-creds: |
+      {{- with secret "database/creds/poulets-api-flyway-role" -}}
+      spring.flyway.user={{ .Data.username }}
+      spring.flyway.password={{ .Data.password }}
       {{- end }}
     # --- KV secrets (gRPC token) ---
     vault.hashicorp.com/agent-inject-secret-app-secrets: "faso/data/poulets-api/grpc"
@@ -71,11 +87,19 @@ data:
     vault.hashicorp.com/role: "notifier-ms"
     vault.hashicorp.com/agent-pre-populate-only: "false"
     # --- Dynamic database credentials ---
-    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/notifier-ms-role"
+    # Runtime DML-only credentials (HikariCP pool)
+    vault.hashicorp.com/agent-inject-secret-db-creds: "database/creds/notifier-ms-runtime-role"
     vault.hashicorp.com/agent-inject-template-db-creds: |
-      {{- with secret "database/creds/notifier-ms-role" -}}
+      {{- with secret "database/creds/notifier-ms-runtime-role" -}}
       spring.datasource.username={{ .Data.username }}
       spring.datasource.password={{ .Data.password }}
+      {{- end }}
+    # Flyway DDL credentials (one-shot at boot, separate principal)
+    vault.hashicorp.com/agent-inject-secret-flyway-creds: "database/creds/notifier-ms-flyway-role"
+    vault.hashicorp.com/agent-inject-template-flyway-creds: |
+      {{- with secret "database/creds/notifier-ms-flyway-role" -}}
+      spring.flyway.user={{ .Data.username }}
+      spring.flyway.password={{ .Data.password }}
       {{- end }}
     # --- KV secrets (SMTP creds) ---
     vault.hashicorp.com/agent-inject-secret-smtp-creds: "faso/data/notifier-ms/smtp"

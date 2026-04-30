@@ -8,6 +8,16 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+        # CORS for browser clients (Angular WebTracerProvider exports traces
+        # via fetch). In production, restrict to the actual frontend origin.
+        cors:
+          allowed_origins:
+            - "http://localhost:4801"
+            - "http://localhost:4800"
+            - "https://*.faso.gov.bf"
+          allowed_headers:
+            - "*"
+          max_age: 7200
 
 processors:
   # Memory limiter to prevent OOM
@@ -48,7 +58,7 @@ processors:
   resource:
     attributes:
       - key: deployment.environment
-        value: "${FASO_ENV:production}"
+        value: "${env:FASO_ENV}"
         action: upsert
       - key: service.namespace
         value: "faso"
@@ -90,13 +100,14 @@ exporters:
     resource_to_telemetry_conversion:
       enabled: true
 
-  loki:
-    endpoint: http://faso-loki:3100/loki/api/v1/push
-    labels:
-      attributes:
-        service.name: "service"
-        severity: "severity"
-        log_type: "log_type"
+  # OTel Collector v0.86+: the legacy `loki` exporter is removed; logs are
+  # pushed to Loki via OTLP HTTP. The otlphttp/loki receiver translates
+  # OTel resource & log attributes to Loki labels automatically.
+  # See: https://grafana.com/docs/loki/latest/send-data/otel/
+  otlphttp/loki:
+    endpoint: http://faso-loki:3100/otlp
+    tls:
+      insecure: true
 
   debug:
     verbosity: basic
@@ -109,6 +120,12 @@ extensions:
 
 service:
   extensions: [health_check, pprof]
+  # Collector self-telemetry on :8888 (otelcol_* metrics).
+  # User pipeline metrics on :8889 via the prometheus exporter (otel_*).
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
   pipelines:
     traces:
       receivers: [otlp]
@@ -121,4 +138,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]

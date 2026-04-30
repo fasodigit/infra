@@ -7,7 +7,12 @@ global:
   external_labels:
     cluster: "bf-ouaga-1"
     sovereignty: "faso-digitalisation"
-    replica: "$(POD_NAME)"
+    # Replica label is required for Thanos query dedup. The literal
+    # `$(POD_NAME)` was a copy-paste from a Helm template — Prometheus does
+    # NOT expand env vars in YAML unless `--enable-feature=expand-external-labels`
+    # is passed via CLI. Override per-instance via Helm or compose env (one
+    # replica per process; static "0" is acceptable for single-replica dev).
+    replica: "${PROMETHEUS_REPLICA:-0}"
 
 # Local retention at 15d — Thanos handles long-term via sidecar upload.
 # min/max-block-duration = 2h required for Thanos sidecar.

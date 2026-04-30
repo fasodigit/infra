@@ -1,6 +1,17 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Copyright (C) 2026 FASO DIGITALISATION
-# Tempo configuration — 90-day trace retention with S3 archival.
+# Tempo configuration — 90-day trace retention with sovereign S3 archival.
+#
+# Sovereignty (CLAUDE.md §3): trace data MUST land on a FASO-controlled S3
+# endpoint (MinIO on sovereign infra). Override the defaults below at deploy
+# time. NEVER point this at a foreign-jurisdiction cloud.
+#
+# Required env vars:
+#   S3_ENDPOINT          minio.faso.svc:9000
+#   S3_REGION            bf-ouaga-1 (cosmetic for MinIO)
+#   S3_BUCKET_TRACES     faso-traces-archive
+#   S3_ACCESS_KEY_FILE   /etc/faso-secrets/s3-access-key (Vault Agent rendered)
+#   S3_SECRET_KEY_FILE   /etc/faso-secrets/s3-secret-key
 server:
   http_listen_port: 3200
   log_level: warn
@@ -23,6 +34,13 @@ compactor:
   ring:
     kvstore:
       store: consul
+      consul:
+        # Consul ring KV store for compactor coordination across replicas.
+        # Defaults to in-cluster Consul service in K8s; override via env in dev.
+        host: ${CONSUL_HOST:127.0.0.1:8500}
+        consistent_reads: true
+        watch_rate_limit: 1
+        watch_burst_size: 1
 
 metrics_generator:
   registry:
@@ -39,9 +57,13 @@ storage:
   trace:
     backend: s3
     s3:
-      bucket: faso-traces-archive
-      endpoint: s3.gra.io.cloud.ovh.net
-      region: gra
+      bucket: ${S3_BUCKET_TRACES:-faso-traces-archive}
+      endpoint: ${S3_ENDPOINT:-minio.faso-observability.svc:9000}
+      region: ${S3_REGION:-bf-ouaga-1}
+      insecure: ${S3_INSECURE:-true}
+      access_key: ${S3_ACCESS_KEY:-${file:/etc/faso-secrets/s3-access-key}}
+      secret_key: ${S3_SECRET_KEY:-${file:/etc/faso-secrets/s3-secret-key}}
+      forcepathstyle: true
     block:
       bloom_filter_false_positive: 0.05
     wal:

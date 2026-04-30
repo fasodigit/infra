@@ -103,7 +103,7 @@
       "type": "stat",
       "targets": [
         {
-          "expr": "(sum by (service_name) (rate(otel_span_duration_bucket{le=\"0.5\", service_name=~\"$service\"}[$interval])) + sum by (service_name) (rate(otel_span_duration_bucket{le=\"2.0\", service_name=~\"$service\"}[$interval]))) / 2 / clamp_min(sum by (service_name) (rate(otel_span_duration_count{service_name=~\"$service\"}[$interval])), 1)",
+          "expr": "(sum by (service_name) (rate(otel_span_duration_bucket{le=\"0.5\", service_name=~\"$service\"}[$interval])) + 0.5 * (sum by (service_name) (rate(otel_span_duration_bucket{le=\"2.0\", service_name=~\"$service\"}[$interval])) - sum by (service_name) (rate(otel_span_duration_bucket{le=\"0.5\", service_name=~\"$service\"}[$interval])))) / clamp_min(sum by (service_name) (rate(otel_span_duration_count{service_name=~\"$service\"}[$interval])), 1)",
           "legendFormat": "{{ service_name }}",
           "refId": "A"
         }

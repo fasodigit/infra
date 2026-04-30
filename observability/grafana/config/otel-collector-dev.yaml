@@ -1,0 +1,95 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+        # CORS for browser clients (Angular WebTracerProvider exports traces
+        # via fetch from http://localhost:4801 → cross-origin to :4320 host
+        # mapping). Without this, the browser silently blocks the OTLP POST.
+        cors:
+          allowed_origins:
+            - "http://localhost:4801"
+            - "http://localhost:4800"
+            - "http://127.0.0.1:4801"
+            - "http://127.0.0.1:4800"
+          allowed_headers:
+            - "*"
+          max_age: 7200
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 512
+    spike_limit_mib: 128
+
+  batch:
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+    timeout: 5s
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: development
+        action: upsert
+      - key: service.namespace
+        value: faso
+        action: upsert
+      - key: sovereignty
+        value: faso-digitalisation
+        action: upsert
+
+exporters:
+  otlp/tempo:
+    endpoint: faso-tempo:4317
+    tls:
+      insecure: true
+
+  otlp/jaeger:
+    endpoint: faso-jaeger:4317
+    tls:
+      insecure: true
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: otel
+    send_timestamps: true
+
+  otlphttp/loki:
+    endpoint: http://faso-loki:3100/otlp
+    tls:
+      insecure: true
+
+  debug:
+    verbosity: basic
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+
+service:
+  extensions: [health_check]
+  # Collector self-telemetry: exposes otelcol_* metrics
+  # (otelcol_receiver_accepted_spans_total, otelcol_processor_batch_*,
+  #  otelcol_exporter_sent_spans_total, etc.) for Prometheus to scrape.
+  # This is SEPARATE from the `prometheus` exporter which exposes user
+  # pipeline metrics (otel_*) on :8889.
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo, otlp/jaeger]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlphttp/loki]
