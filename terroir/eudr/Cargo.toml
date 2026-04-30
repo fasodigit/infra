@@ -8,6 +8,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+build = "build.rs"
 
 [lib]
 name = "terroir_eudr"
@@ -33,3 +34,33 @@ sqlx = { workspace = true }
 prost = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+reqwest = { workspace = true }
+redis = { workspace = true }
+geojson = { workspace = true }
+jsonwebtoken = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+async-trait = { workspace = true }
+parking_lot = { workspace = true }
+sha2 = { workspace = true }
+hex = { workspace = true }
+aws-sdk-s3 = { workspace = true }
+aws-config = { workspace = true }
+aws-credential-types = { workspace = true }
+aws-smithy-types = { workspace = true }
+tiff = { workspace = true }
+geo = { workspace = true }
+printpdf = { workspace = true }
+backoff = { workspace = true }
+lru = { workspace = true }
+
+# Redpanda producer — feature-gated so dev without brokers still compiles
+rdkafka = { workspace = true, optional = true }
+
+[features]
+# kafka feature is opt-in; in dev without librdkafka-dev installed, build without it.
+default = []
+kafka = ["dep:rdkafka"]
+
+[build-dependencies]
+tonic-build = { workspace = true }

@@ -1,14 +1,23 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// terroir-eudr gRPC schema (skeleton P0.A — implémenté en P1.3).
-// See INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md §6.
+// terroir-eudr gRPC schema — P1.B implementation.
+// See INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md §6 P1.3.
 
 syntax = "proto3";
 
 package terroir.eudr.v1;
 
 // EudrService — validation parcelles vs Hansen GFC + JRC TMF, génération DDS.
+// gRPC server binds :8731.
 service EudrService {
+  // Health probe.
   rpc Health(HealthRequest) returns (HealthReply);
+
+  // Validate a parcel polygon vs Hansen GFC + JRC TMF.
+  // Returns VALIDATED, REJECTED or ESCALATED outcome.
+  rpc ValidateParcel(ValidateRequest) returns (ValidationResult);
+
+  // Generate a DDS draft from a previously VALIDATED parcel validation.
+  rpc GenerateDds(GenerateDdsRequest) returns (Dds);
 }
 
 message HealthRequest {}
@@ -16,4 +25,50 @@ message HealthRequest {}
 message HealthReply {
   string status = 1;
   string version = 2;
+}
+
+// -- ValidateParcel --
+
+message ValidateRequest {
+  string tenant_slug = 1;        // e.g. "t_pilot"
+  string parcel_id   = 2;        // UUID
+  string polygon_geojson = 3;    // GeoJSON Polygon string (EPSG:4326)
+}
+
+message ValidationResult {
+  string validation_id = 1;
+  string parcel_id     = 2;
+  string status        = 3;      // "VALIDATED" | "REJECTED" | "ESCALATED"
+  string evidence_url  = 4;      // MinIO s3://terroir-evidence-<slug>/...
+  string dds_draft_id  = 5;      // optional, set if VALIDATED
+  double deforestation_overlap_ha = 6;
+  string dataset_version = 7;    // "hansen-gfc:v1.11+jrc-tmf:v1_2024"
+  string polygon_hash    = 8;    // SHA-256 hex of normalized GeoJSON
+  string cache_status    = 9;    // "HIT" | "MISS"
+  string computed_at     = 10;   // RFC-3339
+}
+
+// -- GenerateDds --
+
+message GenerateDdsRequest {
+  string tenant_slug = 1;
+  string validation_id = 2;
+  string operator_eori = 3;      // optional override; defaults from settings
+  string hs_code = 4;            // e.g. "1801" cocoa
+  double quantity = 5;
+  string unit = 6;               // "kg" | "tonne"
+  string country_iso2 = 7;       // "BF"
+  string harvest_period = 8;     // "2025-Q4"
+}
+
+message Dds {
+  string dds_id   = 1;
+  string status   = 2;           // "draft" | "signed" | "submitted" | "accepted" | "rejected"
+  string parcel_id = 3;
+  string operator_eori = 4;
+  string hs_code = 5;
+  string country_iso2 = 6;
+  string evidence_url  = 7;
+  string payload_sha256 = 8;
+  string created_at = 9;         // RFC-3339
 }
