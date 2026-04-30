@@ -12,6 +12,12 @@ path = "src/main.rs"
 # Not enabled by default — opt in with --features numa.
 numa = ["dep:hwloc", "dep:libc"]
 
+# Coraza-on-Pingora WAF (proxy-wasm v0.2.1 host). Default OFF.
+# When enabled and the yaml `gateway.waf.wasm_module` field points at a
+# valid `coraza-waf.wasm`, the gateway prefers WafCorazaFilter over the
+# regex WafFilter.  Otherwise the regex WAF is unchanged.
+coraza-wasm = ["armageddon-forge/coraza-wasm"]
+
 [dependencies]
 # Optional NUMA deps (activated only by the `numa` feature)
 hwloc     = { workspace = true, optional = true }
@@ -53,6 +59,10 @@ serde_yaml = { workspace = true }
 redis = { workspace = true }
 prometheus = { workspace = true }
 async-trait = { workspace = true }
+regex = { workspace = true }
+# OTel ↔ tracing bridge — converts tracing spans into OTLP exports.
+tracing-opentelemetry = { workspace = true }
+opentelemetry = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true }

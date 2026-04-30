@@ -164,6 +164,15 @@ pub struct GatewayConfig {
     #[serde(default)]
     pub rate_limit: Option<RateLimitConfig>,
 
+    /// WAF (Web Application Firewall) configuration.  When `enabled: true`,
+    /// the gateway short-circuits requests matching well-known injection /
+    /// SSRF / scanner patterns with `403 Forbidden` before they reach the
+    /// upstream.  Implemented natively in Rust as a regex-based filter
+    /// (paranoia level configurable).  A future iteration will replace this
+    /// with a proxy-wasm Coraza module loaded from `wasm_module`.
+    #[serde(default)]
+    pub waf: Option<WafConfig>,
+
     /// Shadow mode sampling + sink configuration.
     ///
     /// Relevant when `runtime = "shadow"`.  Controls which fraction of requests
@@ -174,6 +183,57 @@ pub struct GatewayConfig {
 
 fn default_auth_mode() -> AuthMode {
     AuthMode::Jwt
+}
+
+/// WAF configuration — regex-based scanner that runs at `request_filter`.
+///
+/// Rule families covered (paranoia 1):
+/// - SQL injection (UNION SELECT, OR 1=1, sqlmap signatures)
+/// - XSS (script tags, javascript:, on* event handlers)
+/// - Command injection (shell metacharacters in URL parameters)
+/// - SSRF (loopback, private CIDR, AWS/GCP metadata IPs in URL parameters)
+/// - Scanner User-Agents (sqlmap, nikto, dirbuster, acunetix, nessus)
+///
+/// Latency budget: <= 200 µs / request at paranoia 1 (regex pre-compiled,
+/// scoped to URL + selected headers; body inspection is **not** performed
+/// at this level — would require an `on_request_body` hook).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WafConfig {
+    /// Master switch.  When false the filter is not registered and there
+    /// is zero overhead on the hot path.
+    pub enabled: bool,
+
+    /// Higher = stricter.  1 (default) covers OWASP CRS critical rules.
+    /// Reserved for future expansion when more rule sets are bundled.
+    #[serde(default = "default_paranoia_level")]
+    pub paranoia_level: u8,
+
+    /// When true, log the matching rule but allow the request to proceed.
+    /// Use to observe false-positive rate before enforcing.
+    #[serde(default)]
+    pub learning_mode: bool,
+
+    /// HTTP status code returned to the client when a rule matches.
+    /// Defaults to `403`. Set to `429` if you'd rather backpressure
+    /// suspect clients via rate-limit headers.
+    #[serde(default = "default_block_status")]
+    pub block_status: u16,
+
+    /// Path to a proxy-wasm Coraza module.  When set **and** the
+    /// `armageddon-wasm` runtime can host proxy-wasm ABI, this overrides
+    /// the in-process regex engine.  Today this field is informational —
+    /// the regex engine always runs.  The proxy-wasm host is tracked in
+    /// `armageddon/coraza/WIRING-TODO.md`.
+    #[serde(default)]
+    pub wasm_module: Option<String>,
+}
+
+fn default_paranoia_level() -> u8 {
+    1
+}
+
+fn default_block_status() -> u16 {
+    403
 }
 
 /// A listener binding.

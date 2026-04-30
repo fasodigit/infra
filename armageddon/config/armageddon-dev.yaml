@@ -26,9 +26,27 @@ gateway:
       auth_skip: true
       retry_policy: null
 
-    - name: auth
+    # /api/auth/* is the BFF (Next.js) auth surface — login, logout, register,
+    # session, sms-otp. ARMAGEDDON proxies it to default-backend (BFF :4800)
+    # so the browser can stay behind the gateway via bffUrl=:8080.
+    # Order matters: this MUST come before the generic /api/auth/admin route
+    # below (which is for auth-ms admin GraphQL mutations).
+    - name: bff-auth
       match_rule:
         prefix: /api/auth
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: default-backend
+      timeout_ms: 10000
+      auth_skip: true
+      retry_policy: null
+
+    # /api/admin/* is reserved for auth-ms admin endpoints (createUser etc.).
+    - name: auth-ms-admin
+      match_rule:
+        prefix: /api/admin
         path: null
         regex: null
         headers: {}
@@ -75,7 +93,8 @@ gateway:
         unhealthy_threshold: 3
         healthy_threshold: 2
         protocol: Http
-        path: /actuator/health
+        # See poulets-api below for rationale.
+        path: /actuator/health/liveness
       circuit_breaker:
         max_connections: 256
         max_pending_requests: 256
@@ -99,7 +118,9 @@ gateway:
         unhealthy_threshold: 3
         healthy_threshold: 2
         protocol: Http
-        path: /actuator/health
+        # /actuator/health returns 503 when Vault DOWN (dev). Use the
+        # liveness probe which only includes db,redis,ping,livenessState.
+        path: /actuator/health/liveness
       circuit_breaker:
         max_connections: 256
         max_pending_requests: 256
@@ -123,7 +144,8 @@ gateway:
         unhealthy_threshold: 3
         healthy_threshold: 2
         protocol: Http
-        path: /healthz
+        # BFF (Next.js) exposes /api/health, not /healthz.
+        path: /api/health
       circuit_breaker:
         max_connections: 1024
         max_pending_requests: 1024
@@ -187,10 +209,11 @@ gateway:
   #   peer_id: spiffe://faso.gov.bf/ns/default/sa/armageddon
 
   # -- Vague 1: xDS ADS consumer --
-  # Uncomment when an xds-controller is available.
-  # xds_consumer:
-  #   endpoint: http://xds-controller:18000
-  #   node_id: armageddon-default
+  # Connects to local xds-server (:18000) for hot-reload of clusters/routes.
+  # Existing static config still works as fallback when controller is unreachable.
+  xds_consumer:
+    endpoint: http://127.0.0.1:18000
+    node_id: armageddon-default
 
   # -- Vague 1: Load balancer --
   lb:
@@ -221,6 +244,20 @@ gateway:
   # -- Vague 1: WebSocket + gRPC-Web --
   websocket_enabled: true
   grpc_web_enabled: true
+
+  # -- WAF (Web Application Firewall) --
+  # Native Rust regex engine: SQLi, XSS, command injection, SSRF, scanner UA.
+  # Runs FIRST in the filter chain (before router/JWT/OPA) so malicious
+  # traffic never reaches downstream services. ~200 µs overhead at PL=1.
+  # Set enabled: false to skip; remove the block to skip + reduce code paths.
+  # wasm_module is informational — proxy-wasm Coraza host integration is
+  # tracked in armageddon/coraza/WIRING-TODO.md.
+  waf:
+    enabled: true
+    paranoia_level: 1
+    learning_mode: false
+    block_status: 403
+    wasm_module: "armageddon/coraza/coraza-waf.wasm"
 
   # -- Rate limiting (Vague 2) --
   # Remove this section entirely (or set enabled: false) to skip rate limiting.
@@ -316,8 +353,14 @@ observability:
   log_level: info
   log_format: json
   metrics_port: 9090
-  traces_endpoint: null
+  # OTLP/gRPC endpoint of the OTel collector. The dev compose maps the
+  # collector's container 4317 → host 4319 (4317 is taken by Jaeger on the
+  # host). Use loopback explicitly because ARMAGEDDON runs on the host,
+  # not inside the faso-observability network.
+  traces_endpoint: http://127.0.0.1:4319
 
 observe:
-  jaeger_endpoint: null
+  # Direct-to-Jaeger fallback (host port 4317). Not used when an OTel
+  # collector is reachable on traces_endpoint above.
+  jaeger_endpoint: http://127.0.0.1:4317
   service_name: armageddon

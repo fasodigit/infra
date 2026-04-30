@@ -47,6 +47,15 @@ impl StatsRegistry {
         })
     }
 
+    /// Build a `StatsRegistry` from an explicit `Registry` (mostly useful for
+    /// tests and for wiring an isolated, non-global registry into the gateway).
+    pub fn from_registry(registry: Registry) -> Arc<Self> {
+        Arc::new(Self {
+            registry,
+            reset_offsets: RwLock::new(HashMap::new()),
+        })
+    }
+
     /// Produce a JSON snapshot of all current metric families.
     pub fn snapshot_json(&self) -> Value {
         let families = self.gather();
@@ -101,6 +110,20 @@ impl StatsRegistry {
             return String::new();
         }
         String::from_utf8_lossy(&buf).into_owned()
+    }
+
+    /// Encode the registry to Prometheus text exposition format, surfacing
+    /// any encoder error so the caller can map it to a 500.
+    ///
+    /// Used by `/admin/metrics`, the canonical scrape endpoint.
+    pub fn encode_prometheus(&self) -> Result<String, prometheus::Error> {
+        let families = self.gather();
+        let encoder = TextEncoder::new();
+        let mut buf = Vec::new();
+        encoder.encode(&families, &mut buf)?;
+        String::from_utf8(buf).map_err(|e| {
+            prometheus::Error::Msg(format!("non-utf8 prometheus output: {e}"))
+        })
     }
 
     /// Reset all counter soft-offsets to the current values so subsequent

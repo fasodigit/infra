@@ -161,9 +161,21 @@ pub struct AdminState {
 impl AdminState {
     /// Build initial state from a gateway config path.
     pub fn new(config: GatewayConfig, config_path: String) -> Arc<Self> {
+        Self::with_stats(config, config_path, StatsRegistry::new())
+    }
+
+    /// Build initial state with a caller-supplied [`StatsRegistry`].
+    ///
+    /// Used by `armageddon` to share the same `prometheus::Registry`
+    /// between the gateway data-plane and the admin server, and by tests
+    /// that need to inject a registry containing known metrics.
+    pub fn with_stats(
+        config: GatewayConfig,
+        config_path: String,
+        stats: Arc<StatsRegistry>,
+    ) -> Arc<Self> {
         let cluster_breakers =
             ClusterBreakerRegistry::new(config.clusters.clone());
-        let stats = StatsRegistry::new();
         Arc::new(Self {
             config_store: Arc::new(ArcSwap::from_pointee(config)),
             config_path: Arc::new(parking_lot::Mutex::new(config_path)),

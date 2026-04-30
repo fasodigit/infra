@@ -181,6 +181,16 @@ impl ProxyHttp for PingoraGateway {
     /// Resolve the upstream peer from the registry, preferring
     /// `ctx.cluster` (set by the router filter in M1 #95) over the URI
     /// path heuristic.
+    #[tracing::instrument(
+        name = "armageddon.upstream_peer",
+        skip_all,
+        fields(
+            http.method = %session.req_header().method,
+            http.path   = %session.req_header().uri.path(),
+            cluster     = tracing::field::Empty,
+            upstream    = tracing::field::Empty,
+        ),
+    )]
     async fn upstream_peer(
         &self,
         session: &mut Session,
@@ -215,6 +225,11 @@ impl ProxyHttp for PingoraGateway {
         let addr = format!("{}:{}", endpoint.address, endpoint.port);
         ctx.upstream_addr = addr.clone();
 
+        // Record cluster + upstream as span attributes (visible in
+        // Jaeger/Tempo via the OTel bridge in armageddon main).
+        tracing::Span::current().record("cluster", tracing::field::display(&cluster));
+        tracing::Span::current().record("upstream", tracing::field::display(&addr));
+
         tracing::debug!(
             cluster = %cluster,
             upstream = %addr,
@@ -239,6 +254,20 @@ impl ProxyHttp for PingoraGateway {
     /// Multi-value headers are joined with `", "` (RFC 7230 § 3.2.2).
     /// Sensitive headers (`authorization`, `cookie`, `x-api-key`) are stored
     /// as-is (redaction is the caller's responsibility when logging).
+    #[tracing::instrument(
+        name = "armageddon.request",
+        skip_all,
+        fields(
+            http.method = %session.req_header().method,
+            http.path   = %session.req_header().uri.path(),
+            http.host   = session
+                .req_header()
+                .headers
+                .get("host")
+                .and_then(|h| h.to_str().ok())
+                .unwrap_or(""),
+        ),
+    )]
     async fn request_filter(
         &self,
         session: &mut Session,
@@ -355,6 +384,14 @@ impl ProxyHttp for PingoraGateway {
     /// outcome is `Compress(enc)` — mutate the response headers and stash a
     /// `CompressionSession` in `ctx` so that `response_body_filter` can encode
     /// each chunk as it arrives.
+    #[tracing::instrument(
+        name = "armageddon.response",
+        skip_all,
+        fields(
+            http.status = %upstream_response.status,
+            cluster     = %ctx.cluster,
+        ),
+    )]
     async fn response_filter(
         &self,
         session: &mut Session,
@@ -473,6 +510,54 @@ impl ProxyHttp for PingoraGateway {
             upstream = %ctx.upstream_addr,
             "pingora response forwarded"
         );
+        Ok(())
+    }
+
+    /// Run the filter chain's `on_request_body` hooks. Each filter sees the
+    /// chunk + `end_of_stream` flag and may deny mid-stream (returning a
+    /// pingora `Error` with `HTTPStatus(code)` so the client receives the
+    /// chosen status — typically 403 from the WAF).
+    async fn request_body_filter(
+        &self,
+        session: &mut Session,
+        body: &mut Option<Bytes>,
+        end_of_stream: bool,
+        ctx: &mut Self::CTX,
+    ) -> Result<()>
+    where
+        Self::CTX: Send + Sync,
+    {
+        for filter in &self.config.filters {
+            // Pass body as &Option (read-only) — body filters that need
+            // to mutate (e.g. drop on deny) signal via the Decision.
+            let body_ref: &Option<Bytes> = body;
+            match filter.on_request_body(session, body_ref, end_of_stream, ctx).await {
+                Decision::Continue => continue,
+                Decision::ShortCircuit(_) => {
+                    // Short-circuit means terminate — drop the body and
+                    // return an explanatory error. Pingora won't proceed
+                    // to the upstream send.
+                    *body = None;
+                    tracing::debug!(
+                        filter = filter.name(),
+                        "body filter short-circuit — stopping chain"
+                    );
+                    return Err(Error::new_str("body filter short-circuited"));
+                }
+                Decision::Deny(code) => {
+                    tracing::debug!(filter = filter.name(), code, "body filter deny");
+                    // Drop the body so nothing reaches the upstream.
+                    *body = None;
+                    // Returning HTTPStatus(code) makes pingora emit that
+                    // status to the downstream client and abort the
+                    // upstream forward.
+                    return Err(Error::explain(
+                        ErrorType::HTTPStatus(code),
+                        format!("filter '{}' denied request body", filter.name()),
+                    ));
+                }
+            }
+        }
         Ok(())
     }
 

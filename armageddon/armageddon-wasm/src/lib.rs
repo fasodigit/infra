@@ -21,6 +21,17 @@ pub mod host;
 pub mod plugin;
 pub mod runtime;
 
+/// Proxy-wasm ABI v0.2.1 host runtime.
+///
+/// Used to load the Coraza WAF guest (`coraza-waf.wasm`).  Compiled only
+/// when the `coraza-wasm` Cargo feature is enabled — in default builds
+/// this module is absent and zero proxy-wasm v0.2.1 code is linked in.
+///
+/// See `armageddon/coraza/PROXY-WASM-HOST-DESIGN.md` for the architectural
+/// rationale and the host-function bring-up roadmap.
+#[cfg(feature = "coraza-wasm")]
+pub mod proxy_wasm_v0_2_1;
+
 use armageddon_common::context::RequestContext;
 use armageddon_common::decision::{Decision, Severity};
 use armageddon_common::engine::SecurityEngine;

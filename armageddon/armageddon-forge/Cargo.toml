@@ -92,6 +92,11 @@ default = ["pingora"]
 rdkafka-backend = ["dep:rdkafka"]
 io_uring = ["dep:tokio-uring"]
 pingora = ["dep:pingora", "dep:pingora-core", "dep:pingora-proxy", "dep:armageddon-xds"]
+# Coraza-on-Pingora WAF — opt-in. Loads the proxy-wasm v0.2.1 host
+# (`armageddon-wasm/coraza-wasm`) and compiles `filters::waf_coraza`.
+# Default OFF: the regex WAF (`filters::waf`) remains the only WAF in
+# the binary unless this feature is enabled.
+coraza-wasm = ["armageddon-wasm/coraza-wasm"]
 # Legacy hyper-based proxy path.  Kept for rollback and migration validation.
 # Will be removed in v3.0.  All core hyper dependencies are unconditional so
 # this feature is currently a documentation-only marker; it does NOT remove

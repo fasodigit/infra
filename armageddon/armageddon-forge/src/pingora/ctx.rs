@@ -166,6 +166,19 @@ pub struct RequestCtx {
     /// When traffic_split decides a shadow target, its cluster name is stored
     /// here so that `upstream_peer` can fire-and-forget the shadow request.
     pub traffic_split_shadow: Option<String>,
+
+    // ── Body inspection (WAF on_request_body hook) ──────────────────────────
+    //
+    // Buffer accumulating request body chunks, capped at 256 KiB (configurable
+    // via `WafFilterConfig::max_body_inspect_bytes`). Filters that implement
+    // `on_request_body` read this on `end_of_stream` to evaluate the full body.
+    // Reset by `new_ctx`; never persists across requests.
+    /// Accumulated request body bytes (up to the cap). May be empty for
+    /// GET / HEAD or non-inspectable Content-Type.
+    pub body_buffer: Vec<u8>,
+    /// Set to `true` when the body exceeded the inspection cap; the WAF
+    /// inspects what it has and emits a metric so operators can tune the cap.
+    pub body_buffer_overflow: bool,
 }
 
 // ── M4 auxiliary types ─────────────────────────────────────────────────────
@@ -235,6 +248,8 @@ impl Default for RequestCtx {
             grpc_web_mode: None,
             ws_upgrade: false,
             traffic_split_shadow: None,
+            body_buffer: Vec::new(),
+            body_buffer_overflow: false,
         }
     }
 }
@@ -285,6 +300,8 @@ impl Clone for RequestCtx {
             grpc_web_mode: self.grpc_web_mode,
             ws_upgrade: self.ws_upgrade,
             traffic_split_shadow: self.traffic_split_shadow.clone(),
+            body_buffer: self.body_buffer.clone(),
+            body_buffer_overflow: self.body_buffer_overflow,
         }
     }
 }

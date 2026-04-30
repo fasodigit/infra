@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+
+[package]
+name = "armageddon-gateway-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Stream D1 — ARMAGEDDON admin-route filters: Keto authz, security headers, OTP rate-limit, settings cache, Redpanda listener"
+
+[dependencies]
+# Internal
+armageddon-common    = { workspace = true }
+armageddon-nexus     = { workspace = true }
+armageddon-forge     = { workspace = true }
+armageddon-ratelimit = { workspace = true }
+
+# Async runtime
+tokio = { workspace = true }
+async-trait = { workspace = true }
+
+# Serialization
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+
+# Logging / tracing
+tracing = { workspace = true }
+
+# HTTP
+http = { workspace = true }
+bytes = { workspace = true }
+
+# JWT (extract sub without full re-validation — the JWT filter already validates)
+jsonwebtoken = { workspace = true }
+
+# Kafka / Redpanda consumer (optional — gate behind "rdkafka-consumer" feature
+# so the crate can be checked without librdkafka installed on the CI host)
+rdkafka = { workspace = true, optional = true }
+
+# Prometheus
+prometheus = { workspace = true }
+
+# Error handling
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+
+# Pingora (gateway filter trait + HTTP types)
+pingora-proxy = { workspace = true }
+pingora-core  = { workspace = true }
+pingora       = { workspace = true }
+
+# UUID for trace IDs
+uuid = { workspace = true }
+
+# Base64 (used in WS filter DEV-mode JWT decode)
+base64 = { workspace = true }
+
+# HTTP client for Keto authz calls
+reqwest = { workspace = true }
+
+# Arc-swap for hot-reload
+arc-swap = { workspace = true }
+
+[features]
+# Enable the Redpanda settings-change consumer.  Requires librdkafka on the
+# build host.  Disabled by default so `cargo check` works without librdkafka.
+rdkafka-consumer = ["dep:rdkafka"]
+
+[dev-dependencies]
+tokio     = { workspace = true, features = ["full", "test-util"] }

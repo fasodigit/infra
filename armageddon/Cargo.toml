@@ -24,6 +24,7 @@ members = [
     "armageddon-bench",
     "armageddon-ebpf",
     "armageddon-ratelimit",
+    "armageddon-gateway-admin",
 ]
 exclude = [
     "armageddon-ebpf-programs",
@@ -57,6 +58,7 @@ armageddon-admin-api = { path = "armageddon-admin-api" }
 armageddon-lb = { path = "armageddon-lb" }
 armageddon-retry = { path = "armageddon-retry" }
 armageddon-ratelimit = { path = "armageddon-ratelimit" }
+armageddon-gateway-admin = { path = "armageddon-gateway-admin" }
 armageddon-ebpf-programs = { path = "armageddon-ebpf-programs" }
 
 # Vague 1 external deps
@@ -125,6 +127,9 @@ ring = "0.17"
 
 # Redis-compatible client (for KAYA)
 redis = { version = "0.27", features = ["tokio-comp", "aio"] }
+
+# HTTP client (Keto authz checks from gateway-admin)
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # HMAC-SHA256 for webhook signature validation
 hmac = "0.12"

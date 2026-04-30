@@ -21,3 +21,15 @@ tempfile = { workspace = true }
 
 [dev-dependencies]
 wat = { workspace = true }
+
+[features]
+# Default build: existing v0.2.0 plugin runtime only.  No Coraza host
+# code is monomorphised into the binary.
+default = []
+
+# Opt-in proxy-wasm v0.2.1 host runtime — required to load the Coraza
+# WAF (`coraza-waf.wasm`).  Adds the `proxy_wasm_v0_2_1` module and
+# transitively expands the wasmtime feature set used.
+#
+# Build with: `cargo build --features coraza-wasm`
+coraza-wasm = []
