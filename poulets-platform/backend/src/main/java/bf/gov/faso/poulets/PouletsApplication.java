@@ -2,6 +2,8 @@ package bf.gov.faso.poulets;
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
@@ -14,6 +16,8 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Cache: KAYA (Redis-compatible) on port 6380
  */
 @SpringBootApplication
+@EntityScan(basePackages = {"bf.gov.faso.poulets", "bf.gov.faso.audit"})
+@EnableJpaRepositories(basePackages = {"bf.gov.faso.poulets", "bf.gov.faso.audit"})
 @EnableScheduling
 public class PouletsApplication {
 

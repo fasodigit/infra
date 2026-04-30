@@ -44,10 +44,11 @@ spring:
         default_schema: impression
 
   # Local KAYA (sovereign in-memory store, Redis-protocol)
+  # Port 6380 per port-policy.yaml KAYA family range (6380-6399).
   data:
     redis:
-      host: localhost
-      port: 6379
+      host: ${KAYA_HOST:localhost}
+      port: ${KAYA_PORT:6380}
       password: ${KAYA_PASSWORD:}
 
   # Local Kafka/Redpanda (compression: none for KafkaJS E2E compat)
