@@ -1,5 +1,6 @@
-{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
 {{- if .Values.networkPolicy.enabled }}
+# Default deny all ingress/egress
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -15,6 +16,7 @@ spec:
     - Ingress
     - Egress
 ---
+# Allow ingress from ARMAGEDDON gateway on HTTP (8901) + gRPC (8702)
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -30,12 +32,33 @@ spec:
     - Ingress
   ingress:
     - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: armageddon
         - namespaceSelector:
             matchLabels:
               faso.gov.bf/tier: gateway
       ports:
         - protocol: TCP
-          port: 8080
+          port: 8901
+        - protocol: TCP
+          port: 8702
+---
+# Allow Prometheus scrape on actuator port 9001
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "poulets-api.fullname" . }}-allow-metrics
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poulets-api.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "poulets-api.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
     - from:
         - namespaceSelector:
             matchLabels:
@@ -45,8 +68,9 @@ spec:
               app.kubernetes.io/name: prometheus
       ports:
         - protocol: TCP
-          port: 8080
+          port: 9001
 ---
+# Allow egress to auth-ms, postgres, kaya, redpanda, vault, consul, DNS
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -61,15 +85,25 @@ spec:
   policyTypes:
     - Egress
   egress:
+    # auth-ms (HTTP + gRPC)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: auth-ms
+      ports:
+        - protocol: TCP
+          port: 8801
+        - protocol: TCP
+          port: 8702
+    # PostgreSQL
     - to:
         - namespaceSelector:
             matchLabels:
-              kubernetes.io/metadata.name: ory-stack
+              kubernetes.io/metadata.name: postgres
       ports:
         - protocol: TCP
-          port: 4434
-        - protocol: TCP
-          port: 4433
+          port: 5432
+    # KAYA (RESP3)
     - to:
         - namespaceSelector:
             matchLabels:
@@ -77,6 +111,31 @@ spec:
       ports:
         - protocol: TCP
           port: 6380
+    # Redpanda (Kafka protocol)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: redpanda
+      ports:
+        - protocol: TCP
+          port: 9092
+    # Vault
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: vault
+      ports:
+        - protocol: TCP
+          port: 8200
+    # Consul
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: consul
+      ports:
+        - protocol: TCP
+          port: 8500
+    # DNS (CoreDNS)
     - ports:
         - protocol: UDP
           port: 53

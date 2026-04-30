@@ -1,3 +1,7 @@
+// OTel browser instrumentation — MUST run before Angular bootstrap so the
+// WebTracerProvider is the global tracer when components emit spans.
+import './instrumentation';
+
 import { bootstrapApplication } from '@angular/platform-browser';
 import { provideRouter, withComponentInputBinding } from '@angular/router';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
@@ -12,6 +16,7 @@ import { provideTranslateHttpLoader } from '@ngx-translate/http-loader';
 import { AppComponent } from './app/app.component';
 import { routes } from './app/app.routes';
 import { authInterceptor } from './app/core/interceptors/auth.interceptor';
+import { stepUpInterceptor } from './app/core/interceptors/step-up.interceptor';
 import { environment } from './environments/environment';
 import { PROJECT_CONFIG } from './app/core/config/project-config.token';
 import { POULETS_PROJECT_CONFIG } from './app/core/config/poulets-project.config';
@@ -23,7 +28,7 @@ bootstrapApplication(AppComponent, {
     provideAnimationsAsync(),
     provideHttpClient(
       withFetch(),
-      withInterceptors([authInterceptor]),
+      withInterceptors([authInterceptor, stepUpInterceptor]),
     ),
     // i18n: ngx-translate
     provideTranslateService({

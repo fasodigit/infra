@@ -630,5 +630,220 @@
     "send": "Send SMS code",
     "sent": "Code sent — check your SMS.",
     "error": "Failed to send SMS."
+  },
+  "admin": {
+    "nav": {
+      "dashboard": "Dashboard",
+      "users": "Users",
+      "sessions": "Sessions",
+      "devices": "Trusted devices",
+      "mfa": "MFA · Enrollment",
+      "audit": "Audit log",
+      "settings": "Settings",
+      "breakglass": "Break-Glass",
+      "security": "Security",
+      "governance": "Governance",
+      "me": "My account"
+    },
+    "kpi": {
+      "activeUsers": "Active users (7d)",
+      "otpSent": "OTPs sent (24h)",
+      "sessions": "Active sessions",
+      "alerts": "Unacknowledged alerts"
+    },
+    "common": {
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "save": "Save",
+      "next": "Next",
+      "back": "Back",
+      "history": "History",
+      "revert": "Restore",
+      "apply": "Apply",
+      "export": "Export",
+      "viewAll": "View all",
+      "refresh": "Refresh",
+      "close": "Close",
+      "reset": "Reset",
+      "filter": "Filter",
+      "search": "Search",
+      "delete": "Delete",
+      "edit": "Edit"
+    },
+    "dashboard": {
+      "title": "Dashboard",
+      "subtitle": "Consolidated view · security, identity, and compliance of the sovereign platform.",
+      "health": "Service health",
+      "activity": "7-day activity",
+      "recent": "Recent audit",
+      "lastSync": "Last sync",
+      "breakGlassActive": "Break-Glass active"
+    },
+    "users": {
+      "title": "Users",
+      "subtitle": "Administrator accounts · 3 levels · MFA mandatory for SUPER-ADMIN/ADMIN.",
+      "invite": "Invite an administrator",
+      "search": "Search (name, e-mail, department)…",
+      "manageRoles": "Manage roles",
+      "filters": "Filters"
+    },
+    "userDetail": {
+      "rolesTitle": "Roles & permissions",
+      "sessionsActive": "Active sessions",
+      "auditHistory": "Audit history",
+      "trustedDevices": "Trusted devices",
+      "profileReadonly": "Profile (read-only, sourced from Kratos)",
+      "resetMfa": "Reset MFA",
+      "forceLogout": "Force logout",
+      "suspend": "Suspend"
+    },
+    "sessions": {
+      "title": "Active sessions",
+      "subtitle": "Real-time view via KAYA · revocation propagated to ARMAGEDDON via Redpanda.",
+      "revokeAll": "Revoke all",
+      "logout": "Logout"
+    },
+    "devices": {
+      "title": "Trusted devices",
+      "subtitle": "UA + IP/24 + Accept-Language fingerprints · 30-day TTL in KAYA.",
+      "fingerprint": "Fingerprint",
+      "trustedUntil": "Trusted until"
+    },
+    "mfa": {
+      "title": "MFA · Enrollment",
+      "subtitle": "PassKey, TOTP and recovery codes. Policy: SUPER-ADMIN + ADMIN required.",
+      "registeredKeys": "Registered keys",
+      "addPasskey": "Add a PassKey",
+      "scanWithApp": "Scan with a TOTP app",
+      "step1": "Step 1 · Scan with a TOTP app",
+      "step2": "Step 2 · Confirm 6-digit code",
+      "enableTotp": "Enable TOTP",
+      "backupCodesWarning": "Keep these codes safe. Each is single-use. Never share them.",
+      "downloadTxt": "Download .txt",
+      "copyAll": "Copy all",
+      "print": "Print",
+      "regenerate": "Regenerate (invalidate old)"
+    },
+    "audit": {
+      "title": "Audit log",
+      "subtitle": "Append-only · 7-year retention · Jaeger links per trace.",
+      "filters": "Filters",
+      "actor": "Actor",
+      "actionTypes": "Action types",
+      "criticalOnly": "Critical only",
+      "diff": "Diff",
+      "dateRange": "Date range",
+      "sortRecent": "Sort · most recent"
+    },
+    "settings": {
+      "title": "Security settings",
+      "subtitle": "6 categories · DB-versioned · Redpanda-published · rollback available. SUPER-ADMIN edits, ADMIN reads.",
+      "readOnly": "Read-only · ADMIN",
+      "categories": {
+        "otp": "OTP Policy",
+        "device_trust": "Device Trust",
+        "session": "Sessions",
+        "mfa": "MFA & Recovery",
+        "grant": "Grants & Break-Glass",
+        "audit": "Audit & Retention"
+      }
+    },
+    "breakglass": {
+      "title": "Break-Glass",
+      "subtitle": "Temporary ADMIN → SUPER-ADMIN elevation for 4h. All SUPER-ADMINs are notified.",
+      "warningTitle": "Sensitive action · immutable PostgreSQL WAL audit",
+      "warningBody": "Activation publishes admin.break_glass.activated and notifies all SUPER-ADMINs. Auto-revoke at T+4h.",
+      "request": "Elevation request",
+      "targetCapability": "Target capability",
+      "justification": "Justification · ≥ 80 chars",
+      "otpConfirm": "OTP confirmation (8 digits)",
+      "activate": "Activate Break-Glass · 4h",
+      "recentActivations": "Recent activations",
+      "activePolicy": "Active policy"
+    },
+    "grant": {
+      "title": "Grant admin role",
+      "step1": "Selection",
+      "step2": "Justification",
+      "step3": "OTP",
+      "step4": "Summary",
+      "selectionTarget": "Target user",
+      "selectionRole": "Target role · filtered by your level",
+      "dualControlWarn": "This role requires dual-control approval from another SUPER-ADMIN.",
+      "summaryConfirm": "Verify then confirm. Irreversible (rollback via explicit revoke).",
+      "submitGrant": "Confirm grant",
+      "requestRecorded": "Request recorded",
+      "awaitingApproval": "Awaiting approval from another SUPER-ADMIN.",
+      "steps": {
+        "capabilities": "Capabilities"
+      },
+      "capabilities": {
+        "title": "Granted capabilities",
+        "subtitle": "Distinct subset per account. No two same-role accounts share the exact same set.",
+        "checkUniqueness": "Check uniqueness",
+        "duplicateWarn": "Set identical to {{email}} — add or remove ≥ 1 capability, or tick \"Force\".",
+        "force": "Force (audit override)",
+        "domains": {
+          "users": "Users",
+          "sessions": "Sessions",
+          "devices": "Devices",
+          "mfa": "MFA",
+          "audit": "Audit",
+          "settings": "Settings",
+          "break_glass": "Break-Glass",
+          "recovery": "Recovery",
+          "roles": "Roles"
+        }
+      }
+    },
+    "me": {
+      "security": {
+        "title": "My account security",
+        "subtitle": "Manage your authentication factors. No third-party intervention required for SUPER-ADMIN.",
+        "password": "Password",
+        "passkey": "PassKey",
+        "totp": "TOTP",
+        "recoveryCodes": "Recovery codes",
+        "activeSessions": "Active sessions",
+        "currentPassword": "Current password",
+        "newPassword": "New password (≥ 12 characters)",
+        "confirmPassword": "Confirm",
+        "changePassword": "Change password",
+        "addPasskey": "Add PassKey",
+        "enableTotp": "Enable TOTP",
+        "disableTotp": "Disable TOTP",
+        "regenerateCodes": "Regenerate (invalidate old)",
+        "remaining": "{{used}} / {{total}} remaining",
+        "viewAllSessions": "View all sessions",
+        "forceReenroll": "You must re-enroll an MFA factor before continuing.",
+        "passwordChanged": "Password updated."
+      }
+    },
+    "userDetailExt": {
+      "capabilities": "Effective capabilities",
+      "modifyCapabilities": "Modify capabilities"
+    },
+    "recovery": {
+      "initiateTitle": "Recover account access",
+      "initiateBody": "Enter your e-mail. If it matches an account, you'll receive a magic recovery link valid for 30 minutes.",
+      "tokenTitle": "OTP confirmation",
+      "tokenBody": "Enter the 8-digit code received by e-mail. Single-use.",
+      "adminTokenTitle": "Admin-initiated recovery",
+      "adminTokenBody": "Enter your e-mail and the 8-digit code you received.",
+      "send": "Send link",
+      "verify": "Verify",
+      "success": "Access restored. You must now re-enroll an MFA factor.",
+      "forceReenroll": "MFA re-enrollment required",
+      "lostAccess": "I lost access to my account"
+    },
+    "onboard": {
+      "title": "Activate your administrator account",
+      "subtitle": "For security reasons, the link you just opened must be confirmed by an 8-digit code displayed on this same browser tab.",
+      "verifyingLink": "Verifying magic link…",
+      "otpDisplayed": "Your verification code (enter it below)",
+      "expiresIn": "Expires in",
+      "enterOtp": "Enter the 8-digit code displayed above",
+      "forceMfa": "Link verified. Now configure your MFA factors (PassKey, TOTP, recovery codes)."
+    }
   }
 }

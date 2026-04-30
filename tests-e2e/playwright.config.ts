@@ -1,6 +1,13 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const BASE_URL = process.env.BASE_URL ?? 'http://localhost:4801';
+// Default baseURL = ARMAGEDDON sovereign gateway (8080).
+// All E2E traffic must enter through the gateway: this validates routing,
+// JWT/JWKS cache, OPA ext_authz, Coraza WAF, rate limiting, and OTel
+// trace propagation as a cohesive pipeline.
+//
+// Override with BASE_URL=http://localhost:4801 to bypass the gateway and
+// hit the Angular dev server directly (smoke-only, NOT a sovereign run).
+const BASE_URL = process.env.BASE_URL ?? 'http://localhost:8080';
 const WORKERS = Number(process.env.PW_WORKERS ?? 4);
 const CI = !!process.env.CI;
 

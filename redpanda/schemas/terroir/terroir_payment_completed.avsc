@@ -1,0 +1,64 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "PaymentCompleted",
+  "doc": "Paiement d'un producteur confirmé (Mobile Money, virement). Rétention 1 an pour réconciliation comptable. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug de la coopérative-tenant."
+    },
+    {
+      "name": "paymentId",
+      "type": "string",
+      "doc": "UUID interne TERROIR du paiement."
+    },
+    {
+      "name": "memberId",
+      "type": "string",
+      "doc": "UUID du producteur bénéficiaire."
+    },
+    {
+      "name": "harvestLotId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "UUID du lot de récolte associé. null si paiement d'avance ou prime."
+    },
+    {
+      "name": "amountFcfa",
+      "type": "long",
+      "doc": "Montant en FCFA (francs CFA — pas de décimales)."
+    },
+    {
+      "name": "paymentChannel",
+      "type": {
+        "type": "enum",
+        "name": "PaymentChannel",
+        "symbols": ["ORANGE_MONEY", "MOOV_MONEY", "BANK_TRANSFER", "CASH", "WAVE"]
+      },
+      "doc": "Canal de paiement utilisé."
+    },
+    {
+      "name": "externalTransactionId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Référence transaction du prestataire de paiement (Orange Money TX ref, etc.)."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC de la confirmation paiement (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars)."
+    }
+  ]
+}

@@ -1,7 +1,10 @@
 spring:
   graphql:
     graphiql:
-      enabled: true
+      # SEC-2026-04-27: forced to false in dev. GraphiQL is an unauthenticated
+      # introspection UI (OWASP A05). Keep disabled at every layer; flip via
+      # GRAPHIQL_ENABLED env var only on a sandbox host with no real data.
+      enabled: false
 
   jpa:
     properties:
@@ -14,7 +17,7 @@ spring:
     clean-disabled: true
 
   datasource:
-    password: ${DB_PASSWORD:poulets_dev}
+    password: ${DB_PASSWORD}
 
 auth:
   jwks-uri: http://localhost:8801/.well-known/jwks.json

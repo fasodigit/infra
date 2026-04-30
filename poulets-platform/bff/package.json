@@ -10,11 +10,18 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@opentelemetry/auto-instrumentations-node": "^0.55.0",
+    "@opentelemetry/exporter-trace-otlp-http": "^0.57.0",
+    "@opentelemetry/resources": "^1.30.0",
+    "@opentelemetry/sdk-node": "^0.57.0",
+    "@opentelemetry/semantic-conventions": "^1.30.0",
+    "@ory/client": "^1.15.0",
+    "ioredis": "^5.4.0",
+    "jose": "^6.2.3",
     "next": "^16.0.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "@ory/client": "^1.15.0",
-    "ioredis": "^5.4.0"
+    "zod": "^4.4.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

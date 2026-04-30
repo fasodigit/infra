@@ -18,22 +18,22 @@ import { BreederProfile } from '@shared/models/reputation.models';
   imports: [CommonModule, RouterLink, MatIconModule, MatButtonModule],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="wrap">
+    <div class="wrap" data-testid="map-page">
       <header class="head">
         <div>
           <h1>Carte des éleveurs</h1>
-          <p>{{ count() }} éleveurs {{ count() > 1 ? 'vérifiés' : 'vérifié' }} au Burkina Faso</p>
+          <p data-testid="map-detail-field-count">{{ count() }} éleveurs {{ count() > 1 ? 'vérifiés' : 'vérifié' }} au Burkina Faso</p>
         </div>
-        <a mat-stroked-button routerLink="/marketplace/annonces">
+        <a mat-stroked-button routerLink="/marketplace/annonces" data-testid="map-action-list-view">
           <mat-icon>list</mat-icon>
           Voir la liste
         </a>
       </header>
 
-      <div class="map-shell">
-        <div #mapHost id="breeders-map" class="map"></div>
+      <div class="map-shell" data-testid="map-container">
+        <div #mapHost id="breeders-map" class="map" data-testid="map-canvas"></div>
         @if (!ready()) {
-          <div class="overlay">
+          <div class="overlay" data-testid="map-loading">
             <mat-icon>map</mat-icon>
             <p>@if (ssr) { Carte indisponible côté serveur } @else { Chargement de la carte… }</p>
           </div>

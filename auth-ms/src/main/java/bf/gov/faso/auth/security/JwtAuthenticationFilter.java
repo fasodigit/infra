@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
 package bf.gov.faso.auth.security;
 
 import bf.gov.faso.auth.service.JtiBlacklistService;
@@ -9,6 +10,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -51,10 +53,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
 
+        // Propagate W3C traceparent to MDC for Micrometer / OpenTelemetry &
+        // structured logging — admin endpoints rely on this for AdminAuditService
+        // to record the correlation id.
+        String traceparent = request.getHeader("traceparent");
+        if (traceparent != null && !traceparent.isBlank()) {
+            // traceparent format: 00-<traceId(32 hex)>-<spanId(16 hex)>-<flags>
+            String[] parts = traceparent.split("-");
+            if (parts.length >= 3) {
+                MDC.put("traceId", parts[1]);
+                MDC.put("spanId", parts[2]);
+            }
+        }
+
         String authHeader = request.getHeader(AUTHORIZATION_HEADER);
 
         if (authHeader == null || !authHeader.startsWith(BEARER_PREFIX)) {
-            filterChain.doFilter(request, response);
+            try {
+                filterChain.doFilter(request, response);
+            } finally {
+                MDC.remove("traceId");
+                MDC.remove("spanId");
+            }
             return;
         }
 
@@ -100,12 +120,23 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             SecurityContextHolder.getContext().setAuthentication(authToken);
 
+            // Expose user identifiers in MDC for audit correlation.
+            MDC.put("userId", claims.getSubject());
+            if (!roles.isEmpty()) MDC.put("role", String.join(",", roles));
+
             log.debug("Authenticated user sub={} with roles={}", claims.getSubject(), roles);
         } catch (Exception e) {
             log.error("JWT authentication error: {}", e.getMessage());
         }
 
-        filterChain.doFilter(request, response);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            MDC.remove("traceId");
+            MDC.remove("spanId");
+            MDC.remove("userId");
+            MDC.remove("role");
+        }
     }
 
     @SuppressWarnings("unchecked")

@@ -1,3 +1,6 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# OpenTelemetry Collector — tail-based sampling, spanmetrics, multi-pipeline fan-out.
 receivers:
   otlp:
     protocols:
@@ -5,35 +8,107 @@ receivers:
         endpoint: 0.0.0.0:4317
       http:
         endpoint: 0.0.0.0:4318
+        # CORS for browser clients (Angular WebTracerProvider exports traces
+        # via fetch). In production, restrict to the actual frontend origin.
+        cors:
+          allowed_origins:
+            - "http://localhost:4801"
+            - "http://localhost:4800"
+            - "https://*.faso.gov.bf"
+          allowed_headers:
+            - "*"
+          max_age: 7200
 
 processors:
-  batch:
-    timeout: 5s
-    send_batch_size: 512
+  # Memory limiter to prevent OOM
   memory_limiter:
+    check_interval: 1s
     limit_mib: 512
     spike_limit_mib: 128
-    check_interval: 5s
+
+  # Tail-based sampling
+  tail_sampling:
+    decision_wait: 10s
+    num_traces: 100000
+    expected_new_traces_per_sec: 1000
+    policies:
+      - name: errors-always
+        type: status_code
+        status_code: {status_codes: [ERROR]}
+      - name: slow-traces
+        type: latency
+        latency: {threshold_ms: 2000}
+      - name: force-sample
+        type: string_attribute
+        string_attribute: {key: "sampling.force", values: ["true"]}
+      - name: health-check-drop
+        type: string_attribute
+        string_attribute: {key: "http.target", values: ["/healthz", "/readyz", "/actuator/health"], invert_match: true}
+      - name: probabilistic-sample
+        type: probabilistic
+        probabilistic: {sampling_percentage: 10}
+
+  # Batch for efficiency
+  batch:
+    send_batch_size: 1024
+    send_batch_max_size: 2048
+    timeout: 5s
+
+  # Resource detection
   resource:
     attributes:
-      - action: upsert
-        key: sovereignty
+      - key: deployment.environment
+        value: "${env:FASO_ENV}"
+        action: upsert
+      - key: service.namespace
+        value: "faso"
+        action: upsert
+      - key: sovereignty
         value: "faso-digitalisation"
+        action: upsert
+
+  # Span metrics — generate RED metrics from traces
+  spanmetrics:
+    metrics_exporter: prometheus
+    latency_histogram_buckets: [1ms, 2ms, 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2s, 5s, 10s]
+    dimensions:
+      - name: http.method
+      - name: http.status_code
+      - name: http.target
+      - name: rpc.method
+      - name: rpc.service
+      - name: db.system
+      - name: db.operation
+      - name: messaging.system
+      - name: messaging.operation
 
 exporters:
   otlp/tempo:
-    endpoint: tempo:4317
+    endpoint: faso-tempo:4317
     tls:
       insecure: true
-  loki:
-    endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: true
-      job: true
+
+  otlp/jaeger:
+    endpoint: faso-jaeger:4317
+    tls:
+      insecure: true
+
   prometheus:
-    endpoint: "0.0.0.0:8889"
+    endpoint: 0.0.0.0:8889
+    namespace: otel
+    send_timestamps: true
     resource_to_telemetry_conversion:
       enabled: true
+
+  # OTel Collector v0.86+: the legacy `loki` exporter is removed; logs are
+  # pushed to Loki via OTLP HTTP. The otlphttp/loki receiver translates
+  # OTel resource & log attributes to Loki labels automatically.
+  # See: https://grafana.com/docs/loki/latest/send-data/otel/
+  otlphttp/loki:
+    endpoint: http://faso-loki:3100/otlp
+    tls:
+      insecure: true
+
   debug:
     verbosity: basic
 
@@ -45,11 +120,17 @@ extensions:
 
 service:
   extensions: [health_check, pprof]
+  # Collector self-telemetry on :8888 (otelcol_* metrics).
+  # User pipeline metrics on :8889 via the prometheus exporter (otel_*).
+  telemetry:
+    metrics:
+      level: detailed
+      address: 0.0.0.0:8888
   pipelines:
     traces:
       receivers: [otlp]
-      processors: [memory_limiter, resource, batch]
-      exporters: [otlp/tempo]
+      processors: [memory_limiter, resource, tail_sampling, spanmetrics, batch]
+      exporters: [otlp/tempo, otlp/jaeger]
     metrics:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
@@ -57,4 +138,4 @@ service:
     logs:
       receivers: [otlp]
       processors: [memory_limiter, resource, batch]
-      exporters: [loki]
+      exporters: [otlphttp/loki]

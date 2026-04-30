@@ -31,8 +31,9 @@
 //! - **Malformed resource**: NACK sent; prior state preserved; `warn!` emitted.
 //! - **Quorum loss on control plane**: last ACK'd config remains active.
 
+use std::net::IpAddr;
 use std::sync::atomic::{AtomicI64, Ordering as AtomicOrdering};
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 
 use std::collections::HashMap;
 
@@ -102,10 +103,133 @@ pub struct DataPlaneHandles {
 ///
 /// All writes are lock-free at the hot path (ArcSwap stores).  No locks are
 /// held across `.await` points.
+/// Validation configuration for xDS responses.
+///
+/// Prevents a compromised or misconfigured control plane from injecting
+/// invalid cluster names, out-of-range endpoint addresses, or oversized
+/// endpoint lists.
+#[derive(Debug, Clone)]
+pub struct XdsValidationConfig {
+    /// Allowed cluster name prefixes.  Empty = allow all (with warning).
+    pub allowed_cluster_prefixes: Vec<String>,
+    /// When `true`, only private-range IPv4 addresses (10/8, 172.16/12,
+    /// 192.168/16, 127/8) and IPv6 loopback (::1) are accepted.
+    /// Non-IP addresses (hostnames) pass through — DNS resolution happens
+    /// later in the Pingora peer path.
+    pub restrict_to_private_addrs: bool,
+    /// Maximum endpoints per cluster.  Default: 1000.
+    pub max_endpoints_per_cluster: usize,
+}
+
+impl Default for XdsValidationConfig {
+    fn default() -> Self {
+        Self {
+            allowed_cluster_prefixes: Vec::new(), // allow all, warn on unknown
+            restrict_to_private_addrs: true,
+            max_endpoints_per_cluster: 1000,
+        }
+    }
+}
+
+/// Returns `true` when `ip` falls within a private / loopback range
+/// (10/8, 172.16/12, 192.168/16, 127/8 for IPv4; ::1 for IPv6).
+fn is_private_or_loopback(ip: IpAddr) -> bool {
+    match ip {
+        IpAddr::V4(v4) => {
+            let octets = v4.octets();
+            // 10.0.0.0/8
+            octets[0] == 10
+            // 172.16.0.0/12
+            || (octets[0] == 172 && (octets[1] & 0xF0) == 16)
+            // 192.168.0.0/16
+            || (octets[0] == 192 && octets[1] == 168)
+            // 127.0.0.0/8
+            || octets[0] == 127
+        }
+        IpAddr::V6(v6) => {
+            v6 == std::net::Ipv6Addr::LOCALHOST
+        }
+    }
+}
+
+/// Errors produced by xDS response validation.
+#[derive(Debug)]
+enum XdsValidationError {
+    /// Endpoint count exceeds the configured maximum.
+    TooManyEndpoints { cluster: String, count: usize, max: usize },
+    /// One or more endpoint addresses fall outside allowed CIDRs.
+    DisallowedAddress { cluster: String, address: String },
+}
+
+impl std::fmt::Display for XdsValidationError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::TooManyEndpoints { cluster, count, max } => {
+                write!(f, "cluster {cluster}: {count} endpoints exceeds max {max}")
+            }
+            Self::DisallowedAddress { cluster, address } => {
+                write!(f, "cluster {cluster}: address {address} not in allowed CIDRs")
+            }
+        }
+    }
+}
+
+/// Validate a cluster update against the validation config.
+///
+/// Returns `Ok(())` if all checks pass, `Err` with details otherwise.
+/// The caller must skip the update on error.
+fn validate_cluster_state(
+    cluster_name: &str,
+    endpoints: &[Endpoint],
+    config: &XdsValidationConfig,
+) -> Result<(), XdsValidationError> {
+    // 1. Endpoint count cap.
+    if endpoints.len() > config.max_endpoints_per_cluster {
+        return Err(XdsValidationError::TooManyEndpoints {
+            cluster: cluster_name.to_string(),
+            count: endpoints.len(),
+            max: config.max_endpoints_per_cluster,
+        });
+    }
+
+    // 2. Address range check.
+    if config.restrict_to_private_addrs {
+        for ep in endpoints {
+            if let Ok(ip) = ep.address.parse::<IpAddr>() {
+                if !is_private_or_loopback(ip) {
+                    return Err(XdsValidationError::DisallowedAddress {
+                        cluster: cluster_name.to_string(),
+                        address: ep.address.clone(),
+                    });
+                }
+            }
+            // Non-IP addresses (hostnames) are allowed through — DNS resolution
+            // happens later in the Pingora peer path.
+        }
+    }
+
+    // 3. Cluster name prefix check (warn only — do not reject).
+    if !config.allowed_cluster_prefixes.is_empty()
+        && !config.allowed_cluster_prefixes.iter().any(|p| cluster_name.starts_with(p))
+    {
+        warn!(
+            cluster = cluster_name,
+            "xDS validation: cluster name does not match any allowed prefix"
+        );
+    }
+
+    Ok(())
+}
+
 pub struct XdsDataPlaneCallback {
     handles: DataPlaneHandles,
     /// Shared Prometheus metrics bundle (optional).
     metrics: Option<Arc<PingoraMetrics>>,
+    /// Cache of TLS config per cluster from CDS updates.
+    /// Used by EDS handler to preserve TLS settings when merging endpoints.
+    tls_cache: RwLock<HashMap<String, (bool, Option<Arc<str>>)>>,
+    /// Validation config for xDS responses.
+    validation: XdsValidationConfig,
     // Per-resource-type monotonic version counters.  Using AtomicI64 so they
     // can be stored into an IntGaugeVec (which accepts i64).
     ver_cds: AtomicI64,
@@ -121,6 +245,8 @@ impl XdsDataPlaneCallback {
         Arc::new(Self {
             handles,
             metrics: None,
+            tls_cache: RwLock::new(HashMap::new()),
+            validation: XdsValidationConfig::default(),
             ver_cds: AtomicI64::new(0),
             ver_eds: AtomicI64::new(0),
             ver_lds: AtomicI64::new(0),
@@ -134,6 +260,8 @@ impl XdsDataPlaneCallback {
         Arc::new(Self {
             handles,
             metrics: Some(metrics),
+            tls_cache: RwLock::new(HashMap::new()),
+            validation: XdsValidationConfig::default(),
             ver_cds: AtomicI64::new(0),
             ver_eds: AtomicI64::new(0),
             ver_lds: AtomicI64::new(0),
@@ -181,6 +309,13 @@ impl XdsCallback for XdsDataPlaneCallback {
             .map(|t| t.spiffe_id.clone());
 
         let tls_required = spiffe_id.is_some();
+        let spiffe_arc = spiffe_id.map(|s| Arc::from(s.as_str()));
+
+        // Cache TLS config so EDS updates can preserve it.
+        {
+            let mut cache = self.tls_cache.write().unwrap_or_else(|e| e.into_inner());
+            cache.insert(name.clone(), (tls_required, spiffe_arc.clone()));
+        }
 
         // CDS carries no inline endpoints when type = EDS; those arrive via
         // EDS (on_endpoint_update). For STATIC clusters we build an empty
@@ -188,7 +323,7 @@ impl XdsCallback for XdsDataPlaneCallback {
         let state = ClusterState::new(
             Vec::new(),
             tls_required,
-            spiffe_id.map(|s| Arc::from(s.as_str())),
+            spiffe_arc,
             LbPolicy::RoundRobin,
         );
 
@@ -203,25 +338,44 @@ impl XdsCallback for XdsDataPlaneCallback {
     }
 
     /// EDS: update endpoint lists in `ClusterResolver` and `UpstreamRegistry`.
+    ///
+    /// Merges new endpoints into the existing `ClusterState`, preserving
+    /// `tls_required` and `expected_spiffe_id` set by a prior CDS update.
     async fn on_endpoint_update(&self, cla: ClusterLoadAssignment) {
         let cluster_name = cla.cluster_name.clone();
         debug!(cluster = %cluster_name, "xDS: on_endpoint_update");
 
         let endpoints = extract_endpoints(&cla);
 
+        // ── Validation (Finding 3) ────────────────────────────────────────
+        if let Err(e) = validate_cluster_state(&cluster_name, &endpoints, &self.validation) {
+            warn!(
+                cluster = %cluster_name,
+                error = %e,
+                "xDS EDS validation failed — update skipped"
+            );
+            self.record_nack("eds", "validation_failed");
+            return;
+        }
+
+        // ── Merge TLS config from CDS cache (Finding 2) ──────────────────
+        let (tls_required, spiffe_id) = {
+            let cache = self.tls_cache.read().unwrap_or_else(|e| e.into_inner());
+            match cache.get(&cluster_name) {
+                Some((tls, spiffe)) => (*tls, spiffe.clone()),
+                None => (false, None), // first-time EDS before CDS — safe default
+            }
+        };
+
         // Update the simple registry.
         self.handles
             .upstream_registry
             .update_cluster(&cluster_name, endpoints.clone());
 
-        // Patch the cluster resolver: update endpoints, preserve existing TLS
-        // config if already set by CDS.  We merge by re-using a default state
-        // when no prior CDS was received (tls_required=false, spiffe=None).
-        // CDS updates that arrive after EDS will overwrite the TLS fields.
         let state = ClusterState::new(
             endpoints.clone(),
-            false, // overwritten by subsequent CDS update
-            None,
+            tls_required,
+            spiffe_id,
             LbPolicy::RoundRobin,
         );
         self.handles.cluster_resolver.update(&cluster_name, state);
@@ -230,6 +384,7 @@ impl XdsCallback for XdsDataPlaneCallback {
         info!(
             cluster = %cluster_name,
             endpoints = endpoints.len(),
+            tls_required,
             "xDS EDS applied"
         );
     }

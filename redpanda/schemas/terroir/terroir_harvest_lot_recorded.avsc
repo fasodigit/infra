@@ -1,0 +1,75 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "HarvestLotRecorded",
+  "doc": "Lot de récolte enregistré par un agent terrain (pesée, qualité, parcelles source). Rétention 90 j audit opérationnel. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug de la coopérative-tenant."
+    },
+    {
+      "name": "cooperativeId",
+      "type": "string",
+      "doc": "UUID de la coopérative dans le registre TERROIR."
+    },
+    {
+      "name": "lotId",
+      "type": "string",
+      "doc": "UUID du lot de récolte."
+    },
+    {
+      "name": "memberId",
+      "type": "string",
+      "doc": "UUID du producteur ayant livré le lot."
+    },
+    {
+      "name": "parcelIds",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "doc": "Liste des UUIDs de parcelles source de la récolte."
+    },
+    {
+      "name": "weightKg",
+      "type": "double",
+      "doc": "Poids net en kilogrammes (mesure balance certifiée)."
+    },
+    {
+      "name": "gradeCode",
+      "type": {
+        "type": "enum",
+        "name": "HarvestGrade",
+        "symbols": ["GRADE_A", "GRADE_B", "GRADE_C", "REJECT"]
+      },
+      "doc": "Grade qualité assigné après contrôle."
+    },
+    {
+      "name": "recordedByAgentId",
+      "type": "string",
+      "doc": "UUID Kratos de l'agent terrain ayant enregistré la pesée."
+    },
+    {
+      "name": "collectionPointId",
+      "type": "string",
+      "doc": "UUID du point de collecte (entrepôt coopérative)."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC de l'enregistrement (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars)."
+    }
+  ]
+}

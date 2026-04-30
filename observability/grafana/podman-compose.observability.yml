@@ -1,7 +1,7 @@
 version: "3.9"
 
 # FASO DIGITALISATION — Observability Stack (dev override)
-# Usage: docker compose -f docker-compose.yml -f observability/grafana/docker-compose.observability.yml up
+# Usage: podman-compose -f podman-compose.yml -f observability/grafana/podman-compose.observability.yml up
 
 x-common-labels: &common-labels
   labels:
@@ -18,8 +18,74 @@ volumes:
   grafana_data:
   loki_data:
   tempo_data:
+  minio_data:
 
 services:
+  # ──────────────────────────────────────────────────
+  # MinIO — sovereign S3-compatible object store for
+  # Loki chunks, Tempo blocks, Thanos metrics archives.
+  # CLAUDE.md §3: replaces foreign clouds (OVH, AWS public).
+  # Single-node dev mode; production uses MinIO HA on K8s.
+  # ──────────────────────────────────────────────────
+  minio:
+    image: quay.io/minio/minio:RELEASE.2025-04-22T22-12-26Z.hotfix.38050ad67
+    container_name: faso-minio
+    restart: unless-stopped
+    <<: *common-labels
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: "${S3_ACCESS_KEY:-faso-dev-access-key}"
+      MINIO_ROOT_PASSWORD: "${S3_SECRET_KEY:-faso-dev-secret-key-change-me-32c}"
+      MINIO_REGION: "${S3_REGION:-bf-ouaga-1}"
+    volumes:
+      - minio_data:/data
+    ports:
+      # Host-side ports are out of FASO's reserved ranges (9000-9099 java-actuator,
+      # 6380-6399 KAYA family). Loki/Tempo/Thanos reach MinIO via internal DNS
+      # `minio:9000` on the faso-observability network.
+      - "127.0.0.1:9201:9000"   # S3 API (loopback only)
+      - "127.0.0.1:9202:9001"   # MinIO Console UI
+    networks:
+      - observability
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ──────────────────────────────────────────────────
+  # MinIO bucket bootstrap — creates the 3 sovereign
+  # buckets (logs, traces, metrics) on first start.
+  # ──────────────────────────────────────────────────
+  minio-init:
+    image: quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z
+    container_name: faso-minio-init
+    <<: *common-labels
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 \"$$S3_ACCESS_KEY\" \"$$S3_SECRET_KEY\";
+      mc mb -p local/$$S3_BUCKET_LOGS    || true;
+      mc mb -p local/$$S3_BUCKET_TRACES  || true;
+      mc mb -p local/$$S3_BUCKET_METRICS || true;
+      mc ilm rule add --expire-days 1825 local/$$S3_BUCKET_LOGS    || true;
+      mc ilm rule add --expire-days 90   local/$$S3_BUCKET_TRACES  || true;
+      mc ilm rule add --expire-days 395  local/$$S3_BUCKET_METRICS || true;
+      echo 'MinIO sovereign buckets ready';
+      "
+    environment:
+      S3_ACCESS_KEY: "${S3_ACCESS_KEY:-faso-dev-access-key}"
+      S3_SECRET_KEY: "${S3_SECRET_KEY:-faso-dev-secret-key-change-me-32c}"
+      S3_BUCKET_LOGS: "${S3_BUCKET_LOGS:-faso-logs-archive}"
+      S3_BUCKET_TRACES: "${S3_BUCKET_TRACES:-faso-traces-archive}"
+      S3_BUCKET_METRICS: "${S3_BUCKET_METRICS:-faso-metrics-archive}"
+    networks:
+      - observability
+
+
   # ──────────────────────────────────────────────────
   # Prometheus — metrics scraping & storage
   # ──────────────────────────────────────────────────
@@ -32,14 +98,21 @@ services:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--storage.tsdb.path=/prometheus"
       - "--storage.tsdb.retention.time=15d"
+      - "--storage.tsdb.min-block-duration=2h"
+      - "--storage.tsdb.max-block-duration=2h"
       - "--web.console.libraries=/usr/share/prometheus/console_libraries"
       - "--web.console.templates=/usr/share/prometheus/consoles"
       - "--web.enable-lifecycle"
       - "--web.enable-remote-write-receiver"
+      # Required for ${...} env expansion in external_labels (replica)
+      - "--enable-feature=expand-external-labels"
       # Bind Prometheus UI to loopback only (host network mode)
       - "--web.listen-address=127.0.0.1:9090"
+    environment:
+      PROMETHEUS_REPLICA: "${PROMETHEUS_REPLICA:-0}"
     volumes:
       - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/alertmanager/rules:/etc/prometheus/rules:ro
       - prometheus_data:/prometheus
     # Host network mode so Prometheus can scrape Java services on the host
     # (containerized firewall blocks cross-bridge traffic to host ports)
@@ -63,6 +136,7 @@ services:
       - "-config.file=/etc/loki/local-config.yaml"
     volumes:
       - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/loki.yaml:/etc/loki/local-config.yaml:ro
+      - /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/observability/grafana/config/loki-overrides.yaml:/etc/loki/overrides.yaml:ro
       - loki_data:/loki
     ports:
       - "127.0.0.1:3100:3100"
@@ -92,8 +166,8 @@ services:
       - tempo_data:/tmp/tempo
     ports:
       - "127.0.0.1:3200:3200"    # Tempo HTTP API
-      - "127.0.0.1:4317:4317"    # OTLP gRPC
-      - "127.0.0.1:4318:4318"    # OTLP HTTP
+      # OTLP ports are container-internal only (otel-collector → tempo via faso-observability network)
+      # Host port mappings 4317/4318 are reserved for Jaeger to avoid collision.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -120,7 +194,8 @@ services:
     ports:
       - "127.0.0.1:4319:4317"    # OTLP gRPC (external facing — avoids clash with Tempo)
       - "127.0.0.1:4320:4318"    # OTLP HTTP (external facing)
-      - "127.0.0.1:8889:8889"    # Prometheus exporter (collector self-metrics)
+      - "127.0.0.1:8888:8888"    # Collector self-telemetry (otelcol_* metrics)
+      - "127.0.0.1:8889:8889"    # User metrics pipeline (otel_* via prometheus exporter)
       - "127.0.0.1:13133:13133"  # Health check
     extra_hosts:
       - "host.docker.internal:host-gateway"

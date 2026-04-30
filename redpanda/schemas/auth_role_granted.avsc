@@ -1,0 +1,63 @@
+{
+  "type": "record",
+  "name": "AuthRoleGranted",
+  "namespace": "bf.faso.auth.role",
+  "doc": "Émis quand un super-admin/admin attribue un rôle (super-admin, admin, manager) à un utilisateur via Keto. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 unique (idempotency)."
+    },
+    {
+      "name": "subjectUserId",
+      "type": "string",
+      "doc": "UUID Kratos du destinataire du rôle (à qui le rôle est attribué)."
+    },
+    {
+      "name": "grantedRole",
+      "type": {
+        "type": "enum",
+        "name": "AdminRoleEnum",
+        "symbols": ["SUPER_ADMIN", "ADMIN", "MANAGER"]
+      },
+      "doc": "Rôle attribué dans le namespace AdminRole."
+    },
+    {
+      "name": "ketoNamespace",
+      "type": "string",
+      "default": "AdminRole",
+      "doc": "Namespace Keto."
+    },
+    {
+      "name": "ketoObject",
+      "type": "string",
+      "default": "platform",
+      "doc": "Object Keto (par défaut: platform)."
+    },
+    {
+      "name": "grantedBy",
+      "type": "string",
+      "doc": "UUID Kratos de l'opérateur qui a accordé le rôle."
+    },
+    {
+      "name": "grantedAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp UTC d'attribution."
+    },
+    {
+      "name": "reason",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Motif renseigné par l'opérateur (audit)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OTel trace ID."
+    }
+  ]
+}

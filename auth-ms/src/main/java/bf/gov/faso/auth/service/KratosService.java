@@ -2,6 +2,8 @@ package bf.gov.faso.auth.service;
 
 import bf.gov.faso.auth.model.User;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -45,6 +47,8 @@ public class KratosService {
      * @param user the user entity to create in Kratos
      * @return the Kratos identity ID
      */
+    @CircuitBreaker(name = "kratos", fallbackMethod = "createIdentityFallback")
+    @Retry(name = "kratos")
     public Optional<String> createIdentity(User user) {
         try {
             Map<String, Object> traits = new HashMap<>();
@@ -89,6 +93,8 @@ public class KratosService {
     /**
      * Fetch an identity from Kratos by its ID.
      */
+    @CircuitBreaker(name = "kratos", fallbackMethod = "getIdentityFallback")
+    @Retry(name = "kratos")
     public Optional<JsonNode> getIdentity(String kratosIdentityId) {
         try {
             JsonNode response = adminClient.get()
@@ -107,6 +113,8 @@ public class KratosService {
     /**
      * Update identity traits in Kratos.
      */
+    @CircuitBreaker(name = "kratos", fallbackMethod = "updateIdentityTraitsFallback")
+    @Retry(name = "kratos")
     public boolean updateIdentityTraits(String kratosIdentityId, User user) {
         try {
             Map<String, Object> traits = new HashMap<>();
@@ -146,6 +154,8 @@ public class KratosService {
     /**
      * Deactivate an identity in Kratos (set state to inactive).
      */
+    @CircuitBreaker(name = "kratos", fallbackMethod = "deactivateIdentityFallback")
+    @Retry(name = "kratos")
     public boolean deactivateIdentity(String kratosIdentityId) {
         try {
             Map<String, Object> body = Map.of("state", "inactive");
@@ -169,6 +179,8 @@ public class KratosService {
      * Validate a Kratos session token (from cookie or header).
      * Used for the handshake interceptor when admin users come through Kratos login.
      */
+    @CircuitBreaker(name = "kratos", fallbackMethod = "validateSessionFallback")
+    @Retry(name = "kratos")
     public Optional<JsonNode> validateSession(String sessionToken) {
         try {
             JsonNode response = publicClient.get()
@@ -188,6 +200,8 @@ public class KratosService {
     /**
      * Create a recovery link for a user (admin action).
      */
+    @CircuitBreaker(name = "kratos", fallbackMethod = "createRecoveryLinkFallback")
+    @Retry(name = "kratos")
     public Optional<String> createRecoveryLink(String kratosIdentityId) {
         try {
             Map<String, Object> body = Map.of(
@@ -210,5 +224,37 @@ public class KratosService {
             log.error("Failed to create recovery link for {}: {}", kratosIdentityId, e.getMessage());
             return Optional.empty();
         }
+    }
+
+    // ── Circuit Breaker fallback methods ─────────────────────────────────────
+
+    private Optional<String> createIdentityFallback(User user, Exception e) {
+        log.warn("CircuitBreaker fallback: Kratos unavailable for createIdentity email={}: {}", user.getEmail(), e.getMessage());
+        return Optional.empty();
+    }
+
+    private Optional<JsonNode> getIdentityFallback(String kratosIdentityId, Exception e) {
+        log.warn("CircuitBreaker fallback: Kratos unavailable for getIdentity id={}: {}", kratosIdentityId, e.getMessage());
+        return Optional.empty();
+    }
+
+    private boolean updateIdentityTraitsFallback(String kratosIdentityId, User user, Exception e) {
+        log.warn("CircuitBreaker fallback: Kratos unavailable for updateIdentityTraits id={}: {}", kratosIdentityId, e.getMessage());
+        return false;
+    }
+
+    private boolean deactivateIdentityFallback(String kratosIdentityId, Exception e) {
+        log.warn("CircuitBreaker fallback: Kratos unavailable for deactivateIdentity id={}: {}", kratosIdentityId, e.getMessage());
+        return false;
+    }
+
+    private Optional<JsonNode> validateSessionFallback(String sessionToken, Exception e) {
+        log.warn("CircuitBreaker fallback: Kratos unavailable for validateSession: {}", e.getMessage());
+        return Optional.empty();
+    }
+
+    private Optional<String> createRecoveryLinkFallback(String kratosIdentityId, Exception e) {
+        log.warn("CircuitBreaker fallback: Kratos unavailable for createRecoveryLink id={}: {}", kratosIdentityId, e.getMessage());
+        return Optional.empty();
     }
 }

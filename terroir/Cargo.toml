@@ -1,0 +1,50 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# TERROIR — Monorepo Cargo workspace
+# Module digitalisation coopératives agricoles BF — FASO DIGITALISATION
+# See INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md
+
+[workspace]
+members = [
+    "core",
+    "eudr",
+    "mobile-bff",
+    "ussd",
+    "ussd-simulator",
+    "buyer",
+    "admin",
+]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+authors = ["FASO DIGITALISATION <contact@faso.bf>"]
+repository = "https://github.com/faso-digitalisation/infra"
+
+[workspace.dependencies]
+tokio = { version = "1.45", features = ["full"] }
+axum = "0.8"
+tonic = "0.14"
+tower = "0.5"
+tower-http = { version = "0.6", features = ["trace", "cors"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+anyhow = "1.0"
+thiserror = "2.0"
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
+prost = "0.14"
+uuid = { version = "1.10", features = ["v4", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[profile.dev]
+opt-level = 0
+debug = true

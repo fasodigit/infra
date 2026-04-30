@@ -58,6 +58,9 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 
 // ── Error type ─────────────────────────────────────────────────────────────
 
+/// Default maximum gRPC body size: 4 MiB.
+pub const DEFAULT_MAX_GRPC_BODY_SIZE: usize = 4 * 1024 * 1024;
+
 /// Errors produced by the gRPC-Web transcoder.
 #[derive(Debug, thiserror::Error)]
 pub enum GrpcWebError {
@@ -76,6 +79,11 @@ pub enum GrpcWebError {
     /// Upstream gRPC service returned a non-OK transport error.
     #[error("upstream gRPC service unavailable: {0}")]
     UpstreamUnavailable(String),
+
+    /// Accumulated body exceeded the configured size limit (gRPC status
+    /// RESOURCE_EXHAUSTED / HTTP 413).
+    #[error("gRPC body size {actual} exceeds limit {limit}")]
+    BodyTooLarge { actual: usize, limit: usize },
 }
 
 // ── Variant detection ──────────────────────────────────────────────────────
@@ -203,12 +211,19 @@ pub struct GrpcWebConfig {
     /// Whether to inject CORS `Access-Control-Expose-Headers` for gRPC-Web
     /// trailers.  Defaults to `true`.
     pub inject_cors_expose_headers: bool,
+
+    /// Maximum accumulated gRPC body size in bytes.  When the upstream body
+    /// exceeds this limit, assembly returns [`GrpcWebError::BodyTooLarge`]
+    /// (gRPC status RESOURCE_EXHAUSTED / HTTP 413).
+    /// Default: [`DEFAULT_MAX_GRPC_BODY_SIZE`] (4 MiB).
+    pub max_grpc_body_size: usize,
 }
 
 impl Default for GrpcWebConfig {
     fn default() -> Self {
         Self {
             inject_cors_expose_headers: true,
+            max_grpc_body_size: DEFAULT_MAX_GRPC_BODY_SIZE,
         }
     }
 }
@@ -222,21 +237,35 @@ impl Default for GrpcWebConfig {
 /// extracted from the upstream HTTP/2 trailers by the caller).
 ///
 /// When `variant == Text`, the final bytes are base64-encoded.
+///
+/// # Size limit
+///
+/// If the `upstream_body` exceeds `config.max_grpc_body_size`, returns
+/// [`GrpcWebError::BodyTooLarge`] (maps to gRPC RESOURCE_EXHAUSTED /
+/// HTTP 413).
 pub fn assemble_grpc_web_body(
     upstream_body: &[u8],
     grpc_status: u32,
     grpc_message: &str,
     variant: GrpcWebVariant,
-) -> Bytes {
+    config: &GrpcWebConfig,
+) -> Result<Bytes, GrpcWebError> {
+    if upstream_body.len() > config.max_grpc_body_size {
+        return Err(GrpcWebError::BodyTooLarge {
+            actual: upstream_body.len(),
+            limit: config.max_grpc_body_size,
+        });
+    }
+
     let mut out = BytesMut::with_capacity(upstream_body.len() + 32);
     out.extend_from_slice(upstream_body);
     out.extend_from_slice(&build_trailer_frame(grpc_status, grpc_message));
     let raw = out.freeze();
 
-    match variant {
+    Ok(match variant {
         GrpcWebVariant::Binary => raw,
         GrpcWebVariant::Text => Bytes::from(B64.encode(&raw)),
-    }
+    })
 }
 
 /// Decode a gRPC-Web-text (base64-encoded) request body into raw gRPC bytes.
@@ -402,10 +431,12 @@ mod tests {
 
     #[test]
     fn assemble_binary_body() {
+        let config = GrpcWebConfig::default();
         let message = b"response_data";
         let upstream_body = build_grpc_frame(message);
 
-        let assembled = assemble_grpc_web_body(&upstream_body, 0, "", GrpcWebVariant::Binary);
+        let assembled = assemble_grpc_web_body(&upstream_body, 0, "", GrpcWebVariant::Binary, &config)
+            .expect("assembly must succeed");
 
         // First frame: data (0x00)
         assert_eq!(assembled[0], 0x00);
@@ -430,8 +461,10 @@ mod tests {
 
     #[test]
     fn assemble_text_body_is_valid_base64() {
+        let config = GrpcWebConfig::default();
         let assembled =
-            assemble_grpc_web_body(b"", 0, "", GrpcWebVariant::Text);
+            assemble_grpc_web_body(b"", 0, "", GrpcWebVariant::Text, &config)
+                .expect("assembly must succeed");
         // Must be valid base64.
         let decoded = B64.decode(assembled.as_ref()).expect("valid base64");
         // Decoded starts with trailer frame (0x80) since no data.
@@ -489,6 +522,7 @@ mod tests {
 
     #[test]
     fn server_streaming_multiple_frames() {
+        let config = GrpcWebConfig::default();
         // Simulate 3 data frames from upstream, then a trailer.
         let frames: &[&[u8]] = &[b"frame1", b"frame2", b"frame3"];
         let mut upstream_body = BytesMut::new();
@@ -501,7 +535,9 @@ mod tests {
             0,
             "ok",
             GrpcWebVariant::Binary,
-        );
+            &config,
+        )
+        .expect("assembly must succeed");
 
         // Walk frames.
         let mut remaining = assembled.clone();
@@ -517,5 +553,22 @@ mod tests {
 
         // Trailer frame last.
         assert_eq!(remaining[0], 0x80, "trailer flag");
+    }
+
+    #[test]
+    fn body_exceeding_max_size_is_rejected() {
+        let config = GrpcWebConfig {
+            max_grpc_body_size: 64, // tiny limit for test
+            ..Default::default()
+        };
+        let oversized = vec![0u8; 128];
+        let result = assemble_grpc_web_body(&oversized, 0, "", GrpcWebVariant::Binary, &config);
+        match result {
+            Err(GrpcWebError::BodyTooLarge { actual, limit }) => {
+                assert_eq!(actual, 128);
+                assert_eq!(limit, 64);
+            }
+            other => panic!("expected BodyTooLarge, got {other:?}"),
+        }
     }
 }

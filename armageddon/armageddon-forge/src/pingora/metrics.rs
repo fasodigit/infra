@@ -32,6 +32,79 @@ use prometheus::{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Route label normalisation — prevent unbounded Prometheus cardinality
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Maximum length of a normalised route label.
+const MAX_ROUTE_LABEL_LEN: usize = 100;
+
+/// Normalise a route string for use as a Prometheus label value.
+///
+/// 1. If `route_name` is `Some(name)` (i.e. a named route was matched),
+///    the name is returned directly (bounded by configuration).
+/// 2. Otherwise the raw `path` is sanitised:
+///    - Numeric-only segments are replaced with `{id}`.
+///    - UUID-shaped segments (`xxxxxxxx-xxxx-…`) are replaced with `{uuid}`.
+///    - The result is truncated to [`MAX_ROUTE_LABEL_LEN`] characters.
+///
+/// # Examples
+///
+/// ```rust,ignore
+/// normalize_route_label(Some("get_user"), "/api/users/12345") // → "get_user"
+/// normalize_route_label(None, "/api/users/12345/orders/550e8400-e29b-41d4-a716-446655440000")
+///   // → "/api/users/{id}/orders/{uuid}"
+/// ```
+pub fn normalize_route_label(route_name: Option<&str>, path: &str) -> String {
+    if let Some(name) = route_name {
+        return truncate_label(name);
+    }
+
+    let normalised: String = path
+        .split('/')
+        .map(|seg| {
+            if seg.is_empty() {
+                return seg.to_string();
+            }
+            if is_uuid(seg) {
+                return "{uuid}".to_string();
+            }
+            if seg.chars().all(|c| c.is_ascii_digit()) {
+                return "{id}".to_string();
+            }
+            seg.to_string()
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+
+    truncate_label(&normalised)
+}
+
+/// True when `s` looks like a UUID (8-4-4-4-12 hex pattern).
+fn is_uuid(s: &str) -> bool {
+    if s.len() != 36 {
+        return false;
+    }
+    let parts: Vec<&str> = s.split('-').collect();
+    if parts.len() != 5 {
+        return false;
+    }
+    let expected_lens = [8, 4, 4, 4, 12];
+    parts
+        .iter()
+        .zip(expected_lens.iter())
+        .all(|(part, &len)| part.len() == len && part.chars().all(|c| c.is_ascii_hexdigit()))
+}
+
+/// Truncate a label to at most [`MAX_ROUTE_LABEL_LEN`] characters.
+fn truncate_label(s: &str) -> String {
+    if s.len() <= MAX_ROUTE_LABEL_LEN {
+        s.to_string()
+    } else {
+        s[..MAX_ROUTE_LABEL_LEN].to_string()
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PingoraMetrics — the single shared bundle
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -516,5 +589,54 @@ mod tests {
                 "metric '{name}' not found in Prometheus text output"
             );
         }
+    }
+
+    // ── normalize_route_label tests ──────────────────────────────────────────
+
+    #[test]
+    fn named_route_is_used_verbatim() {
+        assert_eq!(
+            super::normalize_route_label(Some("get_user"), "/api/users/12345"),
+            "get_user"
+        );
+    }
+
+    #[test]
+    fn numeric_segments_replaced_with_id() {
+        assert_eq!(
+            super::normalize_route_label(None, "/api/users/12345"),
+            "/api/users/{id}"
+        );
+    }
+
+    #[test]
+    fn uuid_segments_replaced_with_uuid() {
+        assert_eq!(
+            super::normalize_route_label(
+                None,
+                "/api/users/12345/orders/550e8400-e29b-41d4-a716-446655440000"
+            ),
+            "/api/users/{id}/orders/{uuid}"
+        );
+    }
+
+    #[test]
+    fn long_path_is_truncated() {
+        let long_path = format!("/api/{}", "a".repeat(200));
+        let result = super::normalize_route_label(None, &long_path);
+        assert!(
+            result.len() <= super::MAX_ROUTE_LABEL_LEN,
+            "result length {} exceeds max {}",
+            result.len(),
+            super::MAX_ROUTE_LABEL_LEN
+        );
+    }
+
+    #[test]
+    fn mixed_segments_normalised() {
+        assert_eq!(
+            super::normalize_route_label(None, "/v1/tenants/42/resources/abc"),
+            "/v1/tenants/{id}/resources/abc"
+        );
     }
 }

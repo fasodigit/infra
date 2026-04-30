@@ -42,6 +42,13 @@ pub mod jwt;
 pub mod otel;
 pub mod router;
 pub mod veil;
+pub mod waf;
+
+/// Coraza-on-Pingora WAF (proxy-wasm v0.2.1 host).  Compiled only when
+/// the `coraza-wasm` Cargo feature is enabled.  See
+/// `armageddon/coraza/PROXY-WASM-HOST-DESIGN.md`.
+#[cfg(feature = "coraza-wasm")]
+pub mod waf_coraza;
 
 /// Outcome of a filter hook invocation.
 ///
@@ -99,6 +106,24 @@ pub trait ForgeFilter: Send + Sync + 'static {
         &self,
         _session: &mut pingora_proxy::Session,
         _req: &mut pingora::http::RequestHeader,
+        _ctx: &mut RequestCtx,
+    ) -> Decision {
+        Decision::Continue
+    }
+
+    /// Invoked at the `request_body_filter` hook for each chunk of the
+    /// inbound request body, including the final empty chunk where
+    /// `end_of_stream = true`.
+    ///
+    /// Filters that need to inspect the body (e.g. WAF body scanner) buffer
+    /// chunks into `ctx.body_buffer` (capped) and evaluate on `end_of_stream`.
+    /// Returning `Decision::Deny(code)` aborts the upstream forward and
+    /// emits the chosen HTTP status to the client.
+    async fn on_request_body(
+        &self,
+        _session: &mut pingora_proxy::Session,
+        _body: &Option<bytes::Bytes>,
+        _end_of_stream: bool,
         _ctx: &mut RequestCtx,
     ) -> Decision {
         Decision::Continue

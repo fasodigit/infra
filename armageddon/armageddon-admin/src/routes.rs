@@ -9,7 +9,9 @@
 //!   GET  /admin/listeners               → JSON listeners + TLS state
 //!   GET  /admin/clusters                → JSON clusters + endpoints + circuit-breaker state
 //!   GET  /admin/stats                   → JSON metrics counters
-//!   GET  /admin/stats/prometheus        → Prometheus text format
+//!   GET  /admin/stats/prometheus        → Prometheus text format (legacy alias)
+//!   GET  /admin/metrics                 → Prometheus text exposition format
+//!                                          (canonical scrape endpoint, unauthenticated)
 //!   POST /admin/config/reload           → hot-reload from disk, return diff
 //!   POST /admin/clusters/{name}/drain   → drain a cluster
 //!   POST /admin/reset_counters          → reset stats counters
@@ -132,6 +134,48 @@ async fn handle_stats_prometheus(
         })
 }
 
+/// `GET /admin/metrics` — canonical Prometheus scrape endpoint.
+///
+/// Returns metrics from the shared `prometheus::Registry` in text exposition
+/// format (`text/plain; version=0.0.4; charset=utf-8`). Unauthenticated by
+/// design — production deployments rely on the loopback bind + network
+/// policy / firewall to scope access.
+///
+/// On encoder failure (rare — only on bad UTF-8 in label values) responds
+/// with 500 and a brief error message.
+pub(crate) async fn handle_metrics(
+    State((state, _cfg)): State<(Arc<AdminState>, AdminConfig)>,
+) -> Response<Body> {
+    match state.stats.encode_prometheus() {
+        Ok(text) => Response::builder()
+            .status(StatusCode::OK)
+            .header(
+                header::CONTENT_TYPE,
+                "text/plain; version=0.0.4; charset=utf-8",
+            )
+            .body(Body::from(text))
+            .unwrap_or_else(|_| {
+                Response::builder()
+                    .status(StatusCode::INTERNAL_SERVER_ERROR)
+                    .body(Body::empty())
+                    .unwrap()
+            }),
+        Err(e) => {
+            tracing::warn!(error = %e, "admin: prometheus encode failed");
+            Response::builder()
+                .status(StatusCode::INTERNAL_SERVER_ERROR)
+                .header(header::CONTENT_TYPE, "text/plain; charset=utf-8")
+                .body(Body::from(format!("metrics encode failed: {e}")))
+                .unwrap_or_else(|_| {
+                    Response::builder()
+                        .status(StatusCode::INTERNAL_SERVER_ERROR)
+                        .body(Body::empty())
+                        .unwrap()
+                })
+        }
+    }
+}
+
 /// `POST /admin/config/reload` — reload config from disk, validate, swap.
 async fn handle_config_reload(
     headers: HeaderMap,
@@ -196,6 +240,7 @@ pub fn build_router(state: Arc<AdminState>, cfg: AdminConfig) -> Router {
         .route("/admin/clusters", get(handle_clusters))
         .route("/admin/stats", get(handle_stats))
         .route("/admin/stats/prometheus", get(handle_stats_prometheus))
+        .route("/admin/metrics", get(handle_metrics))
         .route("/admin/config/reload", post(handle_config_reload))
         .route(
             "/admin/clusters/:name/drain",

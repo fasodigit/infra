@@ -49,6 +49,32 @@ use tracing::{debug, info, warn};
 
 use crate::pingora::metrics::PingoraMetrics;
 
+// ── TLS probe mode ───────────────────────────────────────────────────────────
+
+/// Controls whether health probes should use TLS for clusters that require mTLS.
+///
+/// This is a cluster-level setting that ensures the health-check path matches
+/// the data path.  A compromised upstream might pass a plaintext health check
+/// while failing on the mTLS data path — `MatchCluster` (the default) closes
+/// that gap when TLS probes are available.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TlsProbeMode {
+    /// Always probe over plaintext HTTP (legacy behaviour).
+    PlaintextOnly,
+    /// Use TLS if the cluster requires it (`tls_required = true`).
+    /// Falls back to plaintext with a warning when TLS probing is not yet
+    /// implemented.
+    MatchCluster,
+    /// Always probe over TLS regardless of cluster configuration (strict).
+    TlsOnly,
+}
+
+impl Default for TlsProbeMode {
+    fn default() -> Self {
+        Self::MatchCluster
+    }
+}
+
 // ── configuration ──────────────────────────────────────────────────────────────
 
 /// Health check type for one cluster.
@@ -95,6 +121,14 @@ pub struct HealthConfig {
     pub healthy_threshold: u32,
     /// Check type applied to every endpoint in the cluster.
     pub check_type: HealthCheckType,
+    /// Whether the owning cluster mandates mTLS on the data path.
+    ///
+    /// Copied from [`ClusterState::tls_required`] at registration time so the
+    /// health checker can decide whether to probe over TLS.
+    pub tls_required: bool,
+    /// Controls TLS behaviour for health probes.  Defaults to
+    /// [`TlsProbeMode::MatchCluster`].
+    pub tls_probe_mode: TlsProbeMode,
 }
 
 impl Default for HealthConfig {
@@ -105,6 +139,8 @@ impl Default for HealthConfig {
             unhealthy_threshold: 3,
             healthy_threshold: 2,
             check_type: HealthCheckType::default(),
+            tls_required: false,
+            tls_probe_mode: TlsProbeMode::default(),
         }
     }
 }
@@ -323,7 +359,7 @@ async fn run_health_check_loop(
             let check_type_label = check_type_label(&config.check_type);
 
             let start = Instant::now();
-            let result = run_probe(id, &config.check_type, timeout).await;
+            let result = run_probe(id, config, timeout).await;
             let duration = start.elapsed();
 
             // Emit probe duration metric (best-effort; ignore errors).
@@ -402,8 +438,8 @@ async fn run_health_check_loop(
 
 // ── probe dispatch ─────────────────────────────────────────────────────────────
 
-async fn run_probe(id: &EndpointId, check_type: &HealthCheckType, timeout: Duration) -> ProbeResult {
-    match check_type {
+async fn run_probe(id: &EndpointId, config: &HealthConfig, timeout: Duration) -> ProbeResult {
+    match &config.check_type {
         HealthCheckType::Tcp { timeout_ms } => {
             let t = Duration::from_millis(*timeout_ms).min(timeout);
             probe_tcp(id, t).await
@@ -412,7 +448,18 @@ async fn run_probe(id: &EndpointId, check_type: &HealthCheckType, timeout: Durat
             path,
             expected_status,
             expected_body_regex,
-        } => probe_http(id, path, expected_status, expected_body_regex, timeout).await,
+        } => {
+            probe_http_tls_aware(
+                id,
+                path,
+                expected_status,
+                expected_body_regex,
+                timeout,
+                config.tls_required,
+                config.tls_probe_mode,
+            )
+            .await
+        }
         HealthCheckType::Grpc { service } => probe_grpc(id, service.as_deref(), timeout).await,
     }
 }
@@ -437,6 +484,8 @@ async fn probe_tcp(id: &EndpointId, timeout: Duration) -> ProbeResult {
 
 // ── HTTP probe ────────────────────────────────────────────────────────────────
 
+/// Backward-compatible plaintext-only HTTP probe (used by tests).
+#[cfg(test)]
 async fn probe_http(
     id: &EndpointId,
     path: &str,
@@ -444,6 +493,56 @@ async fn probe_http(
     body_regex: &Option<String>,
     timeout: Duration,
 ) -> ProbeResult {
+    probe_http_inner(id, path, expected_status, body_regex, timeout, false, TlsProbeMode::PlaintextOnly).await
+}
+
+/// TLS-aware HTTP probe entry point.
+///
+/// When `use_tls` is `true` and the mode requests TLS, we would construct an
+/// `https://` URI and use a TLS-enabled HTTP client.  Because the hyper-util
+/// HTTP client used here does not support TLS out-of-the-box (requires
+/// `hyper-rustls` or `hyper-tls`), we log a warning and fall back to plaintext
+/// for now, documenting the gap.
+async fn probe_http_tls_aware(
+    id: &EndpointId,
+    path: &str,
+    expected_status: &[u16],
+    body_regex: &Option<String>,
+    timeout: Duration,
+    tls_required: bool,
+    tls_probe_mode: TlsProbeMode,
+) -> ProbeResult {
+    let need_tls = match tls_probe_mode {
+        TlsProbeMode::PlaintextOnly => false,
+        TlsProbeMode::MatchCluster => tls_required,
+        TlsProbeMode::TlsOnly => true,
+    };
+
+    if need_tls {
+        // TODO(M5): integrate hyper-rustls / SPIFFE trust bundle for TLS probes.
+        warn!(
+            cluster = %id.cluster,
+            endpoint = %format!("{}:{}", id.address, id.port),
+            "health probe for mTLS cluster {} using plaintext \
+             — TLS probes not yet implemented",
+            id.cluster,
+        );
+    }
+
+    probe_http_inner(id, path, expected_status, body_regex, timeout, need_tls, tls_probe_mode).await
+}
+
+async fn probe_http_inner(
+    id: &EndpointId,
+    path: &str,
+    expected_status: &[u16],
+    body_regex: &Option<String>,
+    timeout: Duration,
+    _need_tls: bool,
+    _tls_probe_mode: TlsProbeMode,
+) -> ProbeResult {
+    // When _need_tls is true we would use `https://` and a TLS-enabled client.
+    // Until hyper-rustls is wired in, we always fall back to plaintext.
     let uri = format!("http://{}:{}{}", id.address, id.port, path);
 
     let result = tokio::time::timeout(timeout, async {

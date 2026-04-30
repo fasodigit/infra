@@ -1,0 +1,28 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- T004__household.sql.tmpl
+-- Household composition (M1) — CRDT sync strategy (Yjs doc in JSONB).
+-- A household groups producers sharing resources; its composition evolves
+-- offline and is merged via Yjs document updates.
+
+SET search_path TO {{SCHEMA}};
+
+CREATE TABLE household (
+  id             UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+  cooperative_id UUID    NOT NULL,
+  -- Household head — non-PII identifier (encrypted fields in producer table)
+  head_producer_id UUID,
+  -- Yjs CRDT document encodes member list + roles + updates
+  yjs_doc        BYTEA   NOT NULL DEFAULT '\x'::bytea,
+  yjs_version    BIGINT  NOT NULL DEFAULT 1,
+  registered_at  TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at     TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX idx_household_coop ON household(cooperative_id);
+CREATE INDEX idx_household_head ON household(head_producer_id)
+  WHERE head_producer_id IS NOT NULL;
+
+ALTER TABLE household ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY household_app_all ON household
+  FOR ALL TO terroir_app USING (true) WITH CHECK (true);

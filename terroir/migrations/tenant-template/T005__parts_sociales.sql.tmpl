@@ -1,0 +1,35 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- T005__parts_sociales.sql.tmpl
+-- Parts sociales / cooperative shares (M1) — ACID sync strategy.
+-- Tracks member share ownership; mutations are transactional (no LWW / CRDT).
+-- The lww_version column is kept for API compatibility but mutations are
+-- always applied with a database-level lock (no offline merge).
+
+SET search_path TO {{SCHEMA}};
+
+CREATE TABLE parts_sociales (
+  id               UUID           PRIMARY KEY DEFAULT gen_random_uuid(),
+  producer_id      UUID           NOT NULL,
+  cooperative_id   UUID           NOT NULL,
+  -- Number of shares held (integer units per cooperative statuts)
+  nb_parts         INTEGER        NOT NULL CHECK (nb_parts >= 0),
+  -- Nominal value per share in XOF
+  valeur_nominale_xof DECIMAL(12,2) NOT NULL,
+  -- Date membership was formalised
+  adhesion_date    DATE           NOT NULL,
+  -- Latest deliberation reference (Assemblée Générale number)
+  ag_reference     VARCHAR(40),
+  registered_at    TIMESTAMPTZ    NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ    NOT NULL DEFAULT now(),
+  -- Version for optimistic locking (ACID, no offline merge)
+  lww_version      BIGINT         NOT NULL DEFAULT 1,
+  CONSTRAINT uq_parts_producer_coop UNIQUE (producer_id, cooperative_id)
+);
+
+CREATE INDEX idx_parts_producer ON parts_sociales(producer_id);
+CREATE INDEX idx_parts_coop     ON parts_sociales(cooperative_id);
+
+ALTER TABLE parts_sociales ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY parts_sociales_app_all ON parts_sociales
+  FOR ALL TO terroir_app USING (true) WITH CHECK (true);

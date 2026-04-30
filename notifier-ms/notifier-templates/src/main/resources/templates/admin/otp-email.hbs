@@ -1,0 +1,60 @@
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+  Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+-->
+<!DOCTYPE html>
+<html lang="{{#if lang}}{{lang}}{{else}}fr{{/if}}">
+<head>
+  <meta charset="UTF-8"/>
+  <title>{{#eq lang "en"}}FASO ADMIN — One-Time Code{{else}}FASO ADMIN — Code à usage unique{{/eq}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f6f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:32px 0;">
+    <tr><td align="center">
+      <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#1b5e20;color:#ffffff;padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;letter-spacing:0.3px;">FASO ADMIN</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#FFD700;">
+              {{#eq lang "en"}}Authentication code{{else}}Code d'authentification{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#222;">
+            <p style="font-size:15px;line-height:1.5;">
+              {{#eq lang "en"}}Your one-time code to access the FASO admin console:{{else}}Voici votre code à usage unique pour accéder à la console d'administration FASO :{{/eq}}
+            </p>
+            <div style="margin:24px 0;text-align:center;">
+              <span style="display:inline-block;background:#1b5e20;color:#FFD700;font-family:'Courier New',monospace;font-size:32px;letter-spacing:8px;padding:18px 28px;border-radius:8px;font-weight:bold;">
+                {{code}}
+              </span>
+            </div>
+            <p style="font-size:14px;color:#555;">
+              {{#eq lang "en"}}This code expires in <strong>{{expiresInMinutes}} minutes</strong>.{{else}}Ce code expire dans <strong>{{expiresInMinutes}} minute(s)</strong>.{{/eq}}
+            </p>
+            <table width="100%" style="margin-top:20px;border:1px solid #eee;border-radius:6px;background:#fafafa;">
+              <tr>
+                <td style="padding:14px;font-size:12px;color:#666;">
+                  <strong>{{#eq lang "en"}}Request origin{{else}}Origine de la demande{{/eq}}</strong><br/>
+                  {{#eq lang "en"}}IP{{else}}Adresse IP{{/eq}} : <code>{{ipAddress}}</code><br/>
+                  User-Agent : <code>{{userAgent}}</code>
+                </td>
+              </tr>
+            </table>
+            <p style="margin-top:24px;font-size:13px;color:#E53935;">
+              {{#eq lang "en"}}If you did not request this code, ignore this message and contact security@faso.bf immediately.{{else}}Si vous n'êtes pas à l'origine de cette demande, ignorez ce message et contactez immédiatement security@faso.bf.{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#1b5e20;color:#FFD700;padding:14px 32px;font-size:12px;text-align:center;">
+            FASO DIGITALISATION — République du Burkina Faso<br/>
+            <a href="https://faso.bf/security" style="color:#FFD700;text-decoration:underline;">https://faso.bf/security</a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

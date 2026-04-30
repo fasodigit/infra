@@ -35,19 +35,21 @@ type TabKey = 'active' | 'pending' | 'expired';
     TranslateModule,
   ],
   template: `
-    <div class="contracts-page">
+    <div class="contracts-page" data-testid="contracts-page">
       <div class="page-header">
         <h1>
           <mat-icon>description</mat-icon>
           {{ 'contracts.title' | translate }}
         </h1>
-        <a mat-raised-button color="primary" routerLink="/contracts/new">
+        <a mat-raised-button color="primary" routerLink="/contracts/new"
+           data-testid="contracts-action-create">
           <mat-icon>add</mat-icon>
           {{ 'contracts.create' | translate }}
         </a>
       </div>
 
-      <mat-tab-group (selectedTabChange)="onTabChange($event.index)" animationDuration="200ms">
+      <mat-tab-group (selectedTabChange)="onTabChange($event.index)" animationDuration="200ms"
+                     data-testid="contracts-filter-tabs">
         <!-- Active Tab -->
         <mat-tab>
           <ng-template mat-tab-label>
@@ -64,12 +66,12 @@ type TabKey = 'active' | 'pending' | 'expired';
                 <mat-spinner diameter="40"></mat-spinner>
               </div>
             } @else if (activeContracts().length === 0) {
-              <div class="empty-state">
+              <div class="empty-state" data-testid="contracts-empty-active">
                 <mat-icon>inbox</mat-icon>
                 <p>{{ 'contracts.noActiveContracts' | translate }}</p>
               </div>
             } @else {
-              <div class="contracts-grid">
+              <div class="contracts-grid" data-testid="contracts-list">
                 @for (contract of activeContracts(); track contract.id) {
                   <ng-container *ngTemplateOutlet="contractCard; context: { $implicit: contract }"></ng-container>
                 }
@@ -138,7 +140,8 @@ type TabKey = 'active' | 'pending' | 'expired';
 
       <!-- Contract Card Template -->
       <ng-template #contractCard let-contract>
-        <mat-card class="contract-card" [routerLink]="['/contracts', contract.id]">
+        <mat-card class="contract-card" [routerLink]="['/contracts', contract.id]"
+                  [attr.data-testid]="'contracts-list-item-' + contract.id">
           <mat-card-header>
             <mat-icon mat-card-avatar class="contract-avatar"
               [class]="'role-' + contract.partnerRole">
@@ -174,7 +177,8 @@ type TabKey = 'active' | 'pending' | 'expired';
 
             <div class="contract-badges">
               <mat-chip-set>
-                <mat-chip [class]="'status-' + contract.status.toLowerCase()">
+                <mat-chip [class]="'status-' + contract.status.toLowerCase()"
+                          [attr.data-testid]="'contracts-status-' + contract.status.toLowerCase()">
                   {{ 'contracts.status.' + contract.status | translate }}
                 </mat-chip>
                 @if (contract.halalRequired) {

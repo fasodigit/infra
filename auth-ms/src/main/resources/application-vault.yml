@@ -1,0 +1,61 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION - Ministere du Numerique, Burkina Faso
+# ============================================================
+# Spring Cloud Vault + Consul integration profile for auth-ms.
+#
+# Activate: --spring.profiles.active=vault
+# Requires: VAULT_ROLE_ID, VAULT_SECRET_ID env vars
+# ============================================================
+
+spring:
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID}
+        secret-id: ${VAULT_SECRET_ID}
+        app-role-path: approle
+      kv:
+        enabled: true
+        backend: faso
+        default-context: auth-ms
+      database:
+        enabled: true
+        # Runtime role: DML only, drives the HikariCP pool of the live app.
+        # Flyway uses a separate role (DDL allowed) — see flyway.* below.
+        role: auth-ms-runtime-role
+        backend: database
+      fail-fast: true
+      connection-timeout: 5000
+      read-timeout: 15000
+
+  # Flyway uses a one-shot dynamic credential with DDL grants. The
+  # spring.cloud.vault.database.role above only mints DML creds, so without
+  # this override Flyway would fail to apply migrations. Pre-deploy the
+  # operator can `vault read database/creds/auth-ms-flyway-role` and inject.
+  flyway:
+    user: ${FASO_FLYWAY_USER:}
+    password: ${FASO_FLYWAY_PASSWORD:}
+    consul:
+      host: ${CONSUL_HOST:127.0.0.1}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        enabled: true
+        register: true
+        service-name: ${spring.application.name}
+        health-check-path: /actuator/health
+        health-check-interval: 10s
+        instance-id: ${spring.application.name}-${random.value}
+        prefer-ip-address: true
+        tags:
+          - java
+          - grpc
+          - production
+      config:
+        enabled: true
+        prefix: config
+        default-context: faso
+
+  config:
+    import: "vault://,consul:"

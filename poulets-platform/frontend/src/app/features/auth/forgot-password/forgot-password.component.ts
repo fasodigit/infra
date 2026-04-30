@@ -66,7 +66,7 @@ import { AuthService } from '@core/services/auth.service';
               Retour à la connexion
             </a>
           } @else {
-            <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+            <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate data-testid="forgot-password-form">
               <label class="field" [class.invalid]="emailTouchedInvalid()">
                 <span class="lbl">Adresse email</span>
                 <div class="input-wrap">
@@ -77,6 +77,7 @@ import { AuthService } from '@core/services/auth.service';
                     autocomplete="email"
                     inputmode="email"
                     placeholder="vous&#64;exemple.bf"
+                    data-testid="forgot-password-email"
                     [attr.aria-invalid]="emailTouchedInvalid() || null"
                     required
                   >
@@ -94,6 +95,7 @@ import { AuthService } from '@core/services/auth.service';
                 type="submit"
                 [disabled]="form.invalid || loading()"
                 class="cta"
+                data-testid="forgot-password-submit"
               >
                 @if (loading()) {
                   <mat-spinner diameter="22"></mat-spinner> Envoi…

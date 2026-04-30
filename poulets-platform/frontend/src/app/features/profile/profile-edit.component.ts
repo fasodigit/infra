@@ -25,9 +25,9 @@ import { AuthService } from '@services/auth.service';
     TranslateModule,
   ],
   template: `
-    <div class="edit-container">
+    <div class="edit-container" data-testid="profile-edit-page">
       <div class="page-header">
-        <button mat-icon-button routerLink="..">
+        <button mat-icon-button routerLink=".." data-testid="profile-edit-action-back">
           <mat-icon>arrow_back</mat-icon>
         </button>
         <h1>{{ 'profile.edit.title' | translate }}</h1>
@@ -35,7 +35,7 @@ import { AuthService } from '@services/auth.service';
 
       <mat-card>
         <mat-card-content>
-          <form [formGroup]="form" (ngSubmit)="onSubmit()" class="edit-form">
+          <form [formGroup]="form" (ngSubmit)="onSubmit()" class="edit-form" data-testid="profile-edit-form">
             <!-- Avatar Upload -->
             <div class="avatar-section">
               <div class="avatar-preview">
@@ -45,46 +45,52 @@ import { AuthService } from '@services/auth.service';
                   <mat-icon>person</mat-icon>
                 }
               </div>
-              <button mat-stroked-button type="button" (click)="fileInput.click()">
+              <button mat-stroked-button type="button" (click)="fileInput.click()"
+                      data-testid="profile-edit-action-change-avatar">
                 <mat-icon>photo_camera</mat-icon>
                 {{ 'profile.edit.change_avatar' | translate }}
               </button>
               <input #fileInput type="file" accept="image/*" hidden
-                     (change)="onAvatarChange($event)">
+                     (change)="onAvatarChange($event)"
+                     data-testid="profile-edit-form-photo">
             </div>
 
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>{{ 'profile.edit.name' | translate }}</mat-label>
-              <input matInput formControlName="nom">
+              <input matInput formControlName="nom" data-testid="profile-edit-form-name">
               @if (form.get('nom')?.hasError('required')) {
-                <mat-error>{{ 'profile.edit.name_required' | translate }}</mat-error>
+                <mat-error data-testid="profile-edit-form-error-name">{{ 'profile.edit.name_required' | translate }}</mat-error>
               }
             </mat-form-field>
 
             <mat-form-field appearance="outline">
               <mat-label>{{ 'profile.edit.phone' | translate }}</mat-label>
-              <input matInput formControlName="phone" placeholder="+226 XX XX XX XX">
+              <input matInput formControlName="phone" placeholder="+226 XX XX XX XX"
+                     data-testid="profile-edit-form-phone">
               @if (form.get('phone')?.hasError('required')) {
-                <mat-error>{{ 'profile.edit.phone_required' | translate }}</mat-error>
+                <mat-error data-testid="profile-edit-form-error-phone">{{ 'profile.edit.phone_required' | translate }}</mat-error>
               }
             </mat-form-field>
 
             <mat-form-field appearance="outline">
               <mat-label>{{ 'profile.edit.location' | translate }}</mat-label>
-              <input matInput formControlName="localisation">
+              <input matInput formControlName="localisation" data-testid="profile-edit-form-address">
             </mat-form-field>
 
             <mat-form-field appearance="outline" class="full-width">
               <mat-label>{{ 'profile.edit.description' | translate }}</mat-label>
-              <textarea matInput formControlName="description" rows="4"></textarea>
+              <textarea matInput formControlName="description" rows="4"
+                        data-testid="profile-edit-form-description"></textarea>
             </mat-form-field>
 
             <div class="form-actions">
-              <button mat-button type="button" routerLink="..">
+              <button mat-button type="button" routerLink=".."
+                      data-testid="profile-edit-action-cancel">
                 {{ 'common.cancel' | translate }}
               </button>
               <button mat-raised-button color="primary" type="submit"
-                      [disabled]="form.invalid || submitting()">
+                      [disabled]="form.invalid || submitting()"
+                      data-testid="profile-edit-form-submit">
                 <mat-icon>save</mat-icon>
                 {{ 'profile.edit.save' | translate }}
               </button>

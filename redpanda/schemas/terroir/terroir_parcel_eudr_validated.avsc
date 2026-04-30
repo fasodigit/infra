@@ -1,0 +1,68 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "ParcelEudrValidated",
+  "doc": "Résultat de validation EUDR d'une parcelle (analyse Hansen/JRC). Rétention 1 an (evidence). SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug de la coopérative-tenant."
+    },
+    {
+      "name": "cooperativeId",
+      "type": "string",
+      "doc": "UUID de la coopérative dans le registre TERROIR."
+    },
+    {
+      "name": "parcelId",
+      "type": "string",
+      "doc": "UUID de la parcelle validée."
+    },
+    {
+      "name": "validationStatus",
+      "type": {
+        "type": "enum",
+        "name": "EudrStatus",
+        "symbols": ["VALIDATED", "REJECTED", "ESCALATED"]
+      },
+      "doc": "Statut final de la validation EUDR."
+    },
+    {
+      "name": "hansenDatasetVersion",
+      "type": "string",
+      "doc": "Version du dataset Hansen GFC utilisé (ex: 'GFC-2023-v1.11')."
+    },
+    {
+      "name": "jrcDatasetVersion",
+      "type": "string",
+      "doc": "Version du dataset JRC TMF utilisé (ex: 'TMF-v2023')."
+    },
+    {
+      "name": "deforestationOverlapHa",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Surface de chevauchement déforestation en hectares. null si aucun chevauchement détecté."
+    },
+    {
+      "name": "evidenceUrl",
+      "type": "string",
+      "doc": "URL MinIO du rapport evidence (ex: 's3://terroir-evidence/parcels/<parcelId>/eudr-<date>.pdf')."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC de l'événement (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars)."
+    }
+  ]
+}

@@ -7,10 +7,16 @@
 server:
   port: 8803
   shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 25MB
+    max-swallow-size: 25MB
+  max-http-request-header-size: 16KB
 
 spring:
   application:
     name: notifier-ms
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
 
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
@@ -19,28 +25,41 @@ spring:
   datasource:
     url: jdbc:postgresql://${POSTGRES_HOST:postgres}:${POSTGRES_PORT:5432}/${POSTGRES_DB:notifier}
     username: ${POSTGRES_USER:notifier}
-    password: ${POSTGRES_PASSWORD:notifier}
+    password: ${POSTGRES_PASSWORD}
     driver-class-name: org.postgresql.Driver
     hikari:
       maximum-pool-size: 10
       minimum-idle: 2
-      connection-timeout: 30000
-      idle-timeout: 600000
-      max-lifetime: 1800000
+      connection-timeout: 20000
+      validation-timeout: 3000
+      idle-timeout: 300000
+      max-lifetime: 600000
+      leak-detection-threshold: 30000
+      data-source-properties:
+        options: "-c statement_timeout=10000"
 
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
     properties:
+      jakarta:
+        persistence:
+          query:
+            timeout: 5000
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
+        jdbc:
+          batch_size: 25
+        default_batch_fetch_size: 16
 
   # ── Flyway ──────────────────────────────────────────────────
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations:
+      - classpath:db/migration            # service-owned schema (notifier)
+      - classpath:db/audit-migration      # shared audit schema (Loi 010-2004)
     baseline-on-migrate: false
     validate-on-migrate: true
 
@@ -56,6 +75,7 @@ spring:
       max-poll-records: 10
       properties:
         isolation.level: read_committed
+        max.poll.interval.ms: 300000
     producer:
       key-serializer: org.apache.kafka.common.serialization.StringSerializer
       value-serializer: org.apache.kafka.common.serialization.ByteArraySerializer
@@ -63,8 +83,8 @@ spring:
       retries: 3
     listener:
       ack-mode: MANUAL_IMMEDIATE
-      concurrency: 3
-      auto-startup: ${FASO_KAFKA_ENABLED:false}
+      concurrency: ${FASO_KAFKA_PARTITIONS:3}
+      auto-startup: ${FASO_KAFKA_ENABLED:true}
 
   # ── KAYA (sovereign in-memory store, Redis-protocol) ────────
   data:
@@ -115,11 +135,25 @@ management:
       show-details: when_authorized
       probes:
         enabled: true
+      # Probe groups: liveness must NOT depend on Vault/Kafka — Vault failures
+      # are recoverable, Kafka degradation should be visible via metrics, not
+      # a pod restart loop. Readiness drains traffic if Kafka is KO.
+      group:
+        liveness:
+          include: livenessState,db,ping
+        readiness:
+          include: readinessState,db,kafka,diskSpace
   health:
     livenessstate:
       enabled: true
     readinessstate:
       enabled: true
+    kafka:
+      enabled: true
+    # Vault HealthIndicator defaults to https://localhost:8200 — disable to
+    # avoid spurious 503 on global /actuator/health when Vault is on http.
+    vault:
+      enabled: false
   metrics:
     export:
       prometheus:
@@ -139,7 +173,51 @@ management:
 
 # ── Resilience4j ────────────────────────────────────────────────
 resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+          - org.springframework.mail.MailException
+    instances:
+      smtp:
+        baseConfig: default
+        waitDurationInOpenState: 60s
+      kaya:
+        baseConfig: default
+        slidingWindowSize: 20
+        waitDurationInOpenState: 10s
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+    instances:
+      kaya:
+        timeoutDuration: 1s
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 500ms
+
   retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 500ms
+        retryExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
     instances:
       mail-dispatch:
         max-attempts: 3
@@ -150,12 +228,25 @@ resilience4j:
           - java.io.IOException
         ignore-exceptions:
           - bf.gov.faso.notifier.service.TemplateNotFoundException
+      kaya:
+        maxAttempts: 3
+        waitDuration: 200ms
 
 # ── Notifier configuration ──────────────────────────────────────
 notifier:
   topics:
     github-events: ${GITHUB_EVENTS_TOPIC:github.events.v1}
     dlq: ${GITHUB_EVENTS_DLQ_TOPIC:github.events.v1.dlq}
+    # Phase 4.b admin-UI streams (Stream B)
+    otp-issue: ${OTP_ISSUE_TOPIC:auth.otp.issue}
+    role-granted: ${ROLE_GRANTED_TOPIC:auth.role.granted}
+    break-glass: ${BREAK_GLASS_TOPIC:admin.break_glass.activated}
+    session-revoked: ${SESSION_REVOKED_TOPIC:auth.session.revoked}
+    # Account recovery streams (delta 2026-04-30, section 5)
+    recovery-self-initiated: ${RECOVERY_SELF_INITIATED_TOPIC:auth.recovery.self_initiated}
+    recovery-admin-initiated: ${RECOVERY_ADMIN_INITIATED_TOPIC:auth.recovery.admin_initiated}
+    recovery-completed: ${RECOVERY_COMPLETED_TOPIC:auth.recovery.completed}
+    recovery-used: ${RECOVERY_USED_TOPIC:auth.recovery.used}
   dedupe:
     ttl-seconds: 604800   # 7 days
     key-prefix: "delivery:"
@@ -164,6 +255,13 @@ notifier:
     from-name: ${MAIL_FROM_NAME:FASO DIGITALISATION}
   context-rules:
     file: ${CONTEXT_RULES_FILE:classpath:context-rules.json}
+  # Phase 4.b — admin clients
+  auth-ms:
+    base-url: ${AUTH_MS_BASE_URL:http://auth-ms:8801}
+  slack:
+    # Optional Slack webhook for high-priority security alerts (BREAK-GLASS).
+    # Leave blank in dev; production reads from Vault path faso/notifier/slack.
+    webhook-url: ${SLACK_WEBHOOK_URL:}
 
 # ── Auth-ms JWKS endpoint for token validation ──────────────────
 spring.security.oauth2.resourceserver:
@@ -190,7 +288,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/notifier
     username: notifier
-    password: notifier
+    password: ${POSTGRES_PASSWORD:notifier}
 
   flyway:
     baseline-on-migrate: true
@@ -214,6 +312,10 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: ${AUTH_MS_JWKS_URI:http://localhost:8801/.well-known/jwks.json}
+
+notifier:
+  auth-ms:
+    base-url: ${AUTH_MS_BASE_URL:http://localhost:8801}
 
 ---
 # ── Production profile (Mailersend) ─────────────────────────────

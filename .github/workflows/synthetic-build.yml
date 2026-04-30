@@ -101,7 +101,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: synthetic-monitoring
-          file: synthetic-monitoring/Dockerfile
+          file: synthetic-monitoring/Containerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

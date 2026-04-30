@@ -1,10 +1,13 @@
-# SPDX-License-Identifier: AGPL-3.0-only
-replicaCount: 3
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default values for auth-ms — FASO DIGITALISATION
+# Ports per port-policy.yaml: 8801 (HTTP), 8702 (gRPC), 9002 (actuator/loopback)
+
+replicaCount: 2
 
 image:
   repository: registry.faso.gov.bf/faso/auth-ms
+  tag: latest
   pullPolicy: IfNotPresent
-  tag: ""
 
 imagePullSecrets:
   - name: faso-registry-credentials
@@ -19,7 +22,7 @@ serviceAccount:
 
 podAnnotations:
   prometheus.io/scrape: "true"
-  prometheus.io/port: "8080"
+  prometheus.io/port: "9002"
   prometheus.io/path: "/actuator/prometheus"
 
 podSecurityContext:
@@ -38,16 +41,16 @@ securityContext:
 
 service:
   type: ClusterIP
-  port: 80
-  targetPort: 8080
+  httpPort: 8801
+  grpcPort: 8702
 
 resources:
   requests:
-    cpu: "500m"
-    memory: "512Mi"
+    cpu: "250m"
+    memory: "384Mi"
   limits:
-    cpu: "2000m"
-    memory: "2Gi"
+    cpu: "1000m"
+    memory: "768Mi"
 
 strategy:
   type: RollingUpdate
@@ -55,37 +58,73 @@ strategy:
     maxSurge: 1
     maxUnavailable: 0
 
+# Graceful shutdown: 40s termination + 5s preStop sleep for LB drain
+terminationGracePeriodSeconds: 40
+
 livenessProbe:
   httpGet:
     path: /actuator/health/liveness
-    port: 8080
-  initialDelaySeconds: 60
-  periodSeconds: 20
+    port: actuator
+  initialDelaySeconds: 30
+  periodSeconds: 10
   failureThreshold: 3
   timeoutSeconds: 5
 
 readinessProbe:
   httpGet:
     path: /actuator/health/readiness
-    port: 8080
-  initialDelaySeconds: 20
-  periodSeconds: 10
+    port: actuator
+  initialDelaySeconds: 15
+  periodSeconds: 5
   failureThreshold: 2
   timeoutSeconds: 3
 
 startupProbe:
   httpGet:
-    path: /actuator/health/liveness
-    port: 8080
+    path: /actuator/health
+    port: actuator
   failureThreshold: 30
-  periodSeconds: 10
+  periodSeconds: 2
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 70
 
 podDisruptionBudget:
   enabled: true
-  minAvailable: 2
+  minAvailable: 1
 
 networkPolicy:
   enabled: true
+
+serviceMonitor:
+  enabled: true
+  interval: "30s"
+  scrapeTimeout: "10s"
+
+externalSecret:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+
+vault:
+  enabled: true
+  role: auth-ms
+
+consul:
+  enabled: true
+
+topologySpreadConstraints:
+  - maxSkew: 1
+    topologyKey: topology.kubernetes.io/zone
+    whenUnsatisfiable: DoNotSchedule
+    labelSelector:
+      matchLabels:
+        app.kubernetes.io/name: auth-ms
 
 affinity:
   podAntiAffinity:
@@ -97,8 +136,7 @@ affinity:
               app.kubernetes.io/name: auth-ms
           topologyKey: kubernetes.io/hostname
 
-nodeSelector:
-  topology.kubernetes.io/region: eu-west
+nodeSelector: {}
 
 tolerations: []
 
@@ -106,7 +144,11 @@ env:
   - name: SPRING_PROFILES_ACTIVE
     value: "prod"
   - name: SERVER_PORT
-    value: "8080"
+    value: "8801"
+  - name: MANAGEMENT_SERVER_PORT
+    value: "9002"
+  - name: GRPC_SERVER_PORT
+    value: "8702"
   - name: JAVA_OPTS
     value: "-XX:MaxRAMPercentage=75 -XX:+UseG1GC"
 

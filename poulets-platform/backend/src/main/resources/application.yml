@@ -1,6 +1,10 @@
 server:
   port: 8901
   shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 25MB
+    max-swallow-size: 25MB
+  max-http-request-header-size: 16KB
 
 spring:
   application:
@@ -19,23 +23,35 @@ spring:
       minimum-idle: 2
       idle-timeout: 300000
       connection-timeout: 20000
-      max-lifetime: 1200000
+      max-lifetime: 600000
+      validation-timeout: 3000
+      leak-detection-threshold: 30000
+      data-source-properties:
+        options: "-c statement_timeout=10000"
 
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
     properties:
+      jakarta:
+        persistence:
+          query:
+            timeout: 5000
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
         jdbc:
           time_zone: UTC
+          batch_size: 25
+        default_batch_fetch_size: 16
 
   # Flyway
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations:
+      - classpath:db/migration            # service-owned schema (poulets)
+      - classpath:db/audit-migration      # shared audit schema (Loi 010-2004)
     baseline-on-migrate: true
     validate-on-migrate: true
     clean-disabled: true        # CRITICAL: prevents flyway:clean in prod
@@ -54,11 +70,20 @@ spring:
           min-idle: 2
           max-wait: 2000ms
 
+  # Input validation & request size limits
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 25MB
+
   # GraphQL (DGS)
   graphql:
     path: /graphql
     graphiql:
-      enabled: true
+      # Default false. Dev profile flips it to true. Never enable in prod.
+      enabled: ${GRAPHIQL_ENABLED:false}
+    introspection:
+      enabled: ${GRAPHQL_INTROSPECTION:false}
     schema:
       locations: classpath:schema/
 
@@ -90,9 +115,24 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      # Probe groups: K8s liveness/readiness must NOT depend on Vault.
+      # Vault unavailability is recoverable (Vault Agent re-leases on next call)
+      # and a 503 here triggers pod restart loops that worsen the outage.
+      group:
+        liveness:
+          include: livenessState,db,redis,ping
+        readiness:
+          include: readinessState,db,redis
+      probes:
+        enabled: true
   health:
     db:
       enabled: true
+    # Vault HealthIndicator probes https://localhost:8200 by default and breaks
+    # the global /actuator/health when Vault is on plain http (cycle-fix dev).
+    # Liveness/readiness already exclude vault (see groups above).
+    vault:
+      enabled: false
   metrics:
     tags:
       application: ${spring.application.name}
@@ -108,6 +148,75 @@ management:
   otlp:
     tracing:
       endpoint: http://localhost:4318/v1/traces
+
+# Resilience4j
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.client.HttpServerErrorException
+    instances:
+      authMs:
+        baseConfig: default
+      kaya:
+        baseConfig: default
+        slidingWindowSize: 20
+        waitDurationInOpenState: 10s
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+    instances:
+      authMs:
+        timeoutDuration: 3s
+      kaya:
+        timeoutDuration: 1s
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 500ms
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 500ms
+        retryExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+    instances:
+      kaya:
+        maxAttempts: 3
+        waitDuration: 200ms
+
+# SPIFFE / SPIRE workload-identity configuration.
+# Set spiffe.enabled=true (and restart) to activate mTLS peer validation
+# on inbound gRPC. When false (dev default), TLS uses the legacy server
+# cert/key. The SPIRE agent socket is mounted by docker-compose into
+# /run/spire/sockets/agent.sock on K8s/podman; in host-runtime dev mode
+# the socket is unreachable and spiffe.enabled MUST stay false.
+spiffe:
+  enabled: ${SPIFFE_ENABLED:false}
+  endpoint-socket: ${SPIFFE_ENDPOINT_SOCKET:unix:/run/spire/sockets/agent.sock}
+  trust-domain: faso.gov.bf
+  # Peers allowed to call poulets-api over gRPC.
+  authorized-peers:
+    - spiffe://faso.gov.bf/ns/default/sa/armageddon
+    - spiffe://faso.gov.bf/ns/default/sa/auth-ms
+    - spiffe://faso.gov.bf/ns/default/sa/notifier-ms
 
 logging:
   level:

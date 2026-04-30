@@ -1,0 +1,21 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// terroir-core gRPC schema (skeleton P0.A — implémenté en P1.1).
+// See INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md §6.
+
+syntax = "proto3";
+
+package terroir.core.v1;
+
+// CoreService — registre membres + parcelles + ménages.
+//
+// Endpoints détaillés rédigés en P1.1 ; ici uniquement Health.
+service CoreService {
+  rpc Health(HealthRequest) returns (HealthReply);
+}
+
+message HealthRequest {}
+
+message HealthReply {
+  string status = 1; // "ready" | "live"
+  string version = 2;
+}

@@ -1,0 +1,59 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION - Ministere du Numerique, Burkina Faso
+# ============================================================
+# Spring Cloud Vault + Consul integration profile for notifier-ms.
+#
+# Activate: --spring.profiles.active=vault
+# Requires: VAULT_ROLE_ID, VAULT_SECRET_ID env vars
+# ============================================================
+
+spring:
+  cloud:
+    vault:
+      uri: ${VAULT_ADDR:http://127.0.0.1:8200}
+      authentication: APPROLE
+      app-role:
+        role-id: ${VAULT_ROLE_ID}
+        secret-id: ${VAULT_SECRET_ID}
+        app-role-path: approle
+      kv:
+        enabled: true
+        backend: faso
+        default-context: notifier-ms
+      database:
+        enabled: true
+        # Runtime role: DML only. Flyway uses a separate role with DDL grants.
+        role: notifier-ms-runtime-role
+        backend: database
+      fail-fast: true
+      connection-timeout: 5000
+      read-timeout: 15000
+    consul:
+      host: ${CONSUL_HOST:127.0.0.1}
+      port: ${CONSUL_PORT:8500}
+      discovery:
+        enabled: true
+        register: true
+        service-name: ${spring.application.name}
+        health-check-path: /actuator/health
+        health-check-interval: 10s
+        instance-id: ${spring.application.name}-${random.value}
+        prefer-ip-address: true
+        tags:
+          - java
+          - kafka
+          - production
+      config:
+        enabled: true
+        prefix: config
+        default-context: faso
+
+  # Flyway uses a separate dynamic credential with DDL grants (one-shot at
+  # boot). Operators inject these via FASO_FLYWAY_USER / FASO_FLYWAY_PASSWORD
+  # from `vault read database/creds/notifier-ms-flyway-role`.
+  flyway:
+    user: ${FASO_FLYWAY_USER:}
+    password: ${FASO_FLYWAY_PASSWORD:}
+
+  config:
+    import: "vault://,consul:"

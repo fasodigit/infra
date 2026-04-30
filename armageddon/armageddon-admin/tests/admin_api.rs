@@ -45,6 +45,7 @@ fn minimal_cluster(name: &str) -> Cluster {
 
 fn minimal_gateway_config() -> GatewayConfig {
     GatewayConfig {
+        runtime: Default::default(),
         listeners: vec![ListenerConfig {
             name: "main".to_string(),
             address: "0.0.0.0".to_string(),
@@ -69,8 +70,12 @@ fn minimal_gateway_config() -> GatewayConfig {
         retry: Default::default(),
         cache: None,
         admin: None,
+        admin_api: None,
         websocket_enabled: false,
         grpc_web_enabled: false,
+        rate_limit: None,
+        waf: None,
+        shadow_mode: Default::default(),
     }
 }
 
@@ -284,6 +289,78 @@ async fn test_stats_returns_json() {
         .unwrap();
     // Must be valid JSON.
     let _json: Value = serde_json::from_slice(&body).unwrap();
+}
+
+/// Test 10b: GET /admin/metrics returns Prometheus text exposition format.
+///
+/// Builds an isolated Registry seeded with `armageddon_test_total = 42` and
+/// asserts that the canonical scrape endpoint serves the expected
+/// `# HELP` / `# TYPE` lines + the metric value, with the correct
+/// `Content-Type` header.
+#[tokio::test]
+async fn test_metrics_returns_prometheus_text() {
+    use armageddon_admin::stats::StatsRegistry;
+    use prometheus::{Counter, Opts, Registry};
+
+    // Build a dedicated registry so this test is independent of the
+    // global default registry used by other tests / runtime.
+    let registry = Registry::new();
+    let counter = Counter::with_opts(Opts::new(
+        "armageddon_test_total",
+        "Test counter for /admin/metrics integration test",
+    ))
+    .expect("counter opts valid");
+    registry
+        .register(Box::new(counter.clone()))
+        .expect("register counter");
+    counter.inc_by(42.0);
+
+    let stats = StatsRegistry::from_registry(registry);
+    let cfg = minimal_gateway_config();
+    let state = AdminState::with_stats(cfg, "/tmp/armageddon-test.yaml".into(), stats);
+    let router = build_router_no_auth(state);
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/admin/metrics")
+        .body(Body::empty())
+        .unwrap();
+
+    let resp = router.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+
+    let ct = resp
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .expect("Content-Type header present")
+        .to_str()
+        .expect("Content-Type is ASCII");
+    assert!(
+        ct.starts_with("text/plain"),
+        "Content-Type must start with text/plain, got {ct}"
+    );
+    assert!(
+        ct.contains("version=0.0.4"),
+        "Content-Type must advertise Prometheus version=0.0.4, got {ct}"
+    );
+
+    let body = axum::body::to_bytes(resp.into_body(), usize::MAX)
+        .await
+        .unwrap();
+    let text = std::str::from_utf8(&body).expect("body is UTF-8");
+
+    assert!(
+        text.contains("# HELP armageddon_test_total"),
+        "missing HELP line, body=\n{text}"
+    );
+    assert!(
+        text.contains("# TYPE armageddon_test_total counter"),
+        "missing TYPE line, body=\n{text}"
+    );
+    assert!(
+        text.contains("armageddon_test_total 42"),
+        "missing metric value line, body=\n{text}"
+    );
 }
 
 /// Test 10: POST /admin/reset_counters returns 200 with auth disabled.

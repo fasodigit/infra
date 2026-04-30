@@ -1,0 +1,75 @@
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+  Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+-->
+<!DOCTYPE html>
+<html lang="{{#if lang}}{{lang}}{{else}}fr{{/if}}">
+<head>
+  <meta charset="UTF-8"/>
+  <title>{{#eq lang "en"}}FASO DIGITALISATION — Recovery completed{{else}}FASO DIGITALISATION — Récupération terminée{{/eq}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f6f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:32px 0;">
+    <tr><td align="center">
+      <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#1b5e20;color:#ffffff;padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;">FASO DIGITALISATION</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#FFD700;">
+              {{#eq lang "en"}}Account recovery completed — MFA reset{{else}}Récupération terminée — MFA réinitialisée{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#222;">
+            <p style="font-size:15px;line-height:1.55;">
+              {{#eq lang "en"}}Your account recovery has been successfully completed. Your previous MFA factors have been revoked and a new factor has been enrolled.{{else}}La récupération de votre compte a été effectuée avec succès. Vos anciens facteurs MFA ont été révoqués et un nouveau facteur a été enrôlé.{{/eq}}
+            </p>
+
+            <table width="100%" style="margin:20px 0;border-collapse:collapse;">
+              <tr><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#666;width:35%;">
+                {{#eq lang "en"}}Recovery type{{else}}Type de récupération{{/eq}}
+              </td><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:14px;">
+                <strong>{{recoveryType}}</strong>
+              </td></tr>
+              <tr><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#666;">
+                {{#eq lang "en"}}Completed at{{else}}Terminée le{{/eq}}
+              </td><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:14px;font-family:monospace;">{{completedAt}}</td></tr>
+              <tr><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#666;">
+                {{#eq lang "en"}}Source IP{{else}}Adresse IP source{{/eq}}
+              </td><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:14px;font-family:monospace;">{{ipAddress}}</td></tr>
+              <tr><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:13px;color:#666;">
+                {{#eq lang "en"}}New MFA factor{{else}}Nouveau facteur MFA{{/eq}}
+              </td><td style="padding:10px 14px;border-bottom:1px solid #eee;font-size:14px;"><strong>{{newMfaMethod}}</strong></td></tr>
+              <tr><td style="padding:10px 14px;font-size:13px;color:#666;">
+                {{#eq lang "en"}}Trace ID{{else}}Identifiant de trace{{/eq}}
+              </td><td style="padding:10px 14px;font-size:12px;font-family:monospace;color:#444;">{{traceId}}</td></tr>
+            </table>
+
+            <div style="background:#e8f5e9;border-left:4px solid #1b5e20;padding:14px 18px;margin-top:20px;border-radius:4px;">
+              <p style="margin:0;font-size:13px;color:#1b5e20;line-height:1.5;">
+                <strong>{{#eq lang "en"}}Your new MFA factor{{else}}Votre nouveau facteur MFA{{/eq}}</strong> &mdash;
+                {{#eq lang "en"}}is{{else}}est{{/eq}} : <strong>{{newMfaMethod}}</strong>.
+                {{#eq lang "en"}}Make sure you can sign in with this factor before losing access to the recovery channel.{{else}}Assurez-vous de pouvoir vous connecter avec ce facteur avant de perdre l'accès au canal de récupération.{{/eq}}
+              </p>
+            </div>
+
+            <div style="background:#fff3e0;border:2px solid #E53935;border-radius:8px;padding:18px 22px;margin-top:24px;">
+              <p style="margin:0;font-size:13px;color:#b71c1c;line-height:1.5;">
+                <strong>{{#eq lang "en"}}Suspect compromise?{{else}}Compromission suspectée ?{{/eq}}</strong> &mdash;
+                {{#eq lang "en"}}If you did not perform this recovery, contact <a href="mailto:security@faso.bf" style="color:#b71c1c;">security@faso.bf</a> immediately. See also our security center: <a href="https://faso.bf/security" style="color:#b71c1c;">faso.bf/security</a>.{{else}}Si vous n'êtes pas à l'origine de cette récupération, contactez immédiatement <a href="mailto:security@faso.bf" style="color:#b71c1c;">security@faso.bf</a>. Voir aussi notre centre de sécurité : <a href="https://faso.bf/security" style="color:#b71c1c;">faso.bf/security</a>.{{/eq}}
+              </p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#1b5e20;color:#FFD700;padding:14px 32px;font-size:12px;text-align:center;">
+            FASO DIGITALISATION — République du Burkina Faso<br/>
+            <a href="https://faso.bf/security" style="color:#FFD700;text-decoration:underline;">https://faso.bf/security</a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

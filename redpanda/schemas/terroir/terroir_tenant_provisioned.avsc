@@ -1,0 +1,57 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "TenantProvisioned",
+  "doc": "Coopérative-tenant provisionnée dans la plateforme TERROIR (création namespace, DB schema, Vault KV, roles Keto). Rétention 1 an. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug unique de la coopérative (ex: 'ucobam', 'cooprofel')."
+    },
+    {
+      "name": "tenantId",
+      "type": "string",
+      "doc": "UUID interne TERROIR du tenant."
+    },
+    {
+      "name": "cooperativeName",
+      "type": "string",
+      "doc": "Dénomination officielle de la coopérative."
+    },
+    {
+      "name": "region",
+      "type": "string",
+      "doc": "Région géographique BF (ex: 'EST', 'CENTRE-OUEST')."
+    },
+    {
+      "name": "provisionedBy",
+      "type": "string",
+      "doc": "UUID Kratos du super-admin ayant déclenché le provisionnement."
+    },
+    {
+      "name": "planTier",
+      "type": {
+        "type": "enum",
+        "name": "PlanTier",
+        "symbols": ["STARTER", "STANDARD", "ENTERPRISE"]
+      },
+      "doc": "Niveau d'abonnement initial."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC de l'événement (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars)."
+    }
+  ]
+}

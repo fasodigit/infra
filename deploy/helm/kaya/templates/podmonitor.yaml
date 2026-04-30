@@ -1,4 +1,4 @@
-{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
 {{- if .Values.podMonitor.enabled }}
 apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
@@ -7,7 +7,6 @@ metadata:
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "kaya.labels" . | nindent 4 }}
-    # Label required for prometheus-operator to discover this PodMonitor
     release: kube-prometheus-stack
 spec:
   selector:

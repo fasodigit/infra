@@ -1,0 +1,27 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# OPA configuration — bundle reload, decision logs to OTel Collector.
+
+# Decision logs forwarded to OTel Collector for Loki storage.
+decision_logs:
+  console: false                         # disabled under load; re-enable for audit replay
+  reporting:
+    min_delay_seconds: 5
+    max_delay_seconds: 30
+
+# Status reporting — health metrics
+status:
+  console: false
+  prometheus: true                        # exposed at /metrics on diag port
+
+# Distributed tracing — sample 1% under load (was 100%, killed p99)
+distributed_tracing:
+  type: grpc
+  address: host.docker.internal:4319
+  service_name: opa
+  sample_percentage: 1
+
+# Bundle source (HTTP polling — for prod use a CDN or S3 bundle)
+# In dev we use file-based policies via --config-file argv
+
+# Persistence directory for bundle download
+persistence_directory: /var/opa/bundles

@@ -26,4 +26,5 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 axum = { workspace = true }
 tower = { workspace = true }
 serde_yaml = { workspace = true }
+prometheus = { workspace = true }
 tempfile = "3"

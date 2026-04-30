@@ -4,7 +4,7 @@
 # Validator: bash INFRA/scripts/validate-ports.sh
 # Skill:     /ports
 version: 1
-updated: "2026-04-19"
+updated: "2026-04-30"
 maintainer: platform-team
 
 # --------------------------------------------------------------------------
@@ -29,6 +29,8 @@ ranges:
   xds:                { start: 18000, end: 18099, owner: platform-team, scope: mesh }
   jaeger-ui:          { start: 16600, end: 16700, owner: sre-team,    scope: loopback }
   pushgateway:        { start: 9090, end: 9099, owner: sre-team,      scope: loopback, conflict-risk: java-actuator }
+  agri-services-http: { start: 8830, end: 8849, owner: agri-team,     scope: public,   note: "TERROIR (digitalisation coopératives agricoles) — Rust + Java mixed" }
+  agri-services-grpc: { start: 8730, end: 8749, owner: agri-team,     scope: mesh,     note: "TERROIR gRPC inter-services" }
 
 # --------------------------------------------------------------------------
 # ALLOCATIONS — individual service:port mappings.
@@ -56,6 +58,20 @@ allocations:
   - { service: notifier-ms-actuator, port: 9003, protocol: http, tier: java-actuator,      scope: loopback }
   - { service: etat-civil-ms,      port: 8810,  protocol: http,  tier: java-backend-http,  status: planned }
   - { service: sogesy-ms,          port: 8820,  protocol: http,  tier: java-backend-http,  status: planned }
+
+  # TERROIR (agri-coop digitalisation) — status: planned, see INFRA/terroir/docs/PLAN-TERROIR.md
+  - { service: terroir-core,        port: 8830, protocol: http,  tier: agri-services-http, status: planned, note: "Rust Axum API — registre membres + parcelles" }
+  - { service: terroir-eudr,        port: 8831, protocol: http,  tier: agri-services-http, status: planned, note: "Rust — validation Hansen GFC + JRC TMF, génération DDS" }
+  - { service: terroir-payment,     port: 8832, protocol: http,  tier: agri-services-http, status: planned, note: "Java Spring Boot — orchestration mobile money" }
+  - { service: terroir-mobile-bff,  port: 8833, protocol: http,  tier: agri-services-http, status: planned, note: "Rust — BFF app agent terrain offline-first" }
+  - { service: terroir-ussd,        port: 8834, protocol: http,  tier: agri-services-http, status: planned, note: "Rust — gateway USSD/SMS" }
+  - { service: terroir-buyer,       port: 8835, protocol: http,  tier: agri-services-http, status: planned, note: "Rust — portail acheteurs/exportateurs (DDS download)" }
+  - { service: terroir-core-grpc,   port: 8730, protocol: grpc,  tier: agri-services-grpc, status: planned, scope: mesh }
+  - { service: terroir-eudr-grpc,   port: 8731, protocol: grpc,  tier: agri-services-grpc, status: planned, scope: mesh }
+  - { service: terroir-payment-actuator, port: 9004, protocol: http, tier: java-actuator,  status: planned, scope: loopback }
+  - { service: terroir-admin,       port: 9904, protocol: http,  tier: admin-api,          status: planned, scope: loopback, note: "TERROIR admin API — feature flags, health, debug" }
+  - { service: terroir-web-admin,   port: 4810, protocol: http,  tier: frontend,           status: planned, note: "Back-office union/exportateur (React)" }
+  - { service: terroir-buyer-portal, port: 4811, protocol: http, tier: frontend,           status: planned, note: "Portail acheteurs DDS (Next.js)" }
 
   # KAYA
   - { service: kaya-resp3,         port: 6380,  protocol: resp3, tier: kaya-family }

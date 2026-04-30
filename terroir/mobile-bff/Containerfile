@@ -1,0 +1,44 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# terroir-mobile-bff — multi-stage container build
+
+FROM docker.io/library/rust:1.85-alpine AS builder
+
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static \
+    && rustup target add x86_64-unknown-linux-musl
+
+WORKDIR /build
+
+COPY Cargo.toml ./
+COPY core/Cargo.toml core/
+COPY eudr/Cargo.toml eudr/
+COPY mobile-bff/Cargo.toml mobile-bff/
+COPY ussd/Cargo.toml ussd/
+COPY ussd-simulator/Cargo.toml ussd-simulator/
+COPY buyer/Cargo.toml buyer/
+COPY admin/Cargo.toml admin/
+
+RUN mkdir -p core/src eudr/src mobile-bff/src ussd/src ussd-simulator/src buyer/src admin/src \
+ && for c in core eudr mobile-bff ussd ussd-simulator buyer admin; do \
+        echo 'fn main() {}' > $c/src/main.rs; \
+        echo '' > $c/src/lib.rs; \
+    done \
+ && cargo build --release --target x86_64-unknown-linux-musl -p terroir-mobile-bff \
+ && rm -rf core/src eudr/src mobile-bff/src ussd/src ussd-simulator/src buyer/src admin/src
+
+COPY mobile-bff/ mobile-bff/
+RUN cargo build --release --target x86_64-unknown-linux-musl -p terroir-mobile-bff
+
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+
+WORKDIR /app
+COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/terroir-mobile-bff /app/terroir-mobile-bff
+
+EXPOSE 8833
+
+USER nonroot:nonroot
+ENTRYPOINT ["/app/terroir-mobile-bff"]
+
+LABEL org.opencontainers.image.title="terroir-mobile-bff" \
+      org.opencontainers.image.description="TERROIR — BFF mobile agent terrain offline-first" \
+      org.opencontainers.image.vendor="FASO DIGITALISATION" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"

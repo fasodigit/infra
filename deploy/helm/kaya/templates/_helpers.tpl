@@ -1,3 +1,4 @@
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
 {{/*
 Expand the name of the chart.
 */}}
@@ -39,6 +40,7 @@ app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
 {{- end }}
 app.kubernetes.io/managed-by: {{ .Release.Service }}
 app.kubernetes.io/part-of: faso-digitalisation
+app.kubernetes.io/component: database
 {{- end }}
 
 {{/*

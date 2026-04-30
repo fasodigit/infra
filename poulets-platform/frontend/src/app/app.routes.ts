@@ -131,10 +131,13 @@ export const routes: Routes = [
         path: 'payments',
         loadChildren: () => import('./features/payments/routes'),
       },
-      // Admin
+      // Admin v2 — Claude Design intégré (Phase 3 / 2026-04-30)
+      // L'ancien routes.ts (poulets-admin legacy : monitoring, kpis, regions,
+      // organizations, workflows, impression) reste sur disque mais n'est plus
+      // wiré. Migration ultérieure si besoin.
       {
         path: 'admin',
-        loadChildren: () => import('./features/admin/routes'),
+        loadChildren: () => import('./features/admin/routes-v2'),
       },
     ],
   },

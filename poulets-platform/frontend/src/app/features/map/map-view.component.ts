@@ -40,7 +40,7 @@ interface NearbyActor {
     RatingStarsComponent,
   ],
   template: `
-    <div class="map-container">
+    <div class="map-container" data-testid="map-page">
       <div class="page-header">
         <h1>{{ 'map.title' | translate }}</h1>
       </div>
@@ -51,7 +51,8 @@ interface NearbyActor {
           <div class="filters-row">
             <mat-form-field appearance="outline">
               <mat-label>{{ 'map.filter.role' | translate }}</mat-label>
-              <mat-select [(value)]="selectedRole" (selectionChange)="applyFilters()">
+              <mat-select [(value)]="selectedRole" (selectionChange)="applyFilters()"
+                          data-testid="map-filter-role">
                 <mat-option value="all">{{ 'map.filter.all_roles' | translate }}</mat-option>
                 <mat-option value="eleveur">{{ 'map.filter.eleveur' | translate }}</mat-option>
                 <mat-option value="client">{{ 'map.filter.client' | translate }}</mat-option>
@@ -61,7 +62,8 @@ interface NearbyActor {
 
             <mat-form-field appearance="outline">
               <mat-label>{{ 'map.filter.race' | translate }}</mat-label>
-              <mat-select [(value)]="selectedRace" (selectionChange)="applyFilters()">
+              <mat-select [(value)]="selectedRace" (selectionChange)="applyFilters()"
+                          data-testid="map-filter-race">
                 <mat-option value="all">{{ 'map.filter.all_races' | translate }}</mat-option>
                 <mat-option value="bicyclette">Poulet bicyclette</mat-option>
                 <mat-option value="chair">Poulet de chair</mat-option>
@@ -106,9 +108,10 @@ interface NearbyActor {
         </mat-card-header>
         <mat-card-content>
           @if (filteredActors().length > 0) {
-            <mat-list>
+            <mat-list data-testid="map-list">
               @for (actor of filteredActors(); track actor.id) {
-                <mat-list-item class="actor-item">
+                <mat-list-item class="actor-item"
+                               [attr.data-testid]="'map-list-item-' + actor.id">
                   <div class="actor-content">
                     <div class="actor-avatar" [class]="'role-' + actor.role">
                       <mat-icon>{{ getRoleIcon(actor.role) }}</mat-icon>

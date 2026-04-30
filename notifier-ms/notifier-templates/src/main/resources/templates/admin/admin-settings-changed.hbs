@@ -1,0 +1,65 @@
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+  Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+-->
+<!DOCTYPE html>
+<html lang="{{#if lang}}{{lang}}{{else}}fr{{/if}}">
+<head>
+  <meta charset="UTF-8"/>
+  <title>{{#eq lang "en"}}FASO ADMIN — Settings changed (digest){{else}}FASO ADMIN — Paramètres modifiés (digest){{/eq}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f6f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:32px 0;">
+    <tr><td align="center">
+      <table width="720" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#1b5e20;color:#ffffff;padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;">FASO ADMIN</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#FFD700;">
+              {{#eq lang "en"}}Settings change digest{{else}}Digest des modifications de paramètres{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#222;">
+            <p style="font-size:15px;line-height:1.55;">
+              {{#eq lang "en"}}The following administrative settings have been modified:{{else}}Les paramètres d'administration suivants ont été modifiés :{{/eq}}
+            </p>
+            <table width="100%" style="margin:18px 0;border-collapse:collapse;font-size:13px;">
+              <thead>
+                <tr style="background:#1b5e20;color:#FFD700;">
+                  <th align="left" style="padding:10px;">{{#eq lang "en"}}Key{{else}}Clé{{/eq}}</th>
+                  <th align="left" style="padding:10px;">{{#eq lang "en"}}Old value{{else}}Ancienne valeur{{/eq}}</th>
+                  <th align="left" style="padding:10px;">{{#eq lang "en"}}New value{{else}}Nouvelle valeur{{/eq}}</th>
+                  <th align="left" style="padding:10px;">{{#eq lang "en"}}Reason{{else}}Motif{{/eq}}</th>
+                  <th align="left" style="padding:10px;">{{#eq lang "en"}}Changed by{{else}}Modifié par{{/eq}}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {{#each changes}}
+                <tr style="border-bottom:1px solid #eee;">
+                  <td style="padding:10px;font-family:monospace;color:#1b5e20;">{{this.key}}</td>
+                  <td style="padding:10px;color:#888;text-decoration:line-through;">{{this.oldValue}}</td>
+                  <td style="padding:10px;color:#1b5e20;font-weight:bold;">{{this.newValue}}</td>
+                  <td style="padding:10px;font-style:italic;color:#555;">{{this.motif}}</td>
+                  <td style="padding:10px;">{{this.who}}</td>
+                </tr>
+                {{/each}}
+              </tbody>
+            </table>
+            <p style="font-size:13px;color:#555;margin-top:18px;">
+              {{#eq lang "en"}}Each change is recorded in the audit log (Loi 010-2004) and rollback is possible from the admin console <em>Settings &gt; History</em>.{{else}}Chaque modification est consignée dans le journal d'audit (Loi 010-2004) et un retour arrière est possible depuis la console <em>Paramètres &gt; Historique</em>.{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#1b5e20;color:#FFD700;padding:14px 32px;font-size:12px;text-align:center;">
+            FASO DIGITALISATION — République du Burkina Faso<br/>
+            <a href="https://faso.bf/security" style="color:#FFD700;text-decoration:underline;">https://faso.bf/security</a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

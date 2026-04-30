@@ -1,0 +1,48 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "MemberCreated",
+  "doc": "Producteur créé dans le registre coopérative. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence pour consommateurs."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug de la coopérative-tenant (ex: 'ucobam')."
+    },
+    {
+      "name": "cooperativeId",
+      "type": "string",
+      "doc": "UUID de la coopérative dans le registre TERROIR."
+    },
+    {
+      "name": "memberId",
+      "type": "string",
+      "doc": "UUID du producteur nouvellement créé."
+    },
+    {
+      "name": "creatorAgentId",
+      "type": "string",
+      "doc": "UUID Kratos de l'agent terrain ou superviseur ayant enregistré le membre."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC de l'événement (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars) pour corrélation distribuée."
+    },
+    {
+      "name": "piiEncrypted",
+      "type": "boolean",
+      "doc": "true si champs personnels (nom, CNIB, téléphone) chiffrés via Vault Transit avant stockage."
+    }
+  ]
+}

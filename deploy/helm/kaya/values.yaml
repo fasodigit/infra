@@ -1,12 +1,13 @@
-# SPDX-License-Identifier: AGPL-3.0-only
-# Default values for kaya chart
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Default values for KAYA — FASO DIGITALISATION
+# Ports per port-policy.yaml: 6380 (RESP3), 6381 (gRPC), 9100 (metrics)
 
 replicaCount: 3
 
 image:
   repository: registry.faso.gov.bf/faso/kaya
+  tag: latest
   pullPolicy: IfNotPresent
-  tag: ""  # defaults to .Chart.AppVersion
 
 imagePullSecrets:
   - name: faso-registry-credentials
@@ -21,7 +22,7 @@ serviceAccount:
 
 podAnnotations:
   prometheus.io/scrape: "true"
-  prometheus.io/port: "6381"
+  prometheus.io/port: "9100"
   prometheus.io/path: "/metrics"
 
 podSecurityContext:
@@ -41,20 +42,40 @@ securityContext:
 service:
   type: ClusterIP
   respPort: 6380
-  metricsPort: 6381
+  grpcPort: 6381
+  metricsPort: 9100
 
 persistence:
   storageClass: "csi-ovh-block"
-  size: 50Gi
+  size: 20Gi
   accessMode: ReadWriteOnce
 
 resources:
   requests:
-    cpu: "500m"
-    memory: "1Gi"
+    cpu: "1000m"
+    memory: "2Gi"
   limits:
-    cpu: "2000m"
+    cpu: "4000m"
     memory: "4Gi"
+
+# Graceful shutdown: 60s for WAL flush + connection drain
+terminationGracePeriodSeconds: 60
+
+livenessProbe:
+  tcpSocket:
+    port: 6380
+  initialDelaySeconds: 15
+  periodSeconds: 10
+  failureThreshold: 3
+  timeoutSeconds: 5
+
+readinessProbe:
+  exec:
+    command: ["/usr/local/bin/kaya-cli", "ping"]
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  failureThreshold: 2
+  timeoutSeconds: 3
 
 podDisruptionBudget:
   enabled: true
@@ -65,19 +86,22 @@ podMonitor:
   interval: "30s"
   scrapeTimeout: "10s"
 
-livenessProbe:
-  tcpSocket:
-    port: 6380
-  initialDelaySeconds: 30
-  periodSeconds: 15
-  failureThreshold: 3
+networkPolicy:
+  enabled: true
 
-readinessProbe:
-  exec:
-    command: ["/usr/local/bin/kaya-cli", "PING"]
-  initialDelaySeconds: 10
-  periodSeconds: 10
-  failureThreshold: 2
+externalSecret:
+  enabled: true
+  refreshInterval: "1h"
+  secretStoreRef:
+    name: vault-backend
+    kind: ClusterSecretStore
+
+vault:
+  enabled: true
+  role: kaya
+
+consul:
+  enabled: true
 
 affinity:
   podAntiAffinity:
@@ -87,10 +111,18 @@ affinity:
             app.kubernetes.io/name: kaya
         topologyKey: kubernetes.io/hostname
 
-nodeSelector:
-  topology.kubernetes.io/region: eu-west
+nodeSelector: {}
 
 tolerations: []
 
-networkPolicy:
-  enabled: true
+env:
+  - name: KAYA_RESP_ADDR
+    value: "0.0.0.0:6380"
+  - name: KAYA_GRPC_ADDR
+    value: "0.0.0.0:6381"
+  - name: KAYA_METRICS_ADDR
+    value: "0.0.0.0:9100"
+  - name: KAYA_DATA_DIR
+    value: "/data"
+  - name: RUST_LOG
+    value: "kaya=info"

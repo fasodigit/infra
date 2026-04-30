@@ -1,0 +1,28 @@
+{
+  "_comment": "FASO role catalog — used by OPA to validate role values against the canonical list. Synced from Kratos identity schema traits.roles enum.",
+  "valid_roles": [
+    "eleveur",
+    "client",
+    "pharmacie",
+    "veterinaire",
+    "aliments",
+    "transporteur",
+    "vaccins",
+    "admin",
+    "super_admin"
+  ],
+  "role_hierarchy": {
+    "super_admin": ["admin"],
+    "admin": ["eleveur", "client", "pharmacie", "veterinaire", "aliments", "transporteur", "vaccins"]
+  },
+  "role_features": {
+    "eleveur":      ["marketplace.publish", "commerce.accept", "kyc"],
+    "client":       ["marketplace.demand", "commerce.purchase", "kyc"],
+    "pharmacie":    ["pharmacy.stock", "kyc"],
+    "veterinaire":  ["halal.certify", "vaccine.record", "kyc"],
+    "vaccins":      ["vaccine.record", "kyc"],
+    "aliments":     ["marketplace.publish.aliments", "kyc"],
+    "transporteur": ["delivery.accept", "kyc"],
+    "admin":        ["admin.users", "admin.dashboard"]
+  }
+}

@@ -44,13 +44,14 @@ import { Annonce, AnnonceFilter, CHICKEN_RACES } from '../../../shared/models/ma
     TranslateModule,
   ],
   template: `
-    <div class="annonces-page">
+    <div class="annonces-page" data-testid="annonces-page">
       <div class="page-header">
         <h1>
           <mat-icon>storefront</mat-icon>
           {{ 'marketplace.annonces.title' | translate }}
         </h1>
-        <a mat-raised-button color="primary" routerLink="/marketplace/annonces/new">
+        <a mat-raised-button color="primary" routerLink="/marketplace/annonces/new"
+           data-testid="annonces-action-publish">
           <mat-icon>add</mat-icon>
           {{ 'marketplace.annonces.publish' | translate }}
         </a>
@@ -59,10 +60,11 @@ import { Annonce, AnnonceFilter, CHICKEN_RACES } from '../../../shared/models/ma
       <!-- Filters -->
       <mat-card class="filter-card">
         <mat-card-content>
-          <form [formGroup]="filterForm" (ngSubmit)="applyFilters()" class="filter-form">
+          <form [formGroup]="filterForm" (ngSubmit)="applyFilters()" class="filter-form"
+                data-testid="annonces-form-filter">
             <mat-form-field appearance="outline" class="filter-field">
               <mat-label>{{ 'marketplace.filter.race' | translate }}</mat-label>
-              <mat-select formControlName="race">
+              <mat-select formControlName="race" data-testid="annonces-filter-race">
                 <mat-option value="">{{ 'marketplace.filter.allRaces' | translate }}</mat-option>
                 @for (race of races; track race) {
                   <mat-option [value]="race">{{ race }}</mat-option>
@@ -82,7 +84,7 @@ import { Annonce, AnnonceFilter, CHICKEN_RACES } from '../../../shared/models/ma
 
             <mat-form-field appearance="outline" class="filter-field">
               <mat-label>{{ 'marketplace.filter.location' | translate }}</mat-label>
-              <input matInput formControlName="location">
+              <input matInput formControlName="location" data-testid="annonces-filter-location">
             </mat-form-field>
 
             <mat-form-field appearance="outline" class="filter-field">
@@ -119,11 +121,13 @@ import { Annonce, AnnonceFilter, CHICKEN_RACES } from '../../../shared/models/ma
             </div>
 
             <div class="filter-actions">
-              <button mat-raised-button color="primary" type="submit">
+              <button mat-raised-button color="primary" type="submit"
+                      data-testid="annonces-form-submit">
                 <mat-icon>search</mat-icon>
                 {{ 'marketplace.filter.search' | translate }}
               </button>
-              <button mat-button type="button" (click)="resetFilters()">
+              <button mat-button type="button" (click)="resetFilters()"
+                      data-testid="annonces-filter-clear">
                 <mat-icon>clear</mat-icon>
                 {{ 'marketplace.filter.reset' | translate }}
               </button>
@@ -138,7 +142,7 @@ import { Annonce, AnnonceFilter, CHICKEN_RACES } from '../../../shared/models/ma
           <mat-spinner diameter="48"></mat-spinner>
         </div>
       } @else if (annonces().length === 0) {
-        <div class="empty-state">
+        <div class="empty-state" data-testid="annonces-empty">
           <mat-icon>inventory_2</mat-icon>
           <p>{{ 'marketplace.annonces.empty' | translate }}</p>
           <a mat-raised-button color="primary" routerLink="/marketplace/annonces/new">
@@ -146,9 +150,10 @@ import { Annonce, AnnonceFilter, CHICKEN_RACES } from '../../../shared/models/ma
           </a>
         </div>
       } @else {
-        <div class="annonces-grid">
+        <div class="annonces-grid" data-testid="annonces-list">
           @for (annonce of annonces(); track annonce.id) {
-            <mat-card class="annonce-card" [routerLink]="['/marketplace/annonces', annonce.id]">
+            <mat-card class="annonce-card" [routerLink]="['/marketplace/annonces', annonce.id]"
+                      [attr.data-testid]="'annonces-list-item-' + annonce.id">
               @if (annonce.photos && annonce.photos.length > 0) {
                 <img mat-card-image [src]="annonce.photos[0]" [alt]="annonce.race" class="card-image">
               } @else {

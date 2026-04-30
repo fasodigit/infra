@@ -188,6 +188,7 @@ mod tests {
 
     fn minimal_gateway_config() -> GatewayConfig {
         GatewayConfig {
+            runtime: Default::default(),
             listeners: vec![minimal_listener("main", 8080)],
             routes: vec![],
             clusters: vec![minimal_cluster("backend")],
@@ -206,8 +207,12 @@ mod tests {
             retry: Default::default(),
             cache: None,
             admin: None,
+            admin_api: None,
             websocket_enabled: false,
             grpc_web_enabled: false,
+            rate_limit: None,
+            waf: None,
+            shadow_mode: Default::default(),
         }
     }
 

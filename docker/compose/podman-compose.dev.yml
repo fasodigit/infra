@@ -1,7 +1,7 @@
 # =============================================================================
 # DEV override - enables sensitive log leaking for local debugging ONLY
 # WARNING: NEVER use in staging/production - secrets appear in plaintext logs
-# Usage: podman-compose -f docker-compose.yml -f docker-compose.dev.yml up
+# Usage: podman-compose -f podman-compose.yml -f podman-compose.dev.yml up
 # =============================================================================
 services:
   kratos:

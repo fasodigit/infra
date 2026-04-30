@@ -1,0 +1,60 @@
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+  Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+-->
+<!DOCTYPE html>
+<html lang="{{#if lang}}{{lang}}{{else}}fr{{/if}}">
+<head>
+  <meta charset="UTF-8"/>
+  <title>{{#eq lang "en"}}FASO ADMIN — You have been invited{{else}}FASO ADMIN — Invitation reçue{{/eq}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f6f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:32px 0;">
+    <tr><td align="center">
+      <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#1b5e20;color:#ffffff;padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;">FASO ADMIN</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#FFD700;">
+              {{#eq lang "en"}}Administrator invitation{{else}}Invitation administrateur{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#222;">
+            <p style="font-size:15px;">
+              {{#eq lang "en"}}Hello,{{else}}Bonjour,{{/eq}}
+            </p>
+            <p style="font-size:15px;line-height:1.55;">
+              {{#eq lang "en"}}<strong>{{inviter}}</strong> has invited you to join the FASO administration console with the role:{{else}}<strong>{{inviter}}</strong> vous invite à rejoindre la console d'administration FASO avec le rôle :{{/eq}}
+            </p>
+            <div style="margin:18px 0;text-align:center;">
+              <span style="display:inline-block;background:#FFD700;color:#1b5e20;padding:10px 22px;border-radius:6px;font-weight:bold;font-size:16px;">{{role}}</span>
+            </div>
+            <p style="font-size:14px;color:#444;">
+              {{#eq lang "en"}}To accept the invitation and configure your MFA factors, click the secure link below:{{else}}Pour accepter l'invitation et configurer vos facteurs MFA, cliquez sur le lien sécurisé ci-dessous :{{/eq}}
+            </p>
+            <p style="text-align:center;margin:24px 0;">
+              <a href="{{invitationLink}}" style="background:#1b5e20;color:#ffffff;padding:14px 32px;text-decoration:none;border-radius:6px;font-weight:bold;display:inline-block;">
+                {{#eq lang "en"}}Accept invitation{{else}}Accepter l'invitation{{/eq}}
+              </a>
+            </p>
+            <p style="font-size:12px;color:#777;">
+              {{#eq lang "en"}}Link expires on:{{else}}Lien valable jusqu'au :{{/eq}} <strong>{{expiresAt}}</strong>
+            </p>
+            <p style="font-size:13px;color:#E53935;margin-top:24px;">
+              {{#eq lang "en"}}If you did not expect this invitation, ignore this email or report it to security@faso.bf.{{else}}Si vous ne vous attendiez pas à cette invitation, ignorez cet e-mail ou signalez-le à security@faso.bf.{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#1b5e20;color:#FFD700;padding:14px 32px;font-size:12px;text-align:center;">
+            FASO DIGITALISATION — République du Burkina Faso<br/>
+            <a href="https://faso.bf/security" style="color:#FFD700;text-decoration:underline;">https://faso.bf/security</a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

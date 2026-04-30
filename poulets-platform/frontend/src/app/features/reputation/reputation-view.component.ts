@@ -42,7 +42,7 @@ interface Review {
     DatePipe,
   ],
   template: `
-    <div class="reputation-container">
+    <div class="reputation-container" data-testid="reputation-page">
       <div class="page-header">
         <h1>{{ 'reputation.view.title' | translate }}</h1>
       </div>
@@ -52,9 +52,10 @@ interface Review {
         <mat-card-content>
           <div class="overview-grid">
             <div class="rating-overview">
-              <span class="big-rating">{{ avgRating().toFixed(1) }}</span>
-              <app-rating-stars [value]="avgRating()" [showCount]="true" [count]="totalReviews()"></app-rating-stars>
-              <span class="total-reviews">{{ totalReviews() }} {{ 'reputation.view.reviews' | translate }}</span>
+              <span class="big-rating" data-testid="reputation-detail-field-rating">{{ avgRating().toFixed(1) }}</span>
+              <app-rating-stars [value]="avgRating()" [showCount]="true" [count]="totalReviews()"
+                                data-testid="reputation-rating-widget"></app-rating-stars>
+              <span class="total-reviews" data-testid="reputation-detail-field-total">{{ totalReviews() }} {{ 'reputation.view.reviews' | translate }}</span>
             </div>
 
             <div class="rating-breakdown">
@@ -79,9 +80,10 @@ interface Review {
           <mat-card-title>{{ 'reputation.view.badges' | translate }}</mat-card-title>
         </mat-card-header>
         <mat-card-content>
-          <div class="badges-grid">
+          <div class="badges-grid" data-testid="reputation-badges">
             @for (badge of badges(); track badge.label) {
-              <div class="badge-item" [class.earned]="badge.earned">
+              <div class="badge-item" [class.earned]="badge.earned"
+                   [attr.data-testid]="'reputation-badge-' + badge.label.replace(/\\./g, '-')">
                 <mat-icon [style.color]="badge.earned ? badge.color : '#ccc'">
                   {{ badge.icon }}
                 </mat-icon>
@@ -97,9 +99,9 @@ interface Review {
         <mat-card-header>
           <mat-card-title>{{ 'reputation.view.all_reviews' | translate }}</mat-card-title>
         </mat-card-header>
-        <mat-card-content>
+        <mat-card-content data-testid="reputation-list">
           @for (review of reviews(); track review.id) {
-            <div class="review-item">
+            <div class="review-item" [attr.data-testid]="'reputation-list-item-' + review.id">
               <div class="review-header">
                 <div class="reviewer-info">
                   <div class="reviewer-avatar">{{ getInitials(review.reviewerName) }}</div>

@@ -302,7 +302,10 @@ services:
         export DSN="postgres://faso:$${PGPW}@postgres:5432/keto?sslmode=disable&max_conns=20&max_idle_conns=4"
         exec keto serve --config /etc/config/keto/keto.yml
     ports:
-      - "4466:4466"
+      # Read API: bind explicit IPv4 only. The dual-stack default
+      # (0.0.0.0 + [::]:4466) caused HTTP RESET on host probes via
+      # docker-proxy IPv6 forwarding. Match the IPv4-only style of 4467.
+      - "127.0.0.1:4466:4466"
       - "127.0.0.1:4467:4467"   # Write API: loopback only
     environment:
       LOG_LEVEL: debug

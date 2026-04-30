@@ -29,6 +29,7 @@
     <module>grpc-definitions</module>
     <module>event-bus-lib</module>
     <module>spiffe-grpc</module>
+    <module>audit-lib</module>
   </modules>
 
   <properties>

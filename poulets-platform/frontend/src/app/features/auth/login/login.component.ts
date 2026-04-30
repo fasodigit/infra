@@ -60,13 +60,13 @@ import { AuthService } from '@core/services/auth.service';
           </header>
 
           @if (errorMessage()) {
-            <div class="error" role="alert">
+            <div class="error" role="alert" data-testid="login-error">
               <mat-icon>error_outline</mat-icon>
               <span>{{ errorMessage() | translate }}</span>
             </div>
           }
 
-          <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate>
+          <form [formGroup]="form" (ngSubmit)="onSubmit()" novalidate data-testid="login-form">
             <label class="field" [class.invalid]="emailTouchedInvalid()">
               <span class="lbl">Adresse email</span>
               <div class="input-wrap">
@@ -77,6 +77,7 @@ import { AuthService } from '@core/services/auth.service';
                   autocomplete="email"
                   inputmode="email"
                   placeholder="vous&#64;exemple.bf"
+                  data-testid="login-email"
                   [attr.aria-invalid]="emailTouchedInvalid() || null"
                 >
               </div>
@@ -90,7 +91,7 @@ import { AuthService } from '@core/services/auth.service';
             <label class="field" [class.invalid]="passwordTouchedInvalid()">
               <div class="lbl-row">
                 <span class="lbl">Mot de passe</span>
-                <a routerLink="/auth/forgot-password" class="forgot">Mot de passe oublié&nbsp;?</a>
+                <a routerLink="/auth/forgot-password" class="forgot" data-testid="forgot-password-link">Mot de passe oublié&nbsp;?</a>
               </div>
               <div class="input-wrap">
                 <mat-icon aria-hidden="true">lock</mat-icon>
@@ -99,6 +100,7 @@ import { AuthService } from '@core/services/auth.service';
                   formControlName="password"
                   autocomplete="current-password"
                   placeholder="••••••••"
+                  data-testid="login-password"
                   [attr.aria-invalid]="passwordTouchedInvalid() || null"
                 >
                 <button
@@ -121,6 +123,7 @@ import { AuthService } from '@core/services/auth.service';
               type="submit"
               [disabled]="form.invalid || loading()"
               class="cta"
+              data-testid="login-submit"
             >
               @if (loading()) {
                 <mat-spinner diameter="22"></mat-spinner>

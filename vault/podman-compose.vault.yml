@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # Compose override: Consul + Vault stack for FASO DIGITALISATION secrets management.
-# Usage: docker compose -f docker-compose.yml -f ../../vault/docker-compose.vault.yml up -d
+# Usage: podman-compose -f podman-compose.yml -f ../../vault/podman-compose.vault.yml up -d
 
 name: faso-digitalisation
 
@@ -51,6 +51,7 @@ services:
     volumes:
       - vault-data:/vault/data
       - vault-logs:/vault/logs
+      - vault-audit:/vault/audit
       - ../../vault/config:/vault/config:ro
       - ../../vault/policies:/vault/policies:ro
     cap_add:
@@ -72,6 +73,7 @@ volumes:
   consul-data:
   vault-data:
   vault-logs:
+  vault-audit:
 
 networks:
   faso-network:

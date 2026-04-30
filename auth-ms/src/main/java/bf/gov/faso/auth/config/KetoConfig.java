@@ -1,5 +1,8 @@
 package bf.gov.faso.auth.config;
 
+import io.netty.channel.ChannelOption;
+import io.netty.handler.timeout.ReadTimeoutHandler;
+import io.netty.handler.timeout.WriteTimeoutHandler;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -8,10 +11,12 @@ import org.springframework.web.reactive.function.client.WebClient;
 import reactor.netty.http.client.HttpClient;
 
 import java.time.Duration;
+import java.util.concurrent.TimeUnit;
 
 /**
  * Configuration for Ory Keto HTTP clients.
- * Provides separate WebClient beans for read and write APIs.
+ * Provides separate WebClient beans for read and write APIs
+ * with connection, read, and write timeouts.
  */
 @Configuration
 public class KetoConfig {
@@ -37,7 +42,11 @@ public class KetoConfig {
 
     private WebClient buildClient(WebClient.Builder builder, String baseUrl) {
         HttpClient httpClient = HttpClient.create()
-                .responseTimeout(Duration.ofMillis(timeoutMs));
+                .option(ChannelOption.CONNECT_TIMEOUT_MILLIS, 2000)
+                .responseTimeout(Duration.ofMillis(timeoutMs))
+                .doOnConnected(conn -> conn
+                        .addHandlerLast(new ReadTimeoutHandler(5, TimeUnit.SECONDS))
+                        .addHandlerLast(new WriteTimeoutHandler(5, TimeUnit.SECONDS)));
 
         return builder
                 .baseUrl(baseUrl)

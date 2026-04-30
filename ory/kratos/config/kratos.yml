@@ -94,16 +94,48 @@ selfservice:
     code:
       enabled: true
       config:
+        # NOTE Phase 4.b admin-UI : Kratos `code` flow ne supporte pas
+        # nativement un OTP 8 chiffres (longueur fixée à 6 dans le code
+        # Go upstream). L'OTP admin 8-chiffres sera émis par auth-ms
+        # (OtpService) en parallèle — voir admin-ui-deploy-runbook.md.
         lifespan: 15m
     link:
       enabled: true
       config:
         lifespan: 1h
+    # ---- WebAuthn (admin MFA strong) -------------------------------------
+    webauthn:
+      enabled: true
+      config:
+        passwordless: false
+        rp:
+          id: faso.bf
+          display_name: "FASO DIGITALISATION"
+          origins:
+            - http://localhost:4801
+            - https://admin.faso.bf
 
   flows:
     login:
       ui_url: http://localhost:4801/auth/login
       lifespan: 10m
+      after:
+        password:
+          hooks:
+            - hook: web_hook
+              config:
+                url: http://auth-ms:8801/internal/admin/login-event
+                method: POST
+                body: base64://ZnVuY3Rpb24oY3R4KQp7CiAgaWRlbnRpdHlfaWQ6IGN0eC5pZGVudGl0eS5pZCwKICBlbWFpbDogY3R4LmlkZW50aXR5LnRyYWl0cy5lbWFpbCwKICByb2xlOiBjdHguaWRlbnRpdHkudHJhaXRzLnJvbGUsCiAgYWFsOiBjdHguYXV0aGVudGljYXRpb25fbWV0aG9kc1tzaXplKGN0eC5hdXRoZW50aWNhdGlvbl9tZXRob2RzKS0xXS5tZXRob2QsCiAgaXA6IGN0eC5yZXF1ZXN0X2hlYWRlcnNbIngtZm9yd2FyZGVkLWZvciJdLAogIHVzZXJfYWdlbnQ6IGN0eC5yZXF1ZXN0X2hlYWRlcnNbInVzZXItYWdlbnQiXSwKICBmbG93X2lkOiBjdHguZmxvdy5pZCwKICBhdF90czogY3R4LnNlc3Npb24uYXV0aGVudGljYXRlZF9hdAp9
+                response:
+                  ignore: false
+                  parse: false
+                auth:
+                  type: api_key
+                  config:
+                    name: Authorization
+                    value: 'Bearer {{ env "KRATOS_INTERNAL_TOKEN" }}'
+                    in: header
 
     registration:
       enabled: true
@@ -114,6 +146,20 @@ selfservice:
           hooks:
             - hook: session
             - hook: show_verification_ui
+            - hook: web_hook
+              config:
+                url: http://auth-ms:8801/internal/admin/registration-event
+                method: POST
+                body: base64://ZnVuY3Rpb24oY3R4KQp7CiAgaWRlbnRpdHlfaWQ6IGN0eC5pZGVudGl0eS5pZCwKICBlbWFpbDogY3R4LmlkZW50aXR5LnRyYWl0cy5lbWFpbCwKICByb2xlOiBjdHguaWRlbnRpdHkudHJhaXRzLnJvbGUsCiAgY3JlYXRlZF9hdDogY3R4LmlkZW50aXR5LmNyZWF0ZWRfYXQsCiAgZmxvd19pZDogY3R4LmZsb3cuaWQKfQ==
+                response:
+                  ignore: false
+                  parse: false
+                auth:
+                  type: api_key
+                  config:
+                    name: Authorization
+                    value: 'Bearer {{ env "KRATOS_INTERNAL_TOKEN" }}'
+                    in: header
 
     recovery:
       enabled: true
@@ -153,14 +199,16 @@ courier:
   # template_override_path: /etc/config/kratos/templates  # Disabled: no custom templates yet
 
 # ---------------------------------------------------------------------------
-# Hashing (Argon2id - DEV settings, lighter than production)
+# Hashing (Argon2id — Phase 4.b.3 alignment, OWASP 2024 baseline)
+# Mirrors auth-ms admin.crypto.argon2.password profile so a credential
+# minted by Kratos verifies in auth-ms (and vice versa) without a re-hash.
 # ---------------------------------------------------------------------------
 hashers:
   algorithm: argon2
   argon2:
-    memory: 128MB         # 128 MB (prod: 1GB)
-    iterations: 4
-    parallelism: 2
+    parallelism: 4
+    memory: 64MB          # 65 536 KiB
+    iterations: 3
     salt_length: 16
     key_length: 32
 

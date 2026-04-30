@@ -1,0 +1,93 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "AuditEvent",
+  "doc": "Événement d'audit consolidé TERROIR — agrège toutes les actions sensibles (RGPD, EUDR, conformité BF Loi 010-2004). Rétention ~7 ans. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence globale."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug de la coopérative-tenant concernée."
+    },
+    {
+      "name": "actorId",
+      "type": "string",
+      "doc": "UUID Kratos de l'acteur (agent, superviseur, service technique)."
+    },
+    {
+      "name": "actorType",
+      "type": {
+        "type": "enum",
+        "name": "AuditActorType",
+        "symbols": ["HUMAN_AGENT", "HUMAN_SUPERVISOR", "HUMAN_ADMIN", "SERVICE_ACCOUNT", "SYSTEM"]
+      },
+      "doc": "Catégorie d'acteur."
+    },
+    {
+      "name": "action",
+      "type": "string",
+      "doc": "Action codifiée (ex: 'member.create', 'parcel.eudr.validate', 'dds.submit', 'payment.approve')."
+    },
+    {
+      "name": "resourceType",
+      "type": "string",
+      "doc": "Type de ressource ciblée (ex: 'Member', 'Parcel', 'HarvestLot', 'Payment', 'Dds')."
+    },
+    {
+      "name": "resourceId",
+      "type": "string",
+      "doc": "UUID de la ressource ciblée."
+    },
+    {
+      "name": "outcome",
+      "type": {
+        "type": "enum",
+        "name": "AuditOutcome",
+        "symbols": ["SUCCESS", "FAILURE", "DENIED", "PARTIAL"]
+      },
+      "doc": "Résultat de l'action."
+    },
+    {
+      "name": "sourceIp",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Adresse IP source de la requête (null si action système interne)."
+    },
+    {
+      "name": "userAgent",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "User-Agent HTTP ou 'USSD/<version>' pour les sessions sans-smartphone."
+    },
+    {
+      "name": "changesJson",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "JSON-diff des champs modifiés (format RFC 6902 JSON Patch). null si action read-only."
+    },
+    {
+      "name": "complianceFlags",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "default": [],
+      "doc": "Codes de compliance applicables (ex: ['EUDR_ART4', 'RGPD_ART30', 'BF_LOI_010_2004'])."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC de l'événement (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars) pour corrélation distribuée."
+    }
+  ]
+}

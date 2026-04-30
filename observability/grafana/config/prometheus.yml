@@ -1,19 +1,45 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Prometheus configuration — Thanos-compatible with external labels.
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
   external_labels:
-    cluster: "faso-dev"
+    cluster: "bf-ouaga-1"
     sovereignty: "faso-digitalisation"
+    # Replica label is required for Thanos query dedup. The literal
+    # `$(POD_NAME)` was a copy-paste from a Helm template — Prometheus does
+    # NOT expand env vars in YAML unless `--enable-feature=expand-external-labels`
+    # is passed via CLI. Override per-instance via Helm or compose env (one
+    # replica per process; static "0" is acceptable for single-replica dev).
+    replica: "${PROMETHEUS_REPLICA:-0}"
+
+# Local retention at 15d — Thanos handles long-term via sidecar upload.
+# min/max-block-duration = 2h required for Thanos sidecar.
+# (Set via CLI flags in podman-compose.observability.yml)
 
 alerting:
   alertmanagers:
     - static_configs:
         - targets: []
 
+# ───────────────────────────────────────────────────────────
+# Rule files — SLO burn-rate + infrastructure + Pingora + SPIRE
+# ───────────────────────────────────────────────────────────
+rule_files:
+  - /etc/prometheus/rules/*.yml
+
 scrape_configs:
   - job_name: prometheus
     static_configs:
       - targets: ["127.0.0.1:9090"]
+
+  # ───────────────────────────────────────────────────────────
+  # OTel Collector — spanmetrics + self-metrics
+  # ───────────────────────────────────────────────────────────
+  - job_name: otel-collector
+    static_configs:
+      - targets: ["127.0.0.1:8889"]
 
   # ───────────────────────────────────────────────────────────
   # Java microservices — Prometheus runs on host network, so
@@ -44,3 +70,14 @@ scrape_configs:
       - source_labels: [__address__]
         target_label: job
         replacement: kaya
+
+  # ───────────────────────────────────────────────────────────
+  # ARMAGEDDON gateway (Pingora)
+  # ───────────────────────────────────────────────────────────
+  - job_name: armageddon
+    static_configs:
+      - targets: ["127.0.0.1:9900"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: job
+        replacement: armageddon

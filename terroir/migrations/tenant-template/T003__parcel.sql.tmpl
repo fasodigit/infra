@@ -1,0 +1,87 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- T003__parcel.sql.tmpl
+-- Parcel tables (M2) — PostGIS polygon + CRDT Yjs binary doc.
+-- parcel            : LWW sync strategy for metadata.
+-- parcel_polygon    : CRDT (Yjs) for geometry — merge via Yjs update vectors.
+-- agronomy_note     : CRDT (Yjs text) for agronomist notes.
+-- See ULTRAPLAN §3 sync strategy.
+
+SET search_path TO {{SCHEMA}};
+
+CREATE TABLE parcel (
+  id               UUID          PRIMARY KEY DEFAULT gen_random_uuid(),
+  producer_id      UUID          NOT NULL,
+  crop_type        VARCHAR(40),
+  planted_at       DATE,
+  surface_hectares DOUBLE PRECISION,
+  registered_at    TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ   NOT NULL DEFAULT now(),
+  lww_version      BIGINT        NOT NULL DEFAULT 1
+);
+
+CREATE INDEX idx_parcel_producer ON parcel(producer_id);
+
+-- Geometry stored separately to allow GIST index without bloating the main table.
+-- PostGIS-aware: if the extension is installed (production target) we get the
+-- geometry(Polygon, 4326) type + GIST index. If absent (dev / Alpine PG image
+-- without postgis package matching server version), we fall back to BYTEA
+-- (WKB-encoded) — reads/writes still work, only spatial operators are unavailable.
+DO $body$
+DECLARE
+  has_postgis BOOLEAN;
+BEGIN
+  SELECT EXISTS (SELECT 1 FROM pg_extension WHERE extname = 'postgis') INTO has_postgis;
+
+  IF has_postgis THEN
+    EXECUTE format(
+      'CREATE TABLE %I.parcel_polygon (
+         parcel_id   UUID    PRIMARY KEY REFERENCES %I.parcel(id) ON DELETE CASCADE,
+         geom        geometry(Polygon, 4326) NOT NULL,
+         yjs_doc     BYTEA   NOT NULL,
+         yjs_version BIGINT  NOT NULL DEFAULT 1,
+         updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+       )',
+      '{{SCHEMA}}', '{{SCHEMA}}'
+    );
+    EXECUTE format(
+      'CREATE INDEX idx_parcel_polygon_geom ON %I.parcel_polygon USING GIST (geom)',
+      '{{SCHEMA}}'
+    );
+  ELSE
+    EXECUTE format(
+      'CREATE TABLE %I.parcel_polygon (
+         parcel_id   UUID    PRIMARY KEY REFERENCES %I.parcel(id) ON DELETE CASCADE,
+         geom_wkb    BYTEA   NOT NULL,
+         yjs_doc     BYTEA   NOT NULL,
+         yjs_version BIGINT  NOT NULL DEFAULT 1,
+         updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+       )',
+      '{{SCHEMA}}', '{{SCHEMA}}'
+    );
+    -- No GIST index in fallback mode (no spatial operators).
+    RAISE NOTICE 'postgis not available — parcel_polygon.geom stored as BYTEA (WKB) without GIST';
+  END IF;
+END
+$body$;
+
+-- Text CRDT for agronomist field notes (offline-first merge).
+CREATE TABLE agronomy_note (
+  id          UUID    PRIMARY KEY DEFAULT gen_random_uuid(),
+  parcel_id   UUID    NOT NULL REFERENCES parcel(id),
+  yjs_doc     BYTEA   NOT NULL,   -- Yjs text CRDT
+  yjs_version BIGINT  NOT NULL DEFAULT 1,
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE parcel         ENABLE ROW LEVEL SECURITY;
+ALTER TABLE parcel_polygon ENABLE ROW LEVEL SECURITY;
+ALTER TABLE agronomy_note  ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY parcel_app_all ON parcel
+  FOR ALL TO terroir_app USING (true) WITH CHECK (true);
+
+CREATE POLICY parcel_polygon_app_all ON parcel_polygon
+  FOR ALL TO terroir_app USING (true) WITH CHECK (true);
+
+CREATE POLICY agronomy_note_app_all ON agronomy_note
+  FOR ALL TO terroir_app USING (true) WITH CHECK (true);

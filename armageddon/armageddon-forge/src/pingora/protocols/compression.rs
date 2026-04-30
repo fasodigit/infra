@@ -349,6 +349,13 @@ impl IoWrite for SharedSink {
     }
 }
 
+/// Default cap on accumulated compressed output (64 MiB).
+///
+/// Prevents unbounded memory growth when a very large upstream response is
+/// compressed in streaming mode.  Callers can override via
+/// [`CompressionStream::with_max_compressed_size`].
+const DEFAULT_MAX_COMPRESSED_SIZE: usize = 64 * 1024 * 1024;
+
 /// Streaming encoder: wraps brotli / zstd / gzip behind a single
 /// `write`/`finish` interface.
 ///
@@ -369,6 +376,12 @@ pub struct CompressionStream {
     /// Shared sink so `write`/`finish` can drain compressed bytes without
     /// cloning the encoder.
     sink: SharedSink,
+    /// Maximum allowed accumulated compressed output in bytes.  If the sink
+    /// exceeds this cap, [`CompressionStream::write`] returns an error so the
+    /// caller can abort the response or switch to pass-through.
+    max_compressed_size: usize,
+    /// Running total of compressed bytes produced (drained from the sink).
+    total_compressed: usize,
 }
 
 impl CompressionStream {
@@ -407,7 +420,18 @@ impl CompressionStream {
             encoding,
             encoder,
             sink,
+            max_compressed_size: DEFAULT_MAX_COMPRESSED_SIZE,
+            total_compressed: 0,
         })
+    }
+
+    /// Override the maximum accumulated compressed output size (in bytes).
+    ///
+    /// Defaults to [`DEFAULT_MAX_COMPRESSED_SIZE`] (64 MiB).  Set to `0` to
+    /// disable the cap entirely (not recommended in production).
+    pub fn with_max_compressed_size(mut self, max: usize) -> Self {
+        self.max_compressed_size = max;
+        self
     }
 
     /// Selected encoding (returns `Encoding::Identity` for pass-through).
@@ -418,6 +442,12 @@ impl CompressionStream {
     /// Feed an input chunk into the encoder; returns any newly-produced
     /// compressed bytes.  An empty return value is valid — it just means the
     /// encoder is still accumulating input internally.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the accumulated compressed output exceeds
+    /// [`max_compressed_size`](Self::with_max_compressed_size).  The caller
+    /// should then abort the response or switch to pass-through.
     pub fn write(&mut self, input: &[u8]) -> anyhow::Result<Vec<u8>> {
         match &mut self.encoder {
             Encoder::Brotli(w) => {
@@ -438,7 +468,16 @@ impl CompressionStream {
                 return Ok(input.to_vec());
             }
         }
-        Ok(self.sink.take())
+        let chunk = self.sink.take();
+        self.total_compressed += chunk.len();
+        if self.max_compressed_size > 0 && self.total_compressed > self.max_compressed_size {
+            anyhow::bail!(
+                "compressed output exceeds max size ({} > {} bytes)",
+                self.total_compressed,
+                self.max_compressed_size,
+            );
+        }
+        Ok(chunk)
     }
 
     /// Finalise the stream and return any trailing compressed bytes.
@@ -704,5 +743,34 @@ mod tests {
         assert_eq!(Encoding::Zstd.as_header_value(), "zstd");
         assert_eq!(Encoding::Gzip.as_header_value(), "gzip");
         assert_eq!(Encoding::Identity.as_header_value(), "identity");
+    }
+
+    // -- size cap --
+
+    #[test]
+    fn write_exceeding_max_compressed_size_returns_error() {
+        // Set a tiny cap (256 bytes) so we can trigger it quickly.
+        let mut stream = CompressionStream::new(Encoding::Gzip, CompressionLevel::Fast)
+            .expect("gzip encoder init")
+            .with_max_compressed_size(256);
+
+        // Feed data in a loop until the cap is hit.
+        let chunk = vec![0x41u8; 512]; // 512 bytes of 'A'
+        let mut hit_error = false;
+        for _ in 0..100 {
+            match stream.write(&chunk) {
+                Ok(_) => {}
+                Err(e) => {
+                    let msg = e.to_string();
+                    assert!(
+                        msg.contains("compressed output exceeds max size"),
+                        "unexpected error message: {msg}"
+                    );
+                    hit_error = true;
+                    break;
+                }
+            }
+        }
+        assert!(hit_error, "expected size-cap error but all writes succeeded");
     }
 }

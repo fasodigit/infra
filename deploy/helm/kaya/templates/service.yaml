@@ -1,4 +1,4 @@
-{{- /* SPDX-License-Identifier: AGPL-3.0-only */ -}}
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
 apiVersion: v1
 kind: Service
 metadata:
@@ -13,6 +13,10 @@ spec:
       targetPort: resp
       protocol: TCP
       name: resp
+    - port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
     - port: {{ .Values.service.metricsPort }}
       targetPort: metrics
       protocol: TCP
@@ -36,5 +40,9 @@ spec:
       targetPort: resp
       protocol: TCP
       name: resp
+    - port: {{ .Values.service.grpcPort }}
+      targetPort: grpc
+      protocol: TCP
+      name: grpc
   selector:
     {{- include "kaya.selectorLabels" . | nindent 4 }}

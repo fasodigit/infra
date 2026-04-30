@@ -37,10 +37,15 @@ public class SecurityConfig {
             .authorizeHttpRequests(auth -> auth
                 // Public dashboard API (no auth required)
                 .requestMatchers("/api/public/**").permitAll()
-                // GraphiQL UI (dev-only; disabled in prod via application-prod.yml)
-                .requestMatchers("/graphiql/**").permitAll()
-                // Safe actuator probes + Prometheus metrics scraping: public
+                // GraphiQL UI: never exposed via HTTP (OWASP A05).
+                // Enabling spring.graphql.graphiql is not enough — the
+                // route must also be denied at the security layer.
+                .requestMatchers("/graphiql/**").denyAll()
+                // Safe actuator probes + Prometheus metrics scraping: public.
+                // K8s liveness/readiness must be unauthenticated for kubelet
+                // and ARMAGEDDON gateway health checks.
                 .requestMatchers("/actuator/health", "/actuator/info",
+                                 "/actuator/health/liveness", "/actuator/health/readiness",
                                  "/actuator/prometheus", "/actuator/metrics/**").permitAll()
                 // Sensitive actuator endpoints: require ACTUATOR role
                 .requestMatchers("/actuator/**").hasRole("ACTUATOR")

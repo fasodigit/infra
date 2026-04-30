@@ -1,3 +1,18 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Copyright (C) 2026 FASO DIGITALISATION
+# Loki configuration — tiered retention with sovereign S3-compatible archival.
+#
+# Sovereignty (CLAUDE.md §3): the object store endpoint MUST be a Burkina Faso
+# / FASO-controlled bucket. In production we point at MinIO running on
+# sovereign infrastructure; OVH (Gravelines, France) and other foreign clouds
+# are NOT acceptable for audit/PII data per Loi 010-2004.
+#
+# Required env vars (injected via Vault Agent in K8s, secrets/.env in dev):
+#   S3_ENDPOINT        e.g. minio.faso.svc:9000  (no scheme)
+#   S3_REGION          e.g. bf-ouaga-1            (cosmetic in MinIO)
+#   S3_BUCKET_LOGS     e.g. faso-logs-archive
+#   S3_ACCESS_KEY_FILE path to file containing access key (Vault Agent template)
+#   S3_SECRET_KEY_FILE path to file containing secret key
 auth_enabled: false
 
 server:
@@ -19,25 +34,42 @@ common:
 
 schema_config:
   configs:
-    - from: 2024-01-01
+    - from: 2026-01-01
       store: tsdb
-      object_store: filesystem
+      object_store: s3
       schema: v13
       index:
-        prefix: index_
+        prefix: loki_index_
         period: 24h
+
+storage_config:
+  tsdb_shipper:
+    active_index_directory: /loki/index
+    cache_location: /loki/cache
+    shared_store: s3
+  aws:
+    s3: s3://${S3_BUCKET_LOGS:-faso-logs-archive}
+    region: ${S3_REGION:-bf-ouaga-1}
+    endpoint: ${S3_ENDPOINT:-minio.faso-observability.svc:9000}
+    s3forcepathstyle: true
+    insecure: ${S3_INSECURE:-true}
+    access_key_id_file: ${S3_ACCESS_KEY_FILE:-/etc/faso-secrets/s3-access-key}
+    secret_access_key_file: ${S3_SECRET_KEY_FILE:-/etc/faso-secrets/s3-secret-key}
 
 limits_config:
   ingestion_rate_mb: 16
   ingestion_burst_size_mb: 32
   max_query_parallelism: 32
-  retention_period: 744h  # 31 days
+  retention_period: 744h  # 31 days hot (local)
+  per_tenant_override_config: /etc/loki/overrides.yaml
 
 compactor:
   working_directory: /loki/compactor
+  shared_store: s3
   retention_enabled: true
   retention_delete_delay: 2h
   compaction_interval: 10m
+  delete_request_store: s3
 
 ruler:
   alertmanager_url: http://localhost:9093

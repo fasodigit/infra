@@ -71,7 +71,7 @@ import { Role } from '@app/shared/models/user.model';
           </header>
 
           @if (errorMessage()) {
-            <div class="error" role="alert">
+            <div class="error" role="alert" data-testid="signup-error">
               <mat-icon>error_outline</mat-icon>
               <span>{{ errorMessage() | translate }}</span>
             </div>
@@ -80,12 +80,12 @@ import { Role } from '@app/shared/models/user.model';
           <mat-stepper [linear]="true" #stepper>
             <!-- Étape 1 : Compte -->
             <mat-step [stepControl]="accountForm" label="Compte">
-              <form [formGroup]="accountForm" class="step-form">
+              <form [formGroup]="accountForm" class="step-form" data-testid="signup-step-1">
                 <label class="field">
                   <span class="lbl">Nom complet</span>
                   <div class="input-wrap">
                     <mat-icon aria-hidden="true">person</mat-icon>
-                    <input type="text" formControlName="nom" autocomplete="name" placeholder="Prénom Nom" required>
+                    <input type="text" formControlName="nom" autocomplete="name" placeholder="Prénom Nom" required data-testid="signup-name">
                   </div>
                 </label>
 
@@ -93,7 +93,7 @@ import { Role } from '@app/shared/models/user.model';
                   <span class="lbl">Email</span>
                   <div class="input-wrap">
                     <mat-icon aria-hidden="true">mail</mat-icon>
-                    <input type="email" formControlName="email" autocomplete="email" inputmode="email" placeholder="vous&#64;exemple.bf" required>
+                    <input type="email" formControlName="email" autocomplete="email" inputmode="email" placeholder="vous&#64;exemple.bf" required data-testid="signup-email">
                   </div>
                 </label>
 
@@ -101,7 +101,7 @@ import { Role } from '@app/shared/models/user.model';
                   <span class="lbl">Téléphone <small>(facultatif)</small></span>
                   <div class="input-wrap">
                     <mat-icon aria-hidden="true">phone</mat-icon>
-                    <input type="tel" formControlName="phone" autocomplete="tel" placeholder="+226 70 12 34 56">
+                    <input type="tel" formControlName="phone" autocomplete="tel" placeholder="+226 70 12 34 56" data-testid="signup-phone">
                   </div>
                 </label>
 
@@ -109,7 +109,7 @@ import { Role } from '@app/shared/models/user.model';
                   <span class="lbl">Mot de passe</span>
                   <div class="input-wrap">
                     <mat-icon aria-hidden="true">lock</mat-icon>
-                    <input [type]="hidePassword() ? 'password' : 'text'" formControlName="password" autocomplete="new-password" placeholder="8 caractères minimum" required>
+                    <input [type]="hidePassword() ? 'password' : 'text'" formControlName="password" autocomplete="new-password" placeholder="8 caractères minimum" required data-testid="signup-password">
                     <button type="button" class="toggle-pw" (click)="hidePassword.set(!hidePassword())" aria-label="Afficher/masquer">
                       <mat-icon>{{ hidePassword() ? 'visibility_off' : 'visibility' }}</mat-icon>
                     </button>
@@ -120,10 +120,10 @@ import { Role } from '@app/shared/models/user.model';
                   <span class="lbl">Confirmer le mot de passe</span>
                   <div class="input-wrap">
                     <mat-icon aria-hidden="true">lock</mat-icon>
-                    <input [type]="hidePassword() ? 'password' : 'text'" formControlName="confirmPassword" autocomplete="new-password" placeholder="Retapez le mot de passe" required>
+                    <input [type]="hidePassword() ? 'password' : 'text'" formControlName="confirmPassword" autocomplete="new-password" placeholder="Retapez le mot de passe" required data-testid="signup-password-confirm">
                   </div>
                   @if (accountForm.get('confirmPassword')?.hasError('passwordMismatch') && accountForm.get('confirmPassword')?.touched) {
-                    <small class="err-msg">Les mots de passe ne correspondent pas</small>
+                    <small class="err-msg" data-testid="signup-error-password-mismatch">Les mots de passe ne correspondent pas</small>
                   }
                 </label>
 
@@ -136,6 +136,7 @@ import { Role } from '@app/shared/models/user.model';
                     type="button"
                     class="cta"
                     [disabled]="accountForm.invalid"
+                    data-testid="signup-stepper-next"
                   >
                     Continuer <mat-icon>arrow_forward</mat-icon>
                   </button>
@@ -145,23 +146,23 @@ import { Role } from '@app/shared/models/user.model';
 
             <!-- Étape 2 : Rôle -->
             <mat-step [stepControl]="roleForm" label="Rôle">
-              <form [formGroup]="roleForm" class="step-form">
+              <form [formGroup]="roleForm" class="step-form" data-testid="signup-step-2">
                 <p class="step-hint">Choisissez le profil qui correspond à votre activité.</p>
                 <div class="role-grid">
                   <label class="role-card" [class.selected]="roleForm.value.role === 'eleveur'">
-                    <input type="radio" formControlName="role" value="eleveur">
+                    <input type="radio" formControlName="role" value="eleveur" data-testid="signup-role-eleveur">
                     <mat-icon>agriculture</mat-icon>
                     <strong>Éleveur</strong>
                     <small>Vends tes poulets, gère tes lots et certifications halal</small>
                   </label>
                   <label class="role-card" [class.selected]="roleForm.value.role === 'client'">
-                    <input type="radio" formControlName="role" value="client">
+                    <input type="radio" formControlName="role" value="client" data-testid="signup-role-client">
                     <mat-icon>shopping_cart</mat-icon>
                     <strong>Client</strong>
                     <small>Achète des poulets, suis tes commandes, évalue les éleveurs</small>
                   </label>
                   <label class="role-card" [class.selected]="roleForm.value.role === 'producteur_aliment'">
-                    <input type="radio" formControlName="role" value="producteur_aliment">
+                    <input type="radio" formControlName="role" value="producteur_aliment" data-testid="signup-role-producteur">
                     <mat-icon>factory</mat-icon>
                     <strong>Producteur</strong>
                     <small>Aliments, poussins, produits vétérinaires pour éleveurs</small>
@@ -169,8 +170,8 @@ import { Role } from '@app/shared/models/user.model';
                 </div>
 
                 <div class="step-actions">
-                  <button mat-button matStepperPrevious type="button">← Précédent</button>
-                  <button mat-flat-button color="primary" matStepperNext type="button" class="cta">
+                  <button mat-button matStepperPrevious type="button" data-testid="signup-stepper-back">← Précédent</button>
+                  <button mat-flat-button color="primary" matStepperNext type="button" class="cta" data-testid="signup-stepper-next">
                     Continuer <mat-icon>arrow_forward</mat-icon>
                   </button>
                 </div>
@@ -179,12 +180,12 @@ import { Role } from '@app/shared/models/user.model';
 
             <!-- Étape 3 : Détails spécifiques au rôle -->
             <mat-step label="Détails" [optional]="true">
-              <form [formGroup]="detailsForm" class="step-form">
+              <form [formGroup]="detailsForm" class="step-form" data-testid="signup-step-3">
                 <label class="field">
                   <span class="lbl">Localisation</span>
                   <div class="input-wrap">
                     <mat-icon aria-hidden="true">location_on</mat-icon>
-                    <input type="text" formControlName="localisation" placeholder="Ville, région">
+                    <input type="text" formControlName="localisation" placeholder="Ville, région" data-testid="signup-localisation">
                   </div>
                 </label>
 
@@ -193,7 +194,7 @@ import { Role } from '@app/shared/models/user.model';
                     <span class="lbl">Capacité d'élevage (nb poulets)</span>
                     <div class="input-wrap">
                       <mat-icon aria-hidden="true">pets</mat-icon>
-                      <input type="number" formControlName="capacite" placeholder="100" min="1">
+                      <input type="number" formControlName="capacite" placeholder="100" min="1" data-testid="signup-capacite">
                     </div>
                   </label>
                 }
@@ -203,7 +204,7 @@ import { Role } from '@app/shared/models/user.model';
                     <span class="lbl">Type de client</span>
                     <div class="input-wrap">
                       <mat-icon aria-hidden="true">groups</mat-icon>
-                      <select formControlName="clientType">
+                      <select formControlName="clientType" data-testid="signup-client-type">
                         <option value="">Sélectionner</option>
                         <option value="PARTICULIER">Particulier</option>
                         <option value="RESTAURANT">Restaurant / hôtel</option>
@@ -218,14 +219,14 @@ import { Role } from '@app/shared/models/user.model';
                     <span class="lbl">Zone de distribution</span>
                     <div class="input-wrap">
                       <mat-icon aria-hidden="true">map</mat-icon>
-                      <input type="text" formControlName="zoneDistribution" placeholder="Régions livrées">
+                      <input type="text" formControlName="zoneDistribution" placeholder="Régions livrées" data-testid="signup-zone-distribution">
                     </div>
                   </label>
                 }
 
                 <div class="step-actions">
-                  <button mat-button matStepperPrevious type="button">← Précédent</button>
-                  <button mat-flat-button color="primary" matStepperNext type="button" class="cta">
+                  <button mat-button matStepperPrevious type="button" data-testid="signup-stepper-back">← Précédent</button>
+                  <button mat-flat-button color="primary" matStepperNext type="button" class="cta" data-testid="signup-stepper-next">
                     Continuer <mat-icon>arrow_forward</mat-icon>
                   </button>
                 </div>
@@ -234,19 +235,19 @@ import { Role } from '@app/shared/models/user.model';
 
             <!-- Étape 4 : Groupement -->
             <mat-step label="Groupement" [optional]="true">
-              <form [formGroup]="groupementForm" class="step-form">
+              <form [formGroup]="groupementForm" class="step-form" data-testid="signup-step-4">
                 <p class="step-hint">Si vous appartenez à un groupement ou coopérative, indiquez-le ici.</p>
                 <label class="field">
                   <span class="lbl">Nom du groupement <small>(facultatif)</small></span>
                   <div class="input-wrap">
                     <mat-icon aria-hidden="true">groups</mat-icon>
-                    <input type="text" formControlName="groupementNom" placeholder="Coopérative des éleveurs du Kadiogo">
+                    <input type="text" formControlName="groupementNom" placeholder="Coopérative des éleveurs du Kadiogo" data-testid="signup-groupement-nom">
                   </div>
                 </label>
 
                 <div class="step-actions">
-                  <button mat-button matStepperPrevious type="button">← Précédent</button>
-                  <button mat-flat-button color="primary" type="button" (click)="onSubmit()" [disabled]="loading()" class="cta">
+                  <button mat-button matStepperPrevious type="button" data-testid="signup-stepper-back">← Précédent</button>
+                  <button mat-flat-button color="primary" type="button" (click)="onSubmit()" [disabled]="loading()" class="cta" data-testid="signup-submit">
                     @if (loading()) {
                       <mat-spinner diameter="20"></mat-spinner> Création…
                     } @else {

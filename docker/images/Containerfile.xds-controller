@@ -1,5 +1,5 @@
 # =============================================================================
-# Dockerfile - XDS Controller (Service Discovery)
+# Containerfile - XDS Controller (Service Discovery)
 # =============================================================================
 # Multi-stage build: Rust compilation -> minimal Debian runtime
 # =============================================================================

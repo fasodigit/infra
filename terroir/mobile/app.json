@@ -1,0 +1,40 @@
+{
+  "expo": {
+    "name": "TERROIR",
+    "slug": "terroir-mobile",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "terroir",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1b5e20"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "bf.faso.terroir"
+    },
+    "android": {
+      "package": "bf.faso.terroir",
+      "minSdkVersion": 24,
+      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "INTERNET"],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#1b5e20"
+      }
+    },
+    "plugins": ["expo-secure-store", "expo-sqlite"],
+    "runtimeVersion": "0.1.0",
+    "updates": {
+      "url": "https://updates.terroir.faso.bf"
+    },
+    "extra": {
+      "eas": {
+        "projectId": ""
+      }
+    }
+  }
+}

@@ -32,6 +32,13 @@
     <dependencyManagement>
         <dependencies>
             <dependency>
+                <groupId>org.springframework.cloud</groupId>
+                <artifactId>spring-cloud-dependencies</artifactId>
+                <version>2024.0.1</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <dependency>
                 <groupId>com.netflix.graphql.dgs</groupId>
                 <artifactId>graphql-dgs-platform-dependencies</artifactId>
                 <version>${dgs.version}</version>
@@ -172,6 +179,22 @@
             <artifactId>lettuce-core</artifactId>
         </dependency>
 
+        <!-- Resilience4j Circuit Breaker -->
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-spring-boot3</artifactId>
+            <version>2.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>io.github.resilience4j</groupId>
+            <artifactId>resilience4j-micrometer</artifactId>
+            <version>2.2.0</version>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
+
         <!-- Prometheus metrics registry (Micrometer) -->
         <dependency>
             <groupId>io.micrometer</groupId>
@@ -186,6 +209,20 @@
         <dependency>
             <groupId>io.opentelemetry</groupId>
             <artifactId>opentelemetry-exporter-otlp</artifactId>
+        </dependency>
+
+        <!-- Spring Cloud Vault + Consul (profile: vault) -->
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-vault-config</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-consul-discovery</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.cloud</groupId>
+            <artifactId>spring-cloud-starter-consul-config</artifactId>
         </dependency>
 
         <!-- Test -->
@@ -203,6 +240,68 @@
             <groupId>com.netflix.graphql.dgs</groupId>
             <artifactId>graphql-dgs-spring-graphql-starter-test</artifactId>
             <scope>test</scope>
+        </dependency>
+
+        <!-- FASO shared audit-lib (Loi 010-2004 compliance). Pulls in
+             AuditAutoConfiguration, AuditAspect, AuditService, AuditEvent, and
+             PiiEncryptionConverter via Spring Boot 3 auto-config. -->
+        <dependency>
+            <groupId>bf.gov.faso</groupId>
+            <artifactId>audit-lib</artifactId>
+            <version>1.0.0-SNAPSHOT</version>
+        </dependency>
+
+        <!-- Phase 4.b admin-UI: WebAuthn / FIDO2 (PassKeys) -->
+        <dependency>
+            <groupId>com.yubico</groupId>
+            <artifactId>webauthn-server-core</artifactId>
+            <version>2.5.2</version>
+        </dependency>
+
+        <!-- Phase 4.b admin-UI: TOTP (RFC 6238) -->
+        <dependency>
+            <groupId>dev.samstevens.totp</groupId>
+            <artifactId>totp-spring-boot-starter</artifactId>
+            <version>1.7.1</version>
+        </dependency>
+
+        <!-- Phase 4.b admin-UI: Spring Kafka producer for Redpanda -->
+        <dependency>
+            <groupId>org.springframework.kafka</groupId>
+            <artifactId>spring-kafka</artifactId>
+        </dependency>
+
+        <!-- Phase 4.b.5 push-approval: WebSocket relay (STOMP over WS) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-websocket</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework</groupId>
+            <artifactId>spring-messaging</artifactId>
+        </dependency>
+
+        <!-- Phase 4.b admin-UI: bcrypt for recovery codes -->
+        <!-- (already pulled in transitively by spring-security-crypto -> spring-boot-starter-security) -->
+
+        <!-- Phase 4.b.3 crypto upgrade: Argon2id (RFC 9106) via libargon2 JNI binding.
+             Used by CryptographicHashService for password / OTP / recovery-code hashing.
+             Performance vs spring-security-crypto Argon2PasswordEncoder: ~3-5x faster. -->
+        <dependency>
+            <groupId>de.mkammerer</groupId>
+            <artifactId>argon2-jvm</artifactId>
+            <version>2.11</version>
+        </dependency>
+
+        <!-- Phase 4.b.6 risk-based scoring: MaxMind GeoLite2 City database
+             reader. License GeoLite2 = CC BY-SA 4.0 (compatible AGPL); the
+             .mmdb file is downloaded out-of-tree (cf. INFRA/scripts/
+             download-geolite2.sh) and provided to auth-ms via the
+             ${admin.geoip.database-path} property. -->
+        <dependency>
+            <groupId>com.maxmind.geoip2</groupId>
+            <artifactId>geoip2</artifactId>
+            <version>4.2.0</version>
         </dependency>
     </dependencies>
 

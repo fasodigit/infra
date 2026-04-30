@@ -19,6 +19,14 @@ public class Role {
 
     private String description;
 
+    /**
+     * Hierarchy level — used by the delta 2026-04-30 capability model and
+     * to differentiate ADMIN (50) / MANAGER (2) / OPERATOR (5) / VIEWER (1) /
+     * SUPER_ADMIN (100) without hard-coding strings everywhere.
+     */
+    @Column(name = "level", nullable = false)
+    private int level = 0;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "role_permissions",
@@ -54,6 +62,9 @@ public class Role {
 
     public String getDescription() { return description; }
     public void setDescription(String description) { this.description = description; }
+
+    public int getLevel() { return level; }
+    public void setLevel(int level) { this.level = level; }
 
     public Set<Permission> getPermissions() { return permissions; }
     public void setPermissions(Set<Permission> permissions) { this.permissions = permissions; }

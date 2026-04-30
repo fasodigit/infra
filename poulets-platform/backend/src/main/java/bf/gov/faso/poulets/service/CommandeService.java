@@ -1,5 +1,6 @@
 package bf.gov.faso.poulets.service;
 
+import bf.gov.faso.audit.Audited;
 import bf.gov.faso.poulets.model.*;
 import bf.gov.faso.poulets.repository.*;
 import org.slf4j.Logger;
@@ -60,6 +61,7 @@ public class CommandeService {
         return commandeRepository.findByEleveurId(eleveurId, pageRequest);
     }
 
+    @Audited(action = "CREATE_COMMANDE", resourceType = "Commande")
     public Commande create(UUID clientId, UUID eleveurId, List<Map<String, Object>> itemInputs) {
         int maxRetries = 3;
         for (int attempt = 1; attempt <= maxRetries; attempt++) {

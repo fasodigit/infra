@@ -162,6 +162,11 @@ fn scrub_headers(headers: &std::collections::BTreeMap<String, String>) -> HashMa
         .collect()
 }
 
+/// Maximum number of in-flight WASM jobs queued in the channel between
+/// Pingora async threads and the OS worker thread.  When the channel is
+/// full, new requests are treated as `Skipped` (fail-open with warning).
+const WASM_JOB_CHANNEL_CAPACITY: usize = 256;
+
 // ── Wire-format types ─────────────────────────────────────────────────────────
 
 /// Cloneable snapshot of the request state that can be sent over the
@@ -393,7 +398,7 @@ impl WasmAdapter {
             .map(Arc::new);
         let metrics_for_worker = metrics.clone();
 
-        let (req_tx, req_rx) = async_channel::unbounded::<WasmJob>();
+        let (req_tx, req_rx) = async_channel::bounded::<WasmJob>(WASM_JOB_CHANNEL_CAPACITY);
 
         let worker = std::thread::Builder::new()
             .name("armageddon-wasm-worker".to_string())
@@ -560,16 +565,21 @@ impl EngineAdapter for WasmAdapter {
         let snapshot = WasmCtxSnapshot::from_ctx(ctx);
         let (resp_tx, resp_rx) = async_channel::bounded::<WasmResult>(1);
 
-        // Send the job.  If the channel is closed (worker thread died),
-        // fail-open immediately.
-        if self
-            .req_tx
-            .send(WasmJob { snapshot, resp_tx })
-            .await
-            .is_err()
-        {
-            tracing::warn!("wasm adapter: worker channel closed; failing open");
-            return EngineVerdict::Skipped;
+        // Send the job.  If the channel is closed (worker thread died)
+        // or full (backpressure under load), fail-open immediately.
+        match self.req_tx.try_send(WasmJob { snapshot, resp_tx }) {
+            Ok(()) => {}
+            Err(async_channel::TrySendError::Full(_)) => {
+                tracing::warn!(
+                    capacity = WASM_JOB_CHANNEL_CAPACITY,
+                    "wasm adapter: job channel full; failing open as Skipped"
+                );
+                return EngineVerdict::Skipped;
+            }
+            Err(async_channel::TrySendError::Closed(_)) => {
+                tracing::warn!("wasm adapter: worker channel closed; failing open");
+                return EngineVerdict::Skipped;
+            }
         }
 
         // Await the result under a hard 100 ms deadline.

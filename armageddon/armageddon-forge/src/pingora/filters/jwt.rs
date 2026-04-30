@@ -46,7 +46,7 @@
 //! | JWKS endpoint unreachable | Return `Deny(401)` — fail-closed |
 //! | Token expired | Return `Deny(401)` |
 //! | Quorum loss (no KAYA + no auth-ms) | Return `Deny(401)` |
-//! | KAYA error on blacklist check | Fail-open by default (log warn); configurable to fail-closed |
+//! | KAYA error on blacklist check | Fail-closed by default (Deny 401); configurable to fail-open |
 //! | jti blacklisted | Return `Deny(401)` — fail-closed |
 
 use std::collections::HashMap;
@@ -260,9 +260,11 @@ pub struct JwtFilterConfig {
     /// Both positive (revoked) and negative (clean) KAYA lookups are
     /// cached for this duration to avoid a KAYA round-trip on every request.
     pub blacklist_cache_ttl_secs: u64,
-    /// When `true`, a KAYA error on the blacklist lookup causes `Deny(401)`
-    /// (fail-closed).  When `false` (default), the filter continues as if
-    /// the token is not blacklisted (fail-open) and logs a warning.
+    /// When `true` (default), a KAYA error on the blacklist lookup causes
+    /// `Deny(401)` (fail-closed).  This is the safe default: when KAYA is
+    /// down, revoked tokens are rejected rather than silently accepted.
+    /// Set to `false` only if availability is more important than
+    /// revocation enforcement in your deployment.
     pub blacklist_fail_closed: bool,
 }
 
@@ -280,7 +282,7 @@ impl Default for JwtFilterConfig {
                 .map(|s| (*s).to_string())
                 .collect(),
             blacklist_cache_ttl_secs: 30,
-            blacklist_fail_closed: false,
+            blacklist_fail_closed: true,
         }
     }
 }
@@ -304,8 +306,8 @@ impl Default for JwtFilterConfig {
 ///   posture for an authentication gate.
 /// - **Token expired**: `Deny(401)`.
 /// - **jti blacklisted**: `Deny(401)`.
-/// - **KAYA error on blacklist check**: `Continue` (fail-open) or `Deny(401)`
-///   (fail-closed) depending on `blacklist_fail_closed`.
+/// - **KAYA error on blacklist check**: `Deny(401)` (fail-closed, default) or
+///   `Continue` (fail-open) depending on `blacklist_fail_closed`.
 pub struct JwtFilter {
     config: JwtFilterConfig,
     /// In-process JWKS cache.  Keyed by `kid` (or `""` when token has no kid).
@@ -373,12 +375,13 @@ impl JwtFilter {
     /// Returns `true` if the token is revoked, `false` if clean.
     ///
     /// On a KAYA error:
-    /// - `blacklist_fail_closed = false` (default): returns `false` and logs
-    ///   `warn`.  The request continues; the risk is that a revoked token may
-    ///   be accepted for up to 30 s (the local negative-cache TTL) after the
+    /// - `blacklist_fail_closed = true` (default): returns `true` so the
+    ///   caller denies the request.  This is the safe posture — revoked
+    ///   tokens are never silently accepted when KAYA is unavailable.
+    /// - `blacklist_fail_closed = false`: returns `false` and logs `warn`.
+    ///   The request continues; the risk is that a revoked token may be
+    ///   accepted for up to 30 s (the local negative-cache TTL) after the
     ///   KAYA error clears.
-    /// - `blacklist_fail_closed = true`: returns `true` so the caller can
-    ///   deny the request.
     pub fn check_blacklist(&self, jti: &str) -> bool {
         let ttl = Duration::from_secs(self.config.blacklist_cache_ttl_secs);
 
@@ -1029,7 +1032,7 @@ mod tests {
         assert!(filter.check_blacklist("jti-revoked"), "revoked token must be blocked");
     }
 
-    /// KAYA error with fail-open (default) → check_blacklist returns false.
+    /// KAYA error with fail-open (opt-in) → check_blacklist returns false.
     #[test]
     fn blacklist_kaya_error_fail_open() {
         // Use a KAYA backend whose get() times out (returns after long delay).

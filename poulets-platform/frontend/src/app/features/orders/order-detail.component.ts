@@ -36,19 +36,21 @@ interface TimelineStep {
     DatePipe,
   ],
   template: `
-    <div class="order-detail-container">
+    <div class="order-detail-container" data-testid="orders-detail">
       <div class="page-header">
-        <button mat-icon-button routerLink="..">
+        <button mat-icon-button routerLink=".." data-testid="orders-action-back">
           <mat-icon>arrow_back</mat-icon>
         </button>
         <div>
-          <h1>{{ 'orders.detail.title' | translate }} {{ order()?.numero }}</h1>
+          <h1 data-testid="orders-detail-field-numero">{{ 'orders.detail.title' | translate }} {{ order()?.numero }}</h1>
           @if (order(); as o) {
-            <app-status-badge [status]="o.statut"></app-status-badge>
+            <app-status-badge [status]="o.statut"
+                              [attr.data-testid]="'orders-status-' + o.statut.toLowerCase()"></app-status-badge>
           }
         </div>
         <span class="spacer"></span>
-        <a mat-raised-button color="accent" [routerLink]="['tracking']">
+        <a mat-raised-button color="accent" [routerLink]="['tracking']"
+           data-testid="orders-action-track">
           <mat-icon>local_shipping</mat-icon>
           {{ 'orders.detail.track' | translate }}
         </a>
@@ -170,11 +172,13 @@ interface TimelineStep {
         <!-- Actions -->
         @if (o.statut === 'EN_ATTENTE') {
           <div class="action-bar">
-            <button mat-raised-button color="primary" (click)="confirmOrder()">
+            <button mat-raised-button color="primary" (click)="confirmOrder()"
+                    data-testid="orders-action-confirm">
               <mat-icon>check_circle</mat-icon>
               {{ 'orders.detail.confirm' | translate }}
             </button>
-            <button mat-raised-button color="warn" (click)="cancelOrder()">
+            <button mat-raised-button color="warn" (click)="cancelOrder()"
+                    data-testid="orders-action-cancel">
               <mat-icon>cancel</mat-icon>
               {{ 'orders.detail.cancel' | translate }}
             </button>

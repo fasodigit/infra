@@ -5,6 +5,8 @@ import bf.gov.faso.auth.model.Role;
 import bf.gov.faso.auth.model.User;
 import bf.gov.faso.auth.repository.UserRepository;
 import com.fasterxml.jackson.databind.JsonNode;
+import io.github.resilience4j.circuitbreaker.annotation.CircuitBreaker;
+import io.github.resilience4j.retry.annotation.Retry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -50,6 +52,8 @@ public class KetoService {
     /**
      * Write a single relation tuple to Keto.
      */
+    @CircuitBreaker(name = "keto", fallbackMethod = "writeRelationTupleFallback")
+    @Retry(name = "default")
     public boolean writeRelationTuple(String namespace, String object, String relation, String subjectId) {
         try {
             Map<String, Object> tuple = buildTuplePayload(namespace, object, relation, subjectId);
@@ -77,6 +81,8 @@ public class KetoService {
     /**
      * Delete a relation tuple from Keto.
      */
+    @CircuitBreaker(name = "keto", fallbackMethod = "deleteRelationTupleFallback")
+    @Retry(name = "default")
     public boolean deleteRelationTuple(String namespace, String object, String relation, String subjectId) {
         try {
             writeClient.delete()
@@ -166,6 +172,8 @@ public class KetoService {
     /**
      * Check a permission in Keto (read API).
      */
+    @CircuitBreaker(name = "keto", fallbackMethod = "checkPermissionFallback")
+    @Retry(name = "default")
     public boolean checkPermission(String namespace, String object, String relation, String subjectId) {
         try {
             JsonNode response = readClient.get()
@@ -234,5 +242,26 @@ public class KetoService {
         tuple.put("relation", relation);
         tuple.put("subject_id", subjectId);
         return tuple;
+    }
+
+    // ── Circuit Breaker fallback methods ─────────────────────────────────────
+
+    private boolean writeRelationTupleFallback(String namespace, String object, String relation, String subjectId, Exception e) {
+        log.warn("CircuitBreaker fallback: Keto unavailable for writeRelationTuple {}:{}#{}@{}: {}",
+                namespace, object, relation, subjectId, e.getMessage());
+        return false;
+    }
+
+    private boolean deleteRelationTupleFallback(String namespace, String object, String relation, String subjectId, Exception e) {
+        log.warn("CircuitBreaker fallback: Keto unavailable for deleteRelationTuple {}:{}#{}@{}: {}",
+                namespace, object, relation, subjectId, e.getMessage());
+        return false;
+    }
+
+    private boolean checkPermissionFallback(String namespace, String object, String relation, String subjectId, Exception e) {
+        log.warn("CircuitBreaker fallback: Keto unavailable for checkPermission {}:{}#{}@{}: {}",
+                namespace, object, relation, subjectId, e.getMessage());
+        // Deny by default when authorization service is unavailable
+        return false;
     }
 }

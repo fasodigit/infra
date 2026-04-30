@@ -52,6 +52,8 @@ use armageddon_forge::cors::CorsHandler;
 use armageddon_forge::jwt::JwtValidator;
 use armageddon_forge::kafka_producer::RedpandaProducer;
 use armageddon_forge::pingora::{PingoraGateway, PingoraGatewayConfig, UpstreamRegistry};
+use armageddon_forge::pingora::filters::router::{RouteTable, RouterFilter};
+use armageddon_forge::pingora::filters::SharedFilter;
 use armageddon_forge::pingora::server::build_server as pingora_build_server;
 use armageddon_forge::pingora::shadow::ShadowSampler;
 use armageddon_forge::pingora::shadow_sink::{
@@ -90,7 +92,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::TcpListener;
 use tokio::sync::broadcast;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
 // ---------------------------------------------------------------------------
 // CLI args
@@ -242,23 +244,64 @@ async fn async_main() -> anyhow::Result<()> {
     // -- 1. Parse CLI args
     let args = Args::parse();
 
-    // -- 2. Initialize tracing
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .json()
-        .init();
+    // -- 2. Load config first (so we know whether to wire the OTel bridge).
+    //    We can't initialize tracing before this because the bridge layer
+    //    must be registered with the subscriber alongside the fmt layer.
+    let config_loader = armageddon_config::ConfigLoader::from_file(&args.config_path)
+        .context("failed to load configuration")?;
+    let config = config_loader.get();
+
+    // -- 3. Initialize tracing — wire the tracing-opentelemetry bridge layer
+    //    when traces_endpoint is set so that #[tracing::instrument] spans on
+    //    the Pingora hot-path actually reach Jaeger/Tempo.
+    let env_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let fmt_layer = tracing_subscriber::fmt::layer().json();
+
+    if let Some(endpoint) = config.observability.traces_endpoint.as_deref() {
+        let otel_cfg = armageddon_config::OtelConfig {
+            endpoint: endpoint.to_string(),
+            service_name: "armageddon".to_string(),
+            sampling_rate: 1.0,
+            resource_attributes: Default::default(),
+        };
+        match armageddon_oracle::otel_propagation::build_tracer_provider(&otel_cfg) {
+            Ok(provider) => {
+                use opentelemetry::trace::TracerProvider as _;
+                let tracer = provider.tracer("armageddon");
+                let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(fmt_layer)
+                    .with(otel_layer)
+                    .init();
+                tracing::info!(
+                    endpoint = %endpoint,
+                    "OTel tracer + tracing bridge registered — armageddon spans will export"
+                );
+            }
+            Err(e) => {
+                tracing_subscriber::registry()
+                    .with(env_filter)
+                    .with(fmt_layer)
+                    .init();
+                tracing::warn!(
+                    endpoint = %endpoint, err = %e,
+                    "OTel tracer init failed — continuing without span export"
+                );
+            }
+        }
+    } else {
+        tracing_subscriber::registry()
+            .with(env_filter)
+            .with(fmt_layer)
+            .init();
+    }
 
     tracing::info!(
         "ARMAGEDDON v{} starting (Pentagon + Vague-1 components)",
         env!("CARGO_PKG_VERSION")
     );
-
-    // -- 3. Load configuration
-    let config_loader = armageddon_config::ConfigLoader::from_file(&args.config_path)
-        .context("failed to load configuration")?;
-    let config = config_loader.get();
     tracing::info!(path = %args.config_path, "configuration loaded");
 
     // -- 4. Prometheus registry
@@ -763,7 +806,173 @@ async fn async_main() -> anyhow::Result<()> {
                 upstream_reg.update_cluster(&cluster.name, eps);
             }
 
-            let gw_cfg = PingoraGatewayConfig::default();
+            // ── Build RouterFilter from yaml gateway.routes ──
+            //
+            // Without this, the static `routes:` table from the yaml is never
+            // applied and `upstream_peer` falls back to the brittle
+            // path-prefix-as-cluster heuristic which does not match the
+            // declared cluster names.  The first route whose cluster matches
+            // the catch-all `prefix: /` (typically `default-backend`) is used
+            // as the gateway's default cluster fallback.
+            let mut prefix_routes: Vec<(String, String)> = Vec::new();
+            let mut exact_routes: std::collections::HashMap<String, String> =
+                std::collections::HashMap::new();
+            let mut regex_routes: Vec<(regex::Regex, String)> = Vec::new();
+            let mut yaml_default_cluster: Option<String> = None;
+
+            for route in config.gateway.routes.iter() {
+                if let Some(p) = &route.match_rule.prefix {
+                    if p == "/" || p.is_empty() {
+                        // Treat the catch-all prefix as the default cluster.
+                        yaml_default_cluster.get_or_insert_with(|| route.cluster.clone());
+                    } else {
+                        prefix_routes.push((p.clone(), route.cluster.clone()));
+                    }
+                }
+                if let Some(p) = &route.match_rule.path {
+                    exact_routes.insert(p.clone(), route.cluster.clone());
+                }
+                if let Some(re) = &route.match_rule.regex {
+                    match regex::Regex::new(re) {
+                        Ok(r) => regex_routes.push((r, route.cluster.clone())),
+                        Err(e) => tracing::warn!(
+                            route = %route.name, regex = %re, err = %e,
+                            "skipping route — invalid regex"
+                        ),
+                    }
+                }
+            }
+
+            // Default cluster: yaml catch-all → first cluster name → "default".
+            let default_cluster = yaml_default_cluster
+                .or_else(|| config.gateway.clusters.first().map(|c| c.name.clone()))
+                .unwrap_or_else(|| "default".to_string());
+
+            let route_table = RouteTable::new(
+                exact_routes,
+                prefix_routes,
+                regex_routes,
+                default_cluster.clone(),
+            );
+            let router_filter: SharedFilter = std::sync::Arc::new(RouterFilter::new(route_table));
+            tracing::info!(
+                default_cluster = %default_cluster,
+                routes = config.gateway.routes.len(),
+                "router filter built from yaml routes"
+            );
+
+            // ── Build WafFilter from yaml gateway.waf ──
+            //
+            // The WAF runs FIRST in the chain (before the router) so that
+            // injection / SSRF / scanner traffic never reaches OPA, JWT, or
+            // upstream selection. Skipped silently when absent or disabled.
+            let mut filters: Vec<SharedFilter> = Vec::with_capacity(2);
+            if let Some(waf_cfg) = config.gateway.waf.as_ref() {
+                if waf_cfg.enabled {
+                    // ── Coraza-on-Pingora preference (feature-gated) ──
+                    //
+                    // When the `coraza-wasm` Cargo feature is enabled AND
+                    // `gateway.waf.wasm_module` points at a `.wasm` file,
+                    // we prefer the Coraza filter over the regex one.
+                    // Module-load failure with `fail_closed_on_load_error=false`
+                    // (the regex WAF default) silently falls back to regex.
+                    #[allow(unused_mut)]
+                    let mut waf_registered = false;
+
+                    #[cfg(feature = "coraza-wasm")]
+                    if let Some(wasm_path) = waf_cfg.wasm_module.as_deref() {
+                        // Default `coraza.conf` path: sibling of the
+                        // wasm module.  Operators can override by
+                        // placing the file there or leaving it absent
+                        // (Coraza falls back to its built-in defaults).
+                        let coraza_conf_path = std::path::PathBuf::from(wasm_path)
+                            .parent()
+                            .map(|p| p.join("coraza.conf"))
+                            .filter(|p| p.exists());
+
+                        let coraza_cfg = armageddon_forge::pingora::filters::waf_coraza::WafCorazaConfig {
+                            enabled: true,
+                            wasm_module_path: std::path::PathBuf::from(wasm_path),
+                            coraza_conf_path,
+                            block_status: waf_cfg.block_status,
+                            learning_mode: waf_cfg.learning_mode,
+                            // Conservative default: fail-open and keep
+                            // serving on a bad .wasm so the regex WAF
+                            // takes over.  Operators tighten via config.
+                            fail_closed_on_load_error: false,
+                            max_body_inspect_bytes: 256 * 1024,
+                        };
+                        match armageddon_forge::pingora::filters::waf_coraza::WafCorazaFilter::new(
+                            coraza_cfg,
+                            &registry,
+                        ) {
+                            Ok(filter) => {
+                                tracing::info!(
+                                    wasm_module = %wasm_path,
+                                    block_status = waf_cfg.block_status,
+                                    "WAF filter registered (Coraza proxy-wasm v0.2.1)"
+                                );
+                                let waf_filter: SharedFilter = std::sync::Arc::new(filter);
+                                filters.push(waf_filter);
+                                waf_registered = true;
+                            }
+                            Err(e) => {
+                                tracing::warn!(
+                                    err = %e,
+                                    wasm_module = %wasm_path,
+                                    "Coraza WAF load failed — falling back to regex WAF"
+                                );
+                            }
+                        }
+                    }
+
+                    if !waf_registered {
+                        let runtime_cfg =
+                            armageddon_forge::pingora::filters::waf::WafFilterConfig {
+                                enabled: true,
+                                paranoia_level: waf_cfg.paranoia_level,
+                                learning_mode: waf_cfg.learning_mode,
+                                block_status: waf_cfg.block_status,
+                                // Body inspection cap (256 KiB default).
+                                // Larger bodies are inspected up to the cap with
+                                // body_buffer_overflow=true on the request ctx.
+                                max_body_inspect_bytes: 256 * 1024,
+                            };
+                        match armageddon_forge::pingora::filters::waf::WafFilter::new(
+                            runtime_cfg,
+                            &registry,
+                        ) {
+                            Ok(filter) => {
+                                tracing::info!(
+                                    paranoia_level = waf_cfg.paranoia_level,
+                                    learning_mode = waf_cfg.learning_mode,
+                                    block_status = waf_cfg.block_status,
+                                    "WAF filter registered (regex engine, native Rust)"
+                                );
+                                let waf_filter: SharedFilter = std::sync::Arc::new(filter);
+                                filters.push(waf_filter);
+                            }
+                            Err(e) => {
+                                tracing::error!(err = %e, "WAF filter init failed — continuing without WAF");
+                            }
+                        }
+                    }
+                } else {
+                    tracing::info!("WAF configured but disabled — zero overhead");
+                }
+            } else {
+                tracing::info!("WAF not configured — skipping");
+            }
+            filters.push(router_filter);
+
+            let gw_cfg = PingoraGatewayConfig {
+                default_cluster,
+                upstream_tls: false,
+                upstream_timeout_ms: 30_000,
+                pool_size: 128,
+                filters,
+                compression: None,
+            };
             let gateway = PingoraGateway::new(gw_cfg, Arc::clone(&upstream_reg));
 
             match pingora_build_server(gateway, &pingora_listen) {
@@ -813,11 +1022,27 @@ async fn async_main() -> anyhow::Result<()> {
     let skip_hyper_accept_loop = config.gateway.runtime == GatewayRuntime::Pingora
         && pingora_thread.is_some();
 
-    // -- 22b. Bind HTTP/1+2 TCP listener
-    let tcp_listener = TcpListener::bind(listen_addr)
-        .await
-        .context(format!("failed to bind HTTP/1 listener on {}", listen_addr))?;
-    tracing::info!(addr = %listen_addr, "HTTP/1 listener bound");
+    // -- 22b. Bind HTTP/1+2 TCP listener (hyper)
+    //
+    // Pre-v2.1 fix: when runtime=pingora the hyper bind would race-claim
+    // the port and Pingora's own bind on the same port would loop forever
+    // ("0.0.0.0:8080 is in use, will try again"). The hyper listener is
+    // only needed when the hyper accept loop is actually consumed
+    // (runtime=hyper or runtime=shadow). In pure pingora mode we skip the
+    // hyper bind entirely so Pingora can claim the port cleanly.
+    let tcp_listener: Option<TcpListener> = if skip_hyper_accept_loop {
+        tracing::info!(
+            addr = %listen_addr,
+            "HTTP/1 listener skipped — pure Pingora runtime owns the port"
+        );
+        None
+    } else {
+        let l = TcpListener::bind(listen_addr)
+            .await
+            .context(format!("failed to bind HTTP/1 listener on {}", listen_addr))?;
+        tracing::info!(addr = %listen_addr, "HTTP/1 listener bound");
+        Some(l)
+    };
 
     // -- 23. Bind HTTP/3 QUIC listener (optional)
     let http3_handle: Option<tokio::task::JoinHandle<anyhow::Result<()>>> =
@@ -879,6 +1104,10 @@ async fn async_main() -> anyhow::Result<()> {
         tracing::info!("ARMAGEDDON shutdown complete");
         return Ok(());
     }
+
+    // At this point skip_hyper_accept_loop is false → tcp_listener is Some.
+    let tcp_listener = tcp_listener
+        .expect("hyper accept loop active but tcp_listener is None — invariant violated");
 
     let shutdown = tokio::signal::ctrl_c();
     tokio::pin!(shutdown);

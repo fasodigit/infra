@@ -662,5 +662,220 @@
     "send": "Envoyer le code SMS",
     "sent": "Code envoyé — vérifiez vos SMS.",
     "error": "Erreur lors de l'envoi du SMS."
+  },
+  "admin": {
+    "nav": {
+      "dashboard": "Tableau de bord",
+      "users": "Utilisateurs",
+      "sessions": "Sessions",
+      "devices": "Appareils trustés",
+      "mfa": "MFA · Enrôlement",
+      "audit": "Journal d'audit",
+      "settings": "Paramètres",
+      "breakglass": "Break-Glass",
+      "security": "Sécurité",
+      "governance": "Gouvernance",
+      "me": "Mon compte"
+    },
+    "kpi": {
+      "activeUsers": "Utilisateurs actifs (7j)",
+      "otpSent": "OTP émis (24h)",
+      "sessions": "Sessions actives",
+      "alerts": "Alertes non traitées"
+    },
+    "common": {
+      "cancel": "Annuler",
+      "confirm": "Confirmer",
+      "save": "Sauvegarder",
+      "next": "Suivant",
+      "back": "Retour",
+      "history": "Historique",
+      "revert": "Restaurer",
+      "apply": "Appliquer",
+      "export": "Exporter",
+      "viewAll": "Voir tout",
+      "refresh": "Actualiser",
+      "close": "Fermer",
+      "reset": "Réinitialiser",
+      "filter": "Filtrer",
+      "search": "Rechercher",
+      "delete": "Supprimer",
+      "edit": "Modifier"
+    },
+    "dashboard": {
+      "title": "Tableau de bord",
+      "subtitle": "Vue consolidée · sécurité, identité et conformité de la plateforme souveraine.",
+      "health": "Santé services",
+      "activity": "Activité 7 jours",
+      "recent": "Audit récent",
+      "lastSync": "Dernière sync",
+      "breakGlassActive": "Break-Glass actif"
+    },
+    "users": {
+      "title": "Utilisateurs",
+      "subtitle": "Comptes administrateurs · 3 niveaux · MFA obligatoire pour SUPER-ADMIN/ADMIN.",
+      "invite": "Inviter un administrateur",
+      "search": "Rechercher (nom, e-mail, département)…",
+      "manageRoles": "Gérer les rôles",
+      "filters": "Filtres"
+    },
+    "userDetail": {
+      "rolesTitle": "Rôles & permissions",
+      "sessionsActive": "Sessions actives",
+      "auditHistory": "Historique audit",
+      "trustedDevices": "Appareils trustés",
+      "profileReadonly": "Profil (lecture seule, source Kratos)",
+      "resetMfa": "Réinitialiser MFA",
+      "forceLogout": "Forcer déconnexion",
+      "suspend": "Suspendre"
+    },
+    "sessions": {
+      "title": "Sessions actives",
+      "subtitle": "Vue temps-réel via KAYA · révocation propagée à ARMAGEDDON via Redpanda.",
+      "revokeAll": "Tout révoquer",
+      "logout": "Logout"
+    },
+    "devices": {
+      "title": "Appareils trustés",
+      "subtitle": "Empreintes UA + IP/24 + Accept-Language · TTL 30 jours dans KAYA.",
+      "fingerprint": "Empreinte",
+      "trustedUntil": "Trust jusqu'à"
+    },
+    "mfa": {
+      "title": "MFA · Enrôlement",
+      "subtitle": "PassKey, TOTP et codes de récupération. Politique applicable : SUPER-ADMIN + ADMIN obligatoires.",
+      "registeredKeys": "Clés enregistrées",
+      "addPasskey": "Ajouter une PassKey",
+      "scanWithApp": "Scanner avec une app TOTP",
+      "step1": "Étape 1 · Scanner avec une app TOTP",
+      "step2": "Étape 2 · Confirmer le code à 6 chiffres",
+      "enableTotp": "Activer TOTP",
+      "backupCodesWarning": "Conservez ces codes en lieu sûr. Chacun est utilisable une seule fois. Ne les partagez jamais.",
+      "downloadTxt": "Télécharger .txt",
+      "copyAll": "Copier tout",
+      "print": "Imprimer",
+      "regenerate": "Régénérer (invalide les anciens)"
+    },
+    "audit": {
+      "title": "Journal d'audit",
+      "subtitle": "Append-only · rétention 7 ans (Loi 010-2004 BF) · liens Jaeger pour chaque trace.",
+      "filters": "Filtres",
+      "actor": "Acteur",
+      "actionTypes": "Types d'action",
+      "criticalOnly": "Afficher uniquement critiques",
+      "diff": "Diff",
+      "dateRange": "Période",
+      "sortRecent": "Trier · plus récent"
+    },
+    "settings": {
+      "title": "Paramètres de sécurité",
+      "subtitle": "6 catégories · versionné en DB · publié sur Redpanda · rollback disponible. SUPER-ADMIN édite, ADMIN lit.",
+      "readOnly": "Lecture seule · ADMIN",
+      "categories": {
+        "otp": "Politique OTP",
+        "device_trust": "Device Trust",
+        "session": "Sessions",
+        "mfa": "MFA & Recovery",
+        "grant": "Octroi & Break-Glass",
+        "audit": "Audit & rétention"
+      }
+    },
+    "breakglass": {
+      "title": "Break-Glass",
+      "subtitle": "Élévation temporaire ADMIN → SUPER-ADMIN pendant 4h. Tous les SUPER-ADMIN sont notifiés.",
+      "warningTitle": "Action sensible · audit immutable PostgreSQL WAL",
+      "warningBody": "Toute activation génère un événement Redpanda admin.break_glass.activated et notifie immédiatement les 2 SUPER-ADMIN. Auto-révocation à T+4h.",
+      "request": "Demande d'élévation",
+      "targetCapability": "Capacité visée",
+      "justification": "Justification · ≥ 80 caractères",
+      "otpConfirm": "Confirmation OTP (8 chiffres)",
+      "activate": "Activer Break-Glass · 4h",
+      "recentActivations": "Activations récentes",
+      "activePolicy": "Politique en vigueur"
+    },
+    "grant": {
+      "title": "Octroyer un rôle administrateur",
+      "step1": "Sélection",
+      "step2": "Justification",
+      "step3": "OTP",
+      "step4": "Résumé",
+      "selectionTarget": "Cible",
+      "selectionRole": "Rôle cible · filtré par votre niveau",
+      "dualControlWarn": "Ce rôle nécessite une approbation dual-control par un autre SUPER-ADMIN.",
+      "summaryConfirm": "Vérifiez puis confirmez. Action irréversible (rollback via révocation explicite).",
+      "submitGrant": "Confirmer l'octroi",
+      "requestRecorded": "Demande enregistrée",
+      "awaitingApproval": "En attente d'approbation par un autre SUPER-ADMIN.",
+      "steps": {
+        "capabilities": "Capacités"
+      },
+      "capabilities": {
+        "title": "Capacités octroyées",
+        "subtitle": "Sous-ensemble distinct par compte. Deux comptes même rôle ne partagent jamais le même set.",
+        "checkUniqueness": "Vérifier l'unicité",
+        "duplicateWarn": "Set identique à {{email}} — ajoutez ou retirez ≥ 1 capacité, ou cochez « Forcer ».",
+        "force": "Forcer (audit override)",
+        "domains": {
+          "users": "Utilisateurs",
+          "sessions": "Sessions",
+          "devices": "Appareils",
+          "mfa": "MFA",
+          "audit": "Audit",
+          "settings": "Paramètres",
+          "break_glass": "Break-Glass",
+          "recovery": "Récupération",
+          "roles": "Rôles"
+        }
+      }
+    },
+    "me": {
+      "security": {
+        "title": "Sécurité de mon compte",
+        "subtitle": "Gérez vos facteurs d'authentification. Aucune intervention tierce requise pour SUPER-ADMIN.",
+        "password": "Mot de passe",
+        "passkey": "PassKey",
+        "totp": "TOTP",
+        "recoveryCodes": "Codes de récupération",
+        "activeSessions": "Sessions actives",
+        "currentPassword": "Mot de passe actuel",
+        "newPassword": "Nouveau mot de passe (≥ 12 caractères)",
+        "confirmPassword": "Confirmer",
+        "changePassword": "Changer le mot de passe",
+        "addPasskey": "Ajouter PassKey",
+        "enableTotp": "Activer TOTP",
+        "disableTotp": "Désactiver TOTP",
+        "regenerateCodes": "Régénérer (invalide les anciens)",
+        "remaining": "{{used}} / {{total}} restants",
+        "viewAllSessions": "Voir toutes les sessions",
+        "forceReenroll": "Vous devez réenrôler un facteur MFA avant de poursuivre.",
+        "passwordChanged": "Mot de passe mis à jour."
+      }
+    },
+    "userDetailExt": {
+      "capabilities": "Capacités effectives",
+      "modifyCapabilities": "Modifier les capacités"
+    },
+    "recovery": {
+      "initiateTitle": "Récupérer l'accès au compte",
+      "initiateBody": "Saisissez votre adresse e-mail. Si elle est connue, vous recevrez un lien magique de récupération valide 30 minutes.",
+      "tokenTitle": "Confirmation par OTP",
+      "tokenBody": "Saisissez le code à 8 chiffres reçu par e-mail. À usage unique.",
+      "adminTokenTitle": "Récupération initiée par un administrateur",
+      "adminTokenBody": "Saisissez votre e-mail et le code à 8 chiffres reçu.",
+      "send": "Envoyer le lien",
+      "verify": "Vérifier",
+      "success": "Accès restauré. Vous devez maintenant réenrôler un facteur MFA.",
+      "forceReenroll": "Réenrôlement MFA obligatoire",
+      "lostAccess": "J'ai perdu l'accès à mon compte"
+    },
+    "onboard": {
+      "title": "Activation de votre compte administrateur",
+      "subtitle": "Pour des raisons de sécurité, le lien que vous venez d'ouvrir doit être confirmé par un code à 8 chiffres affiché sur ce même onglet.",
+      "verifyingLink": "Vérification du lien magique…",
+      "otpDisplayed": "Votre code de vérification (à saisir ci-dessous)",
+      "expiresIn": "Expire dans",
+      "enterOtp": "Saisissez le code à 8 chiffres affiché",
+      "forceMfa": "Lien validé. Configurez maintenant vos facteurs MFA (PassKey, TOTP, codes de récupération)."
+    }
   }
 }

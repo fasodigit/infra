@@ -1,5 +1,5 @@
 # =============================================================================
-# Dockerfile - poulets-bff (Next.js Backend-For-Frontend)
+# Containerfile - poulets-bff (Next.js Backend-For-Frontend)
 # =============================================================================
 # Multi-stage build: Node.js build -> Node.js standalone runtime
 # =============================================================================

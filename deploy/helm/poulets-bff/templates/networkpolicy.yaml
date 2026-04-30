@@ -1,0 +1,90 @@
+{{- /* SPDX-License-Identifier: AGPL-3.0-or-later */ -}}
+{{- if .Values.networkPolicy.enabled }}
+# Default deny all ingress/egress
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "poulets-bff.fullname" . }}-deny-all
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poulets-bff.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "poulets-bff.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+    - Egress
+---
+# Allow ingress from ARMAGEDDON gateway on HTTP (4800)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "poulets-bff.fullname" . }}-allow-ingress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poulets-bff.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "poulets-bff.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: armageddon
+        - namespaceSelector:
+            matchLabels:
+              faso.gov.bf/tier: gateway
+      ports:
+        - protocol: TCP
+          port: 4800
+---
+# Allow egress to auth-ms, poulets-api, kratos, DNS
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "poulets-bff.fullname" . }}-allow-egress
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "poulets-bff.labels" . | nindent 4 }}
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "poulets-bff.selectorLabels" . | nindent 6 }}
+  policyTypes:
+    - Egress
+  egress:
+    # auth-ms (HTTP)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: auth-ms
+      ports:
+        - protocol: TCP
+          port: 8801
+    # poulets-api (HTTP)
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: poulets-api
+      ports:
+        - protocol: TCP
+          port: 8901
+    # Kratos public (session validation)
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ory-stack
+      ports:
+        - protocol: TCP
+          port: 4433
+    # DNS (CoreDNS)
+    - ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+{{- end }}

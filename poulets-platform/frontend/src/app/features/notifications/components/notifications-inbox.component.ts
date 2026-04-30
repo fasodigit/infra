@@ -17,42 +17,48 @@ import { NotificationsService, AppNotification, NotificationType } from '../serv
   imports: [CommonModule, DatePipe, FormsModule, RouterLink, MatIconModule, MatButtonModule, MatMenuModule, EmptyStateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="page">
+    <section class="page" data-testid="notifications-page">
       <header>
         <div>
           <h1>Notifications</h1>
-          <p>{{ svc.unreadCount() }} non lue{{ svc.unreadCount() > 1 ? 's' : '' }} · {{ svc.items().length }} au total</p>
+          <p data-testid="notifications-detail-field-count">{{ svc.unreadCount() }} non lue{{ svc.unreadCount() > 1 ? 's' : '' }} · {{ svc.items().length }} au total</p>
         </div>
         <div class="actions">
-          <button mat-stroked-button type="button" (click)="svc.markAllRead()" [disabled]="svc.unreadCount() === 0">
+          <button mat-stroked-button type="button" (click)="svc.markAllRead()" [disabled]="svc.unreadCount() === 0"
+                  data-testid="notifications-action-mark-all-read">
             <mat-icon>done_all</mat-icon> Tout marquer comme lu
           </button>
-          <button mat-stroked-button color="warn" type="button" (click)="svc.deleteAll()" [disabled]="svc.items().length === 0">
+          <button mat-stroked-button color="warn" type="button" (click)="svc.deleteAll()" [disabled]="svc.items().length === 0"
+                  data-testid="notifications-action-clear-all">
             <mat-icon>delete_sweep</mat-icon> Tout supprimer
           </button>
         </div>
       </header>
 
-      <div class="tabs" role="tablist">
-        <button [class.active]="tab() === 'all'" (click)="tab.set('all')">
+      <div class="tabs" role="tablist" data-testid="notifications-filter-tabs">
+        <button [class.active]="tab() === 'all'" (click)="tab.set('all')"
+                data-testid="notifications-filter-all">
           Toutes ({{ svc.items().length }})
         </button>
-        <button [class.active]="tab() === 'unread'" (click)="tab.set('unread')">
+        <button [class.active]="tab() === 'unread'" (click)="tab.set('unread')"
+                data-testid="notifications-filter-unread">
           Non lues ({{ svc.unreadCount() }})
         </button>
         @for (t of TYPES; track t.value) {
-          <button [class.active]="tab() === t.value" (click)="tab.set(t.value)">
+          <button [class.active]="tab() === t.value" (click)="tab.set(t.value)"
+                  [attr.data-testid]="'notifications-filter-' + t.value.toLowerCase()">
             <mat-icon>{{ t.icon }}</mat-icon> {{ t.label }}
           </button>
         }
       </div>
 
       @if (filtered().length === 0) {
-        <app-empty-state icon="notifications_off" title="Aucune notification" />
+        <app-empty-state icon="notifications_off" title="Aucune notification" data-testid="notifications-empty" />
       } @else {
-        <ul class="items">
+        <ul class="items" data-testid="notifications-list">
           @for (n of filtered(); track n.id) {
-            <li [class.unread]="!n.read">
+            <li [class.unread]="!n.read"
+                [attr.data-testid]="'notifications-list-item-' + n.id">
               <span class="badge" [class]="'badge--' + n.type.toLowerCase()">
                 <mat-icon>{{ iconFor(n.type) }}</mat-icon>
               </span>
@@ -72,11 +78,13 @@ import { NotificationsService, AppNotification, NotificationType } from '../serv
               </button>
               <mat-menu #menu="matMenu">
                 @if (!n.read) {
-                  <button mat-menu-item (click)="svc.markRead(n.id)">
+                  <button mat-menu-item (click)="svc.markRead(n.id)"
+                          [attr.data-testid]="'notifications-action-mark-read-' + n.id">
                     <mat-icon>mark_email_read</mat-icon><span>Marquer comme lu</span>
                   </button>
                 }
-                <button mat-menu-item (click)="svc.delete(n.id)">
+                <button mat-menu-item (click)="svc.delete(n.id)"
+                        [attr.data-testid]="'notifications-action-delete-' + n.id">
                   <mat-icon>delete</mat-icon><span>Supprimer</span>
                 </button>
               </mat-menu>

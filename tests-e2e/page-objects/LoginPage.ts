@@ -13,12 +13,14 @@ export class LoginPage {
   constructor(page: Page) {
     this.page = page;
     this.heading = page.getByRole('heading', { name: /connexion/i });
-    this.emailInput = page.locator('input[formcontrolname="email"]');
-    this.passwordInput = page.locator('input[formcontrolname="password"]');
-    this.submitButton = page.locator('button[type="submit"]');
-    this.forgotPasswordLink = page.getByRole('link', { name: /mot de passe oubli/i });
+    // Prefer data-testid (stable). Fallback to formcontrolname is implicit since
+    // both attributes coexist on the same element after frontend testid wiring.
+    this.emailInput = page.getByTestId('login-email');
+    this.passwordInput = page.getByTestId('login-password');
+    this.submitButton = page.getByTestId('login-submit');
+    this.forgotPasswordLink = page.getByTestId('forgot-password-link');
     this.registerLink = page.getByRole('link', { name: /créer.*compte/i });
-    this.errorAlert = page.locator('.error[role="alert"]');
+    this.errorAlert = page.getByTestId('login-error');
   }
 
   async goto(): Promise<void> {

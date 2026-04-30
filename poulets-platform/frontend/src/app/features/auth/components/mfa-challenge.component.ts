@@ -9,17 +9,33 @@ import { MatIconModule } from '@angular/material/icon';
 import { MatButtonModule } from '@angular/material/button';
 import { MatTabsModule } from '@angular/material/tabs';
 import { MatSnackBar } from '@angular/material/snack-bar';
+import { takeUntil, Subject } from 'rxjs';
 
 import { KratosSettingsService } from '@core/kratos/kratos-settings.service';
+import { FasoApprovalModalComponent } from '../../admin/components-v2/faso-approval-modal.component';
+import {
+  PushApprovalService,
+  type ApprovalRequest,
+  type ApprovalResult,
+} from '../../admin/services/push-approval.service';
 
-type MfaMethod = 'passkey' | 'totp' | 'lookup' | 'sms';
+type MfaMethod = 'passkey' | 'totp' | 'lookup' | 'sms' | 'push';
 
 @Component({
   selector: 'app-mfa-challenge',
   standalone: true,
-  imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, MatTabsModule],
+  imports: [CommonModule, FormsModule, MatIconModule, MatButtonModule, MatTabsModule, FasoApprovalModalComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
+    <!-- Push approval modal (overlay, above all tabs) -->
+    @if (pendingApprovalRequest()) {
+      <faso-approval-modal
+        [request]="pendingApprovalRequest()"
+        (approved)="onPushApproved($event)"
+        (fallback)="onPushFallback()"
+      />
+    }
+
     <section class="page">
       <div class="container">
         <header>
@@ -91,6 +107,33 @@ type MfaMethod = 'passkey' | 'totp' | 'lookup' | 'sms';
               </button>
             </div>
           </mat-tab>
+
+          <!-- Push approval tab — shown only when a WS session is active -->
+          @if (pushAvailable()) {
+            <mat-tab label="Approbation push">
+              <ng-template mat-tab-label>
+                <mat-icon>phone_android</mat-icon>
+                <span>Approbation</span>
+              </ng-template>
+              <div class="tab">
+                <p>
+                  Recevez une demande d'approbation sur un autre onglet ou appareil
+                  déjà connecté à l'espace admin.
+                </p>
+                <p class="hint">
+                  Anti-MFA-bombing : vous devrez taper le bon chiffre parmi 3 options.
+                </p>
+                <button mat-raised-button color="primary" type="button"
+                        (click)="initiatePushApproval()"
+                        [disabled]="busy() || !!pendingApprovalRequest()">
+                  <mat-icon>send</mat-icon>
+                  @if (busy()) { Envoi… }
+                  @else if (pendingApprovalRequest()) { En attente de réponse… }
+                  @else { Envoyer une demande d'approbation }
+                </button>
+              </div>
+            </mat-tab>
+          }
         </mat-tab-group>
 
         <footer>
@@ -175,10 +218,91 @@ export class MfaChallengeComponent {
   private readonly router = inject(Router);
   private readonly snack = inject(MatSnackBar);
   private readonly kratos = inject(KratosSettingsService);
+  private readonly pushApprovalSvc = inject(PushApprovalService);
+  private readonly destroy$ = new Subject<void>();
 
   readonly busy = signal(false);
+  /** Whether a push-approval WS session is active for this user. */
+  readonly pushAvailable = signal(false);
+  /** The current pending push approval request (drives the modal). */
+  readonly pendingApprovalRequest = signal<ApprovalRequest | null>(null);
+
   totpCode = '';
   lookupCode = '';
+
+  // ── push approval lifecycle ────────────────────────────────────────────────
+
+  /**
+   * Start the WS connection on component init and set pushAvailable if the
+   * setting `mfa.push_approval_enabled` is true (checked server-side; here
+   * we attempt connection optimistically and set the flag on first message
+   * or after a short connect timeout).
+   */
+  ngOnInit(): void {
+    this.pushApprovalSvc.connectWebSocket()
+      .pipe(takeUntil(this.destroy$))
+      .subscribe({
+        next: (msg) => {
+          if (msg.type === 'approval-request') {
+            this.pendingApprovalRequest.set(msg as ApprovalRequest);
+          }
+        },
+        error: () => {
+          this.pushAvailable.set(false);
+        },
+      });
+    // Assume push is available; the BFF /initiate will return available=false
+    // if not (and the modal won't appear).
+    this.pushAvailable.set(true);
+  }
+
+  ngOnDestroy(): void {
+    this.destroy$.next();
+    this.destroy$.complete();
+  }
+
+  initiatePushApproval(): void {
+    this.busy.set(true);
+    // The BFF /initiate POSTs to auth-ms which pushes to the WS.
+    // We call the BFF API directly from here (uses session cookie).
+    fetch('/api/admin/auth/push-approval/initiate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({}),
+    })
+      .then((r) => r.json())
+      .then((data: { available?: boolean; fallback?: string }) => {
+        this.busy.set(false);
+        if (!data.available) {
+          this.pushAvailable.set(false);
+          this.snack.open(
+            'Aucun appareil connecté — utilisez OTP ou TOTP.',
+            'OK',
+            { duration: 4000 },
+          );
+        }
+        // If available=true, the WS push will arrive on the stream above
+        // and set pendingApprovalRequest.
+      })
+      .catch((err: unknown) => {
+        this.busy.set(false);
+        console.error('[mfa-challenge] push initiate error', err);
+        this.snack.open('Erreur lors de l\'approbation push.', 'OK', { duration: 3000 });
+      });
+  }
+
+  onPushApproved(result: ApprovalResult): void {
+    this.pendingApprovalRequest.set(null);
+    this.snack.open('Connexion approuvée via push.', 'OK', { duration: 3000 });
+    void result; // mfaProof could be forwarded to Kratos flow here
+    this.redirect();
+  }
+
+  onPushFallback(): void {
+    this.pendingApprovalRequest.set(null);
+    this.snack.open('Délai expiré — utilisez OTP ou TOTP.', 'OK', { duration: 3000 });
+  }
 
   async challengePasskey() {
     if (!this.kratos.isBrowser) return;

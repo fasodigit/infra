@@ -1,6 +1,10 @@
 server:
   port: 8801
   shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 25MB
+    max-swallow-size: 25MB
+  max-http-request-header-size: 16KB
 
 spring:
   application:
@@ -19,23 +23,35 @@ spring:
       minimum-idle: 2
       idle-timeout: 300000
       connection-timeout: 20000
-      max-lifetime: 1200000
+      max-lifetime: 600000
+      validation-timeout: 3000
+      leak-detection-threshold: 30000
+      data-source-properties:
+        options: "-c statement_timeout=10000"
 
   jpa:
     hibernate:
       ddl-auto: validate
     open-in-view: false
     properties:
+      jakarta:
+        persistence:
+          query:
+            timeout: 5000
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
         format_sql: false
         jdbc:
           time_zone: UTC
+          batch_size: 25
+        default_batch_fetch_size: 16
 
   # Flyway
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations:
+      - classpath:db/migration            # service-owned schema (auth)
+      - classpath:db/audit-migration      # shared audit schema (Loi 010-2004)
     baseline-on-migrate: true
     validate-on-migrate: true
     clean-disabled: true        # CRITICAL: prevents flyway:clean in prod
@@ -54,13 +70,30 @@ spring:
           min-idle: 2
           max-wait: 2000ms
 
+  # Input validation & request size limits
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 25MB
+
   # GraphQL (DGS)
   graphql:
     path: /graphql
     graphiql:
       enabled: false
+    introspection:
+      enabled: ${GRAPHQL_INTROSPECTION:false}
     schema:
       locations: classpath:schema/
+
+  # Spring Kafka (Redpanda) — Phase 4.b admin events producer
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP:redpanda:9092}
+    producer:
+      acks: all
+      properties:
+        enable.idempotence: true
+        compression.type: zstd
 
 # gRPC server
 grpc:
@@ -134,6 +167,69 @@ auth:
       - 14
       - 7
 
+# Phase 4.b admin-UI — WebAuthn / TOTP / Break-glass / OTP defaults.
+# All values are overridable via admin_settings (DB) — these are bootstraps.
+admin:
+  webauthn:
+    rp-id: ${WEBAUTHN_RP_ID:faso.bf}
+    rp-name: "FASO DIGITALISATION"
+  totp:
+    issuer: "FasoDigitalisation"
+    window: 1
+  break-glass:
+    ttl-seconds: 14400
+  otp:
+    length: 8
+    ttl-seconds: 300
+    rate-limit: 3
+    lock-after-fails: 5
+    lock-duration-seconds: 900
+
+  # Phase 4.b.7 — Step-up auth for sensitive operations.
+  # KAYA prefixes:
+  #   auth:step_up:session:{sessionId}  HASH TTL 300s
+  #   auth:step_up:proof:{userId}       STR  TTL 300s (cache last valid proof)
+  step-up:
+    default-max-age-seconds: 300
+    methods-priority:
+      - passkey
+      - push-approval
+      - totp
+      - otp
+
+  # Phase 4.b.3 — Crypto upgrade Argon2id (RFC 9106) + HMAC pepper.
+  # Peppers are 32-byte hex strings sourced from Vault under
+  # faso/auth-ms/{password,otp,recovery}-pepper-v{N}. When unset on local dev,
+  # a placeholder pepper is used and a WARN is logged at startup.
+  crypto:
+    password-pepper: ${ADMIN_CRYPTO_PASSWORD_PEPPER:}
+    otp-pepper: ${ADMIN_CRYPTO_OTP_PEPPER:}
+    recovery-pepper: ${ADMIN_CRYPTO_RECOVERY_PEPPER:}
+    pepper-version: 1
+    argon2:
+      password:
+        memory: 65536        # 64 MiB
+        iterations: 3
+        parallelism: 4
+      otp:
+        memory: 19456        # 19 MiB
+        iterations: 2
+        parallelism: 1
+      recovery:
+        memory: 16384        # 16 MiB
+        iterations: 2
+        parallelism: 2
+
+  # Phase 4.b.6 — Risk-based scoring MVP (3 signals + Tor list).
+  # GeoLite2 .mmdb is provisioned out-of-tree; if absent, geo signals are neutral
+  # (fail-open) so dev/CI keep working without the database.
+  geoip:
+    database-path: ${ADMIN_GEOIP_DB_PATH:/var/lib/auth-ms/GeoLite2-City.mmdb}
+    license-key: ${MAXMIND_LICENSE_KEY:}
+  risk:
+    enabled: true
+    tor-list-refresh-cron: "0 0 4 * * *"
+
 # Actuator
 management:
   endpoints:
@@ -143,9 +239,24 @@ management:
   endpoint:
     health:
       show-details: when-authorized
+      # Probe groups: K8s liveness/readiness must NOT depend on Vault.
+      # Vault unavailability is recoverable (Vault Agent re-leases on next call)
+      # and a 503 here triggers pod restart loops that worsen the outage.
+      group:
+        liveness:
+          include: livenessState,db,redis,ping
+        readiness:
+          include: readinessState,db,redis
+      probes:
+        enabled: true
   health:
     db:
       enabled: true
+    # Vault HealthIndicator probes https://localhost:8200 by default and breaks
+    # the global /actuator/health when Vault is on plain http (cycle-fix dev).
+    # Liveness/readiness already exclude vault (see groups above).
+    vault:
+      enabled: false
   metrics:
     tags:
       application: ${spring.application.name}
@@ -161,6 +272,73 @@ management:
   otlp:
     tracing:
       endpoint: http://localhost:4318/v1/traces
+
+# Resilience4j
+resilience4j:
+  circuitbreaker:
+    configs:
+      default:
+        slidingWindowType: COUNT_BASED
+        slidingWindowSize: 10
+        minimumNumberOfCalls: 5
+        failureRateThreshold: 50
+        waitDurationInOpenState: 30s
+        permittedNumberOfCallsInHalfOpenState: 3
+        automaticTransitionFromOpenToHalfOpenEnabled: true
+        recordExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+          - org.springframework.web.client.HttpServerErrorException
+    instances:
+      kratos:
+        baseConfig: default
+        failureRateThreshold: 60
+        waitDurationInOpenState: 15s
+      keto:
+        baseConfig: default
+      kaya:
+        baseConfig: default
+        slidingWindowSize: 20
+        waitDurationInOpenState: 10s
+
+  timelimiter:
+    configs:
+      default:
+        timeoutDuration: 5s
+    instances:
+      kratos:
+        timeoutDuration: 3s
+      keto:
+        timeoutDuration: 2s
+      kaya:
+        timeoutDuration: 1s
+
+  bulkhead:
+    configs:
+      default:
+        maxConcurrentCalls: 25
+        maxWaitDuration: 500ms
+    instances:
+      kratos:
+        maxConcurrentCalls: 15
+      keto:
+        maxConcurrentCalls: 10
+
+  retry:
+    configs:
+      default:
+        maxAttempts: 2
+        waitDuration: 500ms
+        retryExceptions:
+          - java.io.IOException
+          - java.net.SocketTimeoutException
+    instances:
+      kratos:
+        maxAttempts: 3
+        waitDuration: 1s
+      kaya:
+        maxAttempts: 3
+        waitDuration: 200ms
 
 logging:
   level:

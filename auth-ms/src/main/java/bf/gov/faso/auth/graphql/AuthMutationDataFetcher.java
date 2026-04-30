@@ -1,5 +1,6 @@
 package bf.gov.faso.auth.graphql;
 
+import bf.gov.faso.audit.Audited;
 import bf.gov.faso.auth.model.JwtSigningKey;
 import bf.gov.faso.auth.model.User;
 import bf.gov.faso.auth.repository.UserRepository;
@@ -57,6 +58,7 @@ public class AuthMutationDataFetcher {
     @DgsMutation
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
     @Transactional
+    @Audited(action = "CREATE_USER", resourceType = "User")
     public User createUser(@InputArgument Map<String, Object> input) {
         String email = (String) input.get("email");
         String firstName = (String) input.get("firstName");
@@ -91,6 +93,7 @@ public class AuthMutationDataFetcher {
     @DgsMutation
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
     @Transactional
+    @Audited(action = "UPDATE_USER", resourceType = "User")
     public User updateUser(@InputArgument String id, @InputArgument Map<String, Object> input) {
         UUID userId = UUID.fromString(id);
         User user = userRepository.findById(userId)
@@ -138,6 +141,7 @@ public class AuthMutationDataFetcher {
     @DgsMutation
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     @Transactional
+    @Audited(action = "DELETE_USER", resourceType = "User")
     public boolean deleteUser(@InputArgument String id) {
         UUID userId = UUID.fromString(id);
         User user = userRepository.findById(userId)
@@ -167,12 +171,14 @@ public class AuthMutationDataFetcher {
 
     @DgsMutation
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    @Audited(action = "ASSIGN_ROLE", resourceType = "User")
     public User assignRole(@InputArgument String userId, @InputArgument String roleId) {
         return permissionGrantService.assignRole(UUID.fromString(userId), UUID.fromString(roleId));
     }
 
     @DgsMutation
     @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'ADMIN')")
+    @Audited(action = "REVOKE_ROLE", resourceType = "User")
     public User revokeRole(@InputArgument String userId, @InputArgument String roleId) {
         return permissionGrantService.revokeRole(UUID.fromString(userId), UUID.fromString(roleId));
     }

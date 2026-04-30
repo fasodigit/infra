@@ -5,6 +5,8 @@ spring:
   graphql:
     graphiql:
       enabled: false
+    introspection:
+      enabled: false
 
   flyway:
     clean-disabled: true

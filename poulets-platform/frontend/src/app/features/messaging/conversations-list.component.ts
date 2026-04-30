@@ -37,7 +37,7 @@ interface Conversation {
     DatePipe,
   ],
   template: `
-    <div class="conversations-container">
+    <div class="conversations-container" data-testid="messaging-page">
       <div class="page-header">
         <h1>Messagerie</h1>
       </div>
@@ -46,14 +46,15 @@ interface Conversation {
       <mat-form-field appearance="outline" class="search-field">
         <mat-label>{{ 'messaging.list.search' | translate }}</mat-label>
         <mat-icon matPrefix>search</mat-icon>
-        <input matInput (input)="onSearch($event)">
+        <input matInput (input)="onSearch($event)" data-testid="messaging-search-input">
       </mat-form-field>
 
       <mat-card class="conversations-card">
         @if (filteredConversations().length > 0) {
-          <mat-nav-list>
+          <mat-nav-list data-testid="messaging-list">
             @for (conv of filteredConversations(); track conv.id) {
-              <a mat-list-item [routerLink]="[conv.id]" class="conversation-item">
+              <a mat-list-item [routerLink]="[conv.id]" class="conversation-item"
+                 [attr.data-testid]="'messaging-list-item-' + conv.id">
                 <div class="conversation-content">
                   <div class="avatar-section">
                     <div class="avatar" [class.has-unread]="conv.unreadCount > 0">
@@ -82,7 +83,7 @@ interface Conversation {
             }
           </mat-nav-list>
         } @else {
-          <div class="empty-state">
+          <div class="empty-state" data-testid="messaging-empty">
             <mat-icon>chat</mat-icon>
             <p>{{ 'messaging.list.empty' | translate }}</p>
           </div>
