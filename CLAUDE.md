@@ -458,6 +458,103 @@ Cette discipline est validée à chaque session : si `fixtures/actors.ts`
 n'a pas les SUPER-ADMIN seedés OU si `playwright.config.ts` mocke des
 routes backend, **bloquer le merge** jusqu'à correction.
 
+## 13. Cadence de commits sur sessions agent-driven
+
+**Règle absolue** : sur toute session de codage **longue ou multi-phase**
+(typiquement orchestration de plusieurs agents IA), commiter à 3 moments
+clés. Pas de commit massif final unique — le risque de perte ou de
+non-revue est trop élevé.
+
+### Les 3 checkpoints obligatoires
+
+1. **CHECKPOINT-AVANT** — avant de démarrer un gros chantier
+   (lancement d'agents en parallèle, début de phase, refactor d'envergure) :
+   commiter l'état courant pour disposer d'une **baseline propre**. Si rien
+   à commiter, vérifier explicitement `git status --short` est vide.
+   Sinon, créer un ou plusieurs commits atomiques pour figer l'avant.
+
+2. **CHECKPOINT-INTER** — après chaque **long moment de code** (typiquement
+   ≥ 1 stream d'agent terminé OU ≥ 30 min de travail concentré) : commiter
+   les artefacts produits, atomiquement par scope (cf. exemples §13 ci-bas).
+   Ne pas attendre la fin du chantier complet — chaque livrable validé =
+   un commit séparé.
+
+3. **CHECKPOINT-FINAL** — après `/cycle-fix` GREEN + Playwright passant +
+   AVANT de déclarer le chantier terminé à l'utilisateur : commiter tout
+   ce qui reste (fixes du cycle-fix, ajustements specs, configs validées).
+   La phrase finale type *« stack GREEN, tests passent, X livrés »* ne peut
+   être prononcée que quand le working tree est propre (`git status --short`
+   est vide). Sinon : checkpoint-final manquant = chantier non-clos.
+
+### Pourquoi
+
+- **Reviewabilité** : 12 commits de 50-200 lignes chacun se reviewent ; un
+  unique commit de 5000+ lignes ne se review pas (et ne sera pas relu).
+- **Bisection** : si un bug apparaît plus tard, `git bisect` ne fonctionne
+  qu'avec une granularité raisonnable.
+- **Rollback partiel** : un stream cassé peut être `git revert` sans
+  perdre les autres streams.
+- **Pression cognitive** : à chaque checkpoint l'agent et l'utilisateur
+  font une mini-pause de validation. Sans checkpoints, on accumule du
+  risque de dérive silencieuse.
+
+### Anti-patterns interdits
+
+- ❌ « Je commiterai tout à la fin » — interdit. Trop tard pour atomicité.
+- ❌ Déclarer « tout est OK » avec `git status` non vide.
+- ❌ Un seul gigantesque commit `feat(everything): big bang` couvrant
+  plusieurs phases (admin-UI + TERROIR + observability + …).
+- ❌ Commiter du code qui ne compile pas — chaque commit doit individuellement
+  être en état GREEN (compile + lint + format) sur le scope qu'il touche.
+- ❌ Skipper le `--no-verify` pour passer en force — corriger la cause.
+
+### Workflow obligatoire
+
+```
+[début gros chantier]
+        │
+        ▼
+[CHECKPOINT-AVANT]  git commit ... (baseline propre)
+        │
+        ▼
+[lancement agent(s) wave 1]
+        │
+        ▼
+[wave 1 done]  →  [CHECKPOINT-INTER]  git commit -m "feat(scope-1): …"
+        │
+        ▼
+[lancement wave 2]
+        │
+        ▼
+[wave 2 done]  →  [CHECKPOINT-INTER]  git commit -m "feat(scope-2): …"
+        │
+        ▼
+[/cycle-fix loop]
+        │
+        ▼
+[stack GREEN]  →  [Playwright suite]
+        │
+        ▼
+[suite passante]  →  [CHECKPOINT-FINAL]  git commit -m "fix(cycle-fix): … + test(e2e): …"
+        │
+        ▼
+[« chantier OK ✓ » à l'utilisateur]
+```
+
+### Format conventional commits FASO (rappel §4)
+
+- `feat(<scope>):` nouvelle fonctionnalité
+- `fix(<scope>):` correction de bug
+- `chore(<scope>):` refactor / tooling / pas de feature ni bug
+- `docs(<scope>):` documentation pure
+- `test(<scope>):` ajout/modif tests
+- Trailer obligatoire : `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`
+
+Cette discipline est observée par tous les agents qui orchestrent des
+streams parallèles (admin-UI Phase 4.b, TERROIR P0+, futures phases). Si
+un agent finit son livrable et ne propose pas un checkpoint à l'humain,
+**c'est un bug à signaler** dans le prompt de l'agent.
+
 ---
 
 *Dernière mise à jour : 2026-04-30*
