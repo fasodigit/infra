@@ -15,23 +15,58 @@
     "assetBundlePatterns": ["**/*"],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "bf.faso.terroir"
+      "bundleIdentifier": "bf.faso.terroir",
+      "infoPlist": {
+        "NSCameraUsageDescription": "TERROIR a besoin de l'appareil photo pour capturer la photo du producteur (CNIB) et des parcelles.",
+        "NSPhotoLibraryUsageDescription": "TERROIR a besoin d'accéder à la galerie pour joindre des photos aux fiches producteur/parcelle.",
+        "NSLocationWhenInUseUsageDescription": "TERROIR a besoin de la localisation GPS pour enregistrer la position du domicile producteur et les sommets de parcelle."
+      }
     },
     "android": {
       "package": "bf.faso.terroir",
       "minSdkVersion": 24,
-      "permissions": ["CAMERA", "ACCESS_FINE_LOCATION", "INTERNET"],
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "INTERNET",
+        "READ_EXTERNAL_STORAGE",
+        "WRITE_EXTERNAL_STORAGE"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#1b5e20"
       }
     },
-    "plugins": ["expo-secure-store", "expo-sqlite"],
+    "plugins": [
+      "expo-secure-store",
+      "expo-sqlite",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "TERROIR a besoin de l'appareil photo pour les fiches producteur et parcelle."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "TERROIR a besoin d'accéder à la galerie pour joindre des photos."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "TERROIR a besoin du GPS pour géolocaliser producteurs et parcelles."
+        }
+      ]
+    ],
     "runtimeVersion": "0.1.0",
     "updates": {
       "url": "https://updates.terroir.faso.bf"
     },
     "extra": {
+      "apiBaseUrl": "http://10.0.2.2:8080/api/terroir/mobile-bff",
+      "wsBaseUrl": "ws://10.0.2.2:8080/api/terroir/mobile-bff",
       "eas": {
         "projectId": ""
       }

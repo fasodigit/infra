@@ -10,6 +10,9 @@
     "submit": "Sign in",
     "logout": "Log out",
     "logout_confirm": "Confirm logout?",
+    "mfa_prompt": "Confirm the second factor (TOTP).",
+    "mfa_code": "TOTP code",
+    "mfa_submit": "Validate code",
     "errors": {
       "required": "Email and password are required.",
       "invalid": "Invalid credentials.",
@@ -32,12 +35,79 @@
     "pending_downloads": "Pending downloads",
     "conflicts": "CRDT conflicts",
     "docs_section": "Local Yjs documents",
-    "docs_empty": "No local documents yet."
+    "docs_empty": "No local documents yet.",
+    "banner": {
+      "up_to_date": "Up to date",
+      "pending": "{{count}} item(s) pending",
+      "syncing": "Syncing…",
+      "offline": "Offline"
+    }
   },
   "health": {
     "checking": "Checking...",
     "up": "BFF reachable",
     "degraded": "BFF degraded",
     "down": "Offline"
+  },
+  "terroir": {
+    "mobile": {
+      "login": {
+        "title": "TERROIR Agent",
+        "subtitle": "Sign in with your Kratos credentials.",
+        "totp_placeholder": "123456",
+        "back_email": "← Back to email"
+      },
+      "profile": {
+        "title": "Agent profile",
+        "agent_id": "Agent ID",
+        "tenant_id": "Active cooperative",
+        "session_expires": "Session valid until",
+        "last_sync": "Last sync",
+        "pending_items": "Pending items",
+        "logout": "Log out"
+      },
+      "producers": {
+        "title": "Producers",
+        "search_placeholder": "Search (name)…",
+        "new_button": "+ New",
+        "empty": "No producer found.",
+        "load_error": "Loading error."
+      },
+      "producer-create": {
+        "title": "New producer",
+        "full_name": "Full name",
+        "nin": "National ID (NIN)",
+        "phone": "Phone",
+        "primary_crop": "Primary crop",
+        "gps_home": "Home GPS",
+        "photo": "Photo",
+        "submit": "Save",
+        "saved_offline": "Producer saved locally. Will sync on next network cycle.",
+        "validation": {
+          "name_too_short": "Full name too short.",
+          "nin_invalid": "Invalid CNIB format (ex: B12345678901).",
+          "phone_invalid": "Invalid phone format.",
+          "gps_required": "Home GPS position required."
+        }
+      },
+      "parcels": {
+        "title": "Parcels",
+        "trace_new": "+ Trace",
+        "empty": "No parcel for this producer."
+      },
+      "parcel-create": {
+        "title": "Trace a parcel",
+        "subtitle": "Tap on the map to add a vertex. At least 3 vertices required.",
+        "crop_type": "Crop type",
+        "planted_at": "Planting date (YYYY-MM-DD)",
+        "photo": "Parcel photo (optional)",
+        "submit": "Save parcel",
+        "vertices_count": "Vertices: {{count}}",
+        "validation": {
+          "min_vertices": "At least 3 vertices are required for a polygon.",
+          "crop_required": "Crop type required."
+        }
+      }
+    }
   }
 }

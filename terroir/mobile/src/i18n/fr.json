@@ -10,6 +10,9 @@
     "submit": "Se connecter",
     "logout": "Déconnexion",
     "logout_confirm": "Confirmer la déconnexion ?",
+    "mfa_prompt": "Validez le second facteur (TOTP).",
+    "mfa_code": "Code TOTP",
+    "mfa_submit": "Valider le code",
     "errors": {
       "required": "Email et mot de passe sont obligatoires.",
       "invalid": "Identifiants invalides.",
@@ -32,12 +35,79 @@
     "pending_downloads": "Downloads en attente",
     "conflicts": "Conflits CRDT",
     "docs_section": "Documents Yjs locaux",
-    "docs_empty": "Aucun document local pour l'instant."
+    "docs_empty": "Aucun document local pour l'instant.",
+    "banner": {
+      "up_to_date": "À jour",
+      "pending": "{{count}} item(s) en attente",
+      "syncing": "Sync en cours…",
+      "offline": "Hors ligne"
+    }
   },
   "health": {
     "checking": "Vérification...",
     "up": "BFF accessible",
     "degraded": "BFF dégradé",
     "down": "Hors ligne"
+  },
+  "terroir": {
+    "mobile": {
+      "login": {
+        "title": "TERROIR Agent",
+        "subtitle": "Connectez-vous avec vos identifiants Kratos.",
+        "totp_placeholder": "123456",
+        "back_email": "← Retour à l'email"
+      },
+      "profile": {
+        "title": "Profil agent",
+        "agent_id": "Identifiant agent",
+        "tenant_id": "Coopérative active",
+        "session_expires": "Session valide jusqu'au",
+        "last_sync": "Dernière sync",
+        "pending_items": "Items en attente",
+        "logout": "Déconnexion"
+      },
+      "producers": {
+        "title": "Producteurs",
+        "search_placeholder": "Rechercher (nom, prénom)…",
+        "new_button": "+ Nouveau",
+        "empty": "Aucun producteur trouvé.",
+        "load_error": "Erreur de chargement."
+      },
+      "producer-create": {
+        "title": "Nouveau producteur",
+        "full_name": "Nom complet",
+        "nin": "CNIB (NIN)",
+        "phone": "Téléphone",
+        "primary_crop": "Culture principale",
+        "gps_home": "GPS domicile",
+        "photo": "Photo",
+        "submit": "Enregistrer",
+        "saved_offline": "Producteur enregistré localement. Sync au prochain cycle réseau.",
+        "validation": {
+          "name_too_short": "Nom complet trop court.",
+          "nin_invalid": "Format CNIB invalide (ex : B12345678901).",
+          "phone_invalid": "Format téléphone invalide.",
+          "gps_required": "Position GPS du domicile requise."
+        }
+      },
+      "parcels": {
+        "title": "Parcelles",
+        "trace_new": "+ Tracer",
+        "empty": "Aucune parcelle pour ce producteur."
+      },
+      "parcel-create": {
+        "title": "Tracer une parcelle",
+        "subtitle": "Tapez sur la carte pour ajouter un sommet. Au moins 3 sommets requis.",
+        "crop_type": "Type de culture",
+        "planted_at": "Date de plantation (AAAA-MM-JJ)",
+        "photo": "Photo parcelle (optionnel)",
+        "submit": "Enregistrer la parcelle",
+        "vertices_count": "Sommets : {{count}}",
+        "validation": {
+          "min_vertices": "Au moins 3 sommets sont requis pour un polygone.",
+          "crop_required": "Type de culture requis."
+        }
+      }
+    }
   }
 }
