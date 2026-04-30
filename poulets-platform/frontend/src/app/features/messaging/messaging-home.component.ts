@@ -8,9 +8,9 @@ import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TranslateModule, EmptyStateComponent],
   template: `
-    <div class="page-container">
+    <div class="page-container" data-testid="messaging-page">
       <h1>Messagerie</h1>
-      <app-empty-state icon="chat" title="messaging.no_conversations"></app-empty-state>
+      <app-empty-state icon="chat" title="messaging.no_conversations" data-testid="messaging-empty"></app-empty-state>
     </div>
   `,
   styles: [`.page-container { padding: 24px; max-width: 1200px; margin: 0 auto; }`],

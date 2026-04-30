@@ -36,10 +36,10 @@ type FilterStatus = 'all' | CommandeStatus;
     DatePipe,
   ],
   template: `
-    <div class="orders-container">
+    <div class="orders-container" data-testid="orders-page">
       <div class="page-header">
         <h1>{{ 'orders.list.title' | translate }}</h1>
-        <a mat-raised-button color="primary" routerLink="new">
+        <a mat-raised-button color="primary" routerLink="new" data-testid="orders-action-create">
           <mat-icon>add</mat-icon>
           {{ 'orders.list.create' | translate }}
         </a>
@@ -47,7 +47,8 @@ type FilterStatus = 'all' | CommandeStatus;
 
       <!-- Filters -->
       <div class="filter-bar">
-        <mat-chip-listbox (change)="onFilterChange($event.value)" [value]="activeFilter()">
+        <mat-chip-listbox (change)="onFilterChange($event.value)" [value]="activeFilter()"
+                          data-testid="orders-filter-status">
           <mat-chip-option value="all">
             {{ 'orders.filter.all' | translate }} ({{ orders().length }})
           </mat-chip-option>
@@ -63,7 +64,7 @@ type FilterStatus = 'all' | CommandeStatus;
       <mat-card>
         <mat-card-content>
           @if (filteredOrders().length > 0) {
-            <table mat-table [dataSource]="filteredOrders()" class="full-width-table">
+            <table mat-table [dataSource]="filteredOrders()" class="full-width-table" data-testid="orders-list">
               <ng-container matColumnDef="numero">
                 <th mat-header-cell *matHeaderCellDef>{{ 'orders.table.number' | translate }}</th>
                 <td mat-cell *matCellDef="let order">
@@ -96,7 +97,8 @@ type FilterStatus = 'all' | CommandeStatus;
               <ng-container matColumnDef="statut">
                 <th mat-header-cell *matHeaderCellDef>{{ 'orders.table.status' | translate }}</th>
                 <td mat-cell *matCellDef="let order">
-                  <app-status-badge [status]="order.statut"></app-status-badge>
+                  <app-status-badge [status]="order.statut"
+                                    [attr.data-testid]="'orders-status-' + order.statut.toLowerCase()"></app-status-badge>
                 </td>
               </ng-container>
 
@@ -114,10 +116,11 @@ type FilterStatus = 'all' | CommandeStatus;
 
               <tr mat-header-row *matHeaderRowDef="displayedColumns"></tr>
               <tr mat-row *matRowDef="let row; columns: displayedColumns;"
-                  class="clickable-row"></tr>
+                  class="clickable-row"
+                  [attr.data-testid]="'orders-list-item-' + row.id"></tr>
             </table>
           } @else {
-            <div class="empty-state">
+            <div class="empty-state" data-testid="orders-empty">
               <mat-icon>receipt_long</mat-icon>
               <p>{{ 'orders.list.empty' | translate }}</p>
             </div>

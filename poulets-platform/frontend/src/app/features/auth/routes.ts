@@ -26,6 +26,18 @@ export default [
     title: 'Vérification 2 étapes - Poulets BF',
   },
   {
+    path: 'recovery',
+    loadComponent: () =>
+      import('./pages/recovery.page').then(m => m.RecoveryPage),
+    title: 'Récupération de compte - Poulets BF',
+  },
+  {
+    path: 'admin-onboard',
+    loadComponent: () =>
+      import('./pages/admin-onboard.page').then(m => m.AdminOnboardPage),
+    title: 'Activation administrateur - FASO DIGITALISATION',
+  },
+  {
     path: '',
     redirectTo: 'login',
     pathMatch: 'full' as const,

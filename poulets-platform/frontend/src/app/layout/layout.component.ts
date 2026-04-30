@@ -38,13 +38,14 @@ import { LanguageSwitcherComponent } from '@shared/components/language-switcher/
     LanguageSwitcherComponent,
   ],
   template: `
-    <mat-sidenav-container class="layout-container">
+    <mat-sidenav-container class="layout-container" data-testid="nav-container">
       <!-- Sidebar -->
       <mat-sidenav
         #sidenav
         [mode]="isMobile() ? 'over' : 'side'"
         [opened]="!isMobile()"
         class="layout-sidenav"
+        data-testid="nav-drawer"
       >
         <!-- Sidebar header -->
         <div class="sidenav-header">
@@ -59,13 +60,14 @@ import { LanguageSwitcherComponent } from '@shared/components/language-switcher/
           </div>
         }
 
-        <mat-nav-list>
+        <mat-nav-list data-testid="nav-menu">
           @for (item of auth.menuItems(); track item.route) {
             <a
               mat-list-item
               [routerLink]="item.route"
               routerLinkActive="active-link"
               (click)="onNavClick()"
+              [attr.data-testid]="'nav-menu-item-' + item.route.replace(/\\//g, '')"
             >
               <mat-icon matListItemIcon>{{ item.icon }}</mat-icon>
               <span matListItemTitle>{{ item.labelKey | translate }}</span>
@@ -77,22 +79,24 @@ import { LanguageSwitcherComponent } from '@shared/components/language-switcher/
       <!-- Main content area -->
       <mat-sidenav-content>
         <!-- Top toolbar -->
-        <mat-toolbar class="layout-toolbar">
-          <button mat-icon-button (click)="sidenav.toggle()" [attr.aria-label]="'menu'">
+        <mat-toolbar class="layout-toolbar" data-testid="nav-header">
+          <button mat-icon-button (click)="sidenav.toggle()" [attr.aria-label]="'menu'"
+                  data-testid="nav-drawer-toggle">
             <mat-icon>menu</mat-icon>
           </button>
 
-          <a routerLink="/dashboard" class="toolbar-title">
+          <a routerLink="/dashboard" class="toolbar-title" data-testid="nav-logo">
             <span>Poulets BF</span>
           </a>
 
           <span class="toolbar-spacer"></span>
 
           <!-- Language switcher -->
-          <app-language-switcher></app-language-switcher>
+          <app-language-switcher data-testid="nav-language-switcher"></app-language-switcher>
 
           <!-- Notification bell -->
-          <button mat-icon-button [matTooltip]="'common.notifications' | translate">
+          <button mat-icon-button [matTooltip]="'common.notifications' | translate"
+                  data-testid="nav-action-notifications">
             <mat-icon [matBadge]="notificationCount()" matBadgeColor="warn"
                       [matBadgeHidden]="notificationCount() === 0" matBadgeSize="small">
               notifications
@@ -101,26 +105,26 @@ import { LanguageSwitcherComponent } from '@shared/components/language-switcher/
 
           <!-- User menu -->
           @if (auth.isLoggedIn()) {
-            <button mat-icon-button [matMenuTriggerFor]="userMenu">
+            <button mat-icon-button [matMenuTriggerFor]="userMenu" data-testid="nav-profile-menu-toggle">
               <mat-icon>account_circle</mat-icon>
             </button>
-            <mat-menu #userMenu="matMenu">
+            <mat-menu #userMenu="matMenu" data-testid="nav-profile-menu">
               <div class="user-menu-header" mat-menu-item disabled>
                 <strong>{{ auth.currentUser()?.nom }}</strong>
                 <br>
                 <small>{{ auth.currentUser()?.email }}</small>
               </div>
               <mat-divider></mat-divider>
-              <button mat-menu-item routerLink="/profile">
+              <button mat-menu-item routerLink="/profile" data-testid="nav-action-profile">
                 <mat-icon>person</mat-icon>
                 <span>{{ 'menu.profile' | translate }}</span>
               </button>
-              <button mat-menu-item routerLink="/messaging">
+              <button mat-menu-item routerLink="/messaging" data-testid="nav-action-messaging">
                 <mat-icon>chat</mat-icon>
                 <span>{{ 'menu.messaging' | translate }}</span>
               </button>
               <mat-divider></mat-divider>
-              <button mat-menu-item (click)="onLogout()">
+              <button mat-menu-item (click)="onLogout()" data-testid="nav-action-logout">
                 <mat-icon>logout</mat-icon>
                 <span>{{ 'auth.logout' | translate }}</span>
               </button>

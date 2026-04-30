@@ -52,13 +52,14 @@ interface CalendarDay {
     TranslateModule,
   ],
   template: `
-    <div class="calendar-page">
+    <div class="calendar-page" data-testid="calendar-page">
       <div class="page-header">
         <h1>
           <mat-icon>calendar_month</mat-icon>
           {{ 'calendar.title' | translate }}
         </h1>
-        <a mat-raised-button color="accent" routerLink="/calendar/planning">
+        <a mat-raised-button color="accent" routerLink="/calendar/planning"
+           data-testid="calendar-action-create-event">
           <mat-icon>timeline</mat-icon>
           {{ 'calendar.viewPlanning' | translate }}
         </a>
@@ -117,14 +118,15 @@ interface CalendarDay {
         <div class="calendar-main">
           <!-- Navigation -->
           <div class="calendar-nav">
-            <button mat-icon-button (click)="previousMonth()">
+            <button mat-icon-button (click)="previousMonth()" data-testid="calendar-action-prev-month">
               <mat-icon>chevron_left</mat-icon>
             </button>
-            <h2>{{ monthLabel() }}</h2>
-            <button mat-icon-button (click)="nextMonth()">
+            <h2 data-testid="calendar-month-label">{{ monthLabel() }}</h2>
+            <button mat-icon-button (click)="nextMonth()" data-testid="calendar-action-next-month">
               <mat-icon>chevron_right</mat-icon>
             </button>
-            <button mat-stroked-button (click)="goToToday()" class="today-btn">
+            <button mat-stroked-button (click)="goToToday()" class="today-btn"
+                    data-testid="calendar-action-today">
               {{ 'calendar.today' | translate }}
             </button>
           </div>
@@ -135,7 +137,7 @@ interface CalendarDay {
             </div>
           } @else {
             <!-- Day headers -->
-            <div class="calendar-grid">
+            <div class="calendar-grid" data-testid="calendar-list">
               <div class="day-header">{{ 'calendar.days.lun' | translate }}</div>
               <div class="day-header">{{ 'calendar.days.mar' | translate }}</div>
               <div class="day-header">{{ 'calendar.days.mer' | translate }}</div>
@@ -148,7 +150,8 @@ interface CalendarDay {
                 <div class="calendar-cell"
                   [class.other-month]="!day.isCurrentMonth"
                   [class.today]="day.isToday"
-                  (click)="onDayClick(day)">
+                  (click)="onDayClick(day)"
+                  [attr.data-testid]="'calendar-list-item-' + day.date.toISOString().slice(0, 10)">
                   <span class="day-number">{{ day.dayNumber }}</span>
                   <div class="cell-events">
                     @for (event of day.events.slice(0, 3); track event.id) {
@@ -174,7 +177,7 @@ interface CalendarDay {
 
       <!-- Event Detail Popup -->
       @if (selectedEvent(); as event) {
-        <div class="event-popup-overlay" (click)="closeEventPopup()">
+        <div class="event-popup-overlay" (click)="closeEventPopup()" data-testid="calendar-modal-event-detail">
           <mat-card class="event-popup" (click)="$event.stopPropagation()">
             <mat-card-header>
               <div mat-card-avatar class="event-type-avatar"

@@ -43,13 +43,14 @@ import {
     TranslateModule,
   ],
   template: `
-    <div class="besoins-page">
+    <div class="besoins-page" data-testid="besoins-page">
       <div class="page-header">
         <h1>
           <mat-icon>shopping_bag</mat-icon>
           {{ 'marketplace.besoins.title' | translate }}
         </h1>
-        <a mat-raised-button color="primary" routerLink="/marketplace/besoins/new">
+        <a mat-raised-button color="primary" routerLink="/marketplace/besoins/new"
+           data-testid="besoins-action-publish">
           <mat-icon>add</mat-icon>
           {{ 'marketplace.besoins.publish' | translate }}
         </a>
@@ -58,10 +59,11 @@ import {
       <!-- Filters -->
       <mat-card class="filter-card">
         <mat-card-content>
-          <form [formGroup]="filterForm" (ngSubmit)="applyFilters()" class="filter-form">
+          <form [formGroup]="filterForm" (ngSubmit)="applyFilters()" class="filter-form"
+                data-testid="besoins-form-filter">
             <mat-form-field appearance="outline" class="filter-field">
               <mat-label>{{ 'marketplace.filter.race' | translate }}</mat-label>
-              <mat-select formControlName="race">
+              <mat-select formControlName="race" data-testid="besoins-filter-race">
                 <mat-option value="">{{ 'marketplace.filter.allRaces' | translate }}</mat-option>
                 @for (race of races; track race) {
                   <mat-option [value]="race">{{ race }}</mat-option>
@@ -86,7 +88,7 @@ import {
 
             <mat-form-field appearance="outline" class="filter-field">
               <mat-label>{{ 'marketplace.filter.location' | translate }}</mat-label>
-              <input matInput formControlName="location">
+              <input matInput formControlName="location" data-testid="besoins-filter-location">
             </mat-form-field>
 
             <mat-form-field appearance="outline" class="filter-field">
@@ -100,11 +102,13 @@ import {
             </mat-form-field>
 
             <div class="filter-actions">
-              <button mat-raised-button color="primary" type="submit">
+              <button mat-raised-button color="primary" type="submit"
+                      data-testid="besoins-form-submit">
                 <mat-icon>search</mat-icon>
                 {{ 'marketplace.filter.search' | translate }}
               </button>
-              <button mat-button type="button" (click)="resetFilters()">
+              <button mat-button type="button" (click)="resetFilters()"
+                      data-testid="besoins-filter-clear">
                 <mat-icon>clear</mat-icon>
                 {{ 'marketplace.filter.reset' | translate }}
               </button>
@@ -119,7 +123,7 @@ import {
           <mat-spinner diameter="48"></mat-spinner>
         </div>
       } @else if (besoins().length === 0) {
-        <div class="empty-state">
+        <div class="empty-state" data-testid="besoins-empty">
           <mat-icon>search_off</mat-icon>
           <p>{{ 'marketplace.besoins.empty' | translate }}</p>
           <a mat-raised-button color="primary" routerLink="/marketplace/besoins/new">
@@ -127,9 +131,10 @@ import {
           </a>
         </div>
       } @else {
-        <div class="besoins-grid">
+        <div class="besoins-grid" data-testid="besoins-list">
           @for (besoin of besoins(); track besoin.id) {
-            <mat-card class="besoin-card" [routerLink]="['/marketplace/besoins', besoin.id]">
+            <mat-card class="besoin-card" [routerLink]="['/marketplace/besoins', besoin.id]"
+                      [attr.data-testid]="'besoins-list-item-' + besoin.id">
               <mat-card-header>
                 <mat-icon mat-card-avatar class="besoin-avatar">shopping_basket</mat-icon>
                 <mat-card-title>{{ besoin.races.join(', ') }}</mat-card-title>

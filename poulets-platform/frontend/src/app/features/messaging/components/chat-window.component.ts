@@ -23,9 +23,9 @@ interface ChatMessage {
   imports: [CommonModule, FormsModule, RouterLink, DatePipe, MatIconModule, MatButtonModule, BreederAvatarComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="chat">
+    <section class="chat" data-testid="messaging-detail">
       <header class="bar">
-        <a routerLink=".." class="back" aria-label="Retour">
+        <a routerLink=".." class="back" aria-label="Retour" data-testid="messaging-action-back">
           <mat-icon>arrow_back</mat-icon>
         </a>
         <app-breeder-avatar size="md" [name]="peerName()" [verified]="true" />
@@ -38,9 +38,10 @@ interface ChatMessage {
         </button>
       </header>
 
-      <div #scroller class="thread" role="log" aria-live="polite">
+      <div #scroller class="thread" role="log" aria-live="polite" data-testid="messaging-thread">
         @for (msg of messages(); track msg.id) {
-          <div class="msg" [class.mine]="msg.from === 'me'">
+          <div class="msg" [class.mine]="msg.from === 'me'"
+               [attr.data-testid]="'messaging-thread-message-' + msg.id">
             <div class="bubble">{{ msg.text }}</div>
             <div class="meta">
               <span>{{ msg.at | date:'shortTime' }}</span>
@@ -57,8 +58,8 @@ interface ChatMessage {
         }
       </div>
 
-      <form class="composer" (submit)="send($event)">
-        <button type="button" aria-label="Joindre une image">
+      <form class="composer" (submit)="send($event)" data-testid="messaging-form">
+        <button type="button" aria-label="Joindre une image" data-testid="messaging-action-attach">
           <mat-icon>attach_file</mat-icon>
         </button>
         <input
@@ -68,8 +69,10 @@ interface ChatMessage {
           placeholder="Écrire un message…"
           autocomplete="off"
           aria-label="Message"
+          data-testid="messaging-form-message"
         >
-        <button type="submit" [disabled]="!draft.trim()" aria-label="Envoyer">
+        <button type="submit" [disabled]="!draft.trim()" aria-label="Envoyer"
+                data-testid="messaging-form-submit">
           <mat-icon>send</mat-icon>
         </button>
       </form>

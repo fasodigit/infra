@@ -11,19 +11,19 @@ import { AuthService } from '@core/services/auth.service';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TranslateModule, MatCardModule, MatIconModule, MatButtonModule],
   template: `
-    <div class="page-container">
+    <div class="page-container" data-testid="profile-page">
       <h1>{{ 'profile.title' | translate }}</h1>
-      <mat-card>
+      <mat-card data-testid="profile-detail">
         <mat-card-header>
           <mat-icon mat-card-avatar>account_circle</mat-icon>
-          <mat-card-title>{{ auth.currentUser()?.nom }}</mat-card-title>
-          <mat-card-subtitle>{{ auth.currentUser()?.email }}</mat-card-subtitle>
+          <mat-card-title data-testid="profile-detail-field-name">{{ auth.currentUser()?.nom }}</mat-card-title>
+          <mat-card-subtitle data-testid="profile-detail-field-email">{{ auth.currentUser()?.email }}</mat-card-subtitle>
         </mat-card-header>
         <mat-card-content>
           <p>{{ 'profile.personal_info' | translate }}</p>
         </mat-card-content>
         <mat-card-actions align="end">
-          <button mat-raised-button color="primary">
+          <button mat-raised-button color="primary" data-testid="profile-action-edit">
             <mat-icon>edit</mat-icon>
             {{ 'profile.edit' | translate }}
           </button>

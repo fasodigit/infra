@@ -8,9 +8,9 @@ import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [TranslateModule, EmptyStateComponent],
   template: `
-    <div class="page-container">
+    <div class="page-container" data-testid="calendar-page">
       <h1>{{ 'calendar.title' | translate }}</h1>
-      <app-empty-state icon="event" title="calendar.no_deliveries"></app-empty-state>
+      <app-empty-state icon="event" title="calendar.no_deliveries" data-testid="calendar-empty"></app-empty-state>
     </div>
   `,
   styles: [`.page-container { padding: 24px; max-width: 1200px; margin: 0 auto; }`],

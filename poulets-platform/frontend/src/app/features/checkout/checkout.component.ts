@@ -39,13 +39,13 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     @if (panier.items().length === 0 && !submitted()) {
-      <div class="page">
+      <div class="page" data-testid="checkout-page">
         <div class="container">
           <header class="head">
             <h1>Validation de votre commande</h1>
             <p>Votre panier est vide pour le moment.</p>
           </header>
-          <app-empty-state icon="shopping_basket" title="Panier vide">
+          <app-empty-state icon="shopping_basket" title="Panier vide" data-testid="checkout-empty">
             <a mat-raised-button color="primary" routerLink="/marketplace/annonces">
               Parcourir les annonces
             </a>
@@ -53,7 +53,7 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
         </div>
       </div>
     } @else if (submitted()) {
-      <section class="success">
+      <section class="success" data-testid="checkout-success">
         <div class="card">
           <mat-icon class="check">check_circle</mat-icon>
           <h1>Commande confirmée&nbsp;!</h1>
@@ -68,7 +68,7 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
         </div>
       </section>
     } @else {
-      <section class="page">
+      <section class="page" data-testid="checkout-page">
         <div class="container">
           <header class="head">
             <h1>Finaliser la commande</h1>
@@ -76,18 +76,19 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
           </header>
 
           <div class="grid">
-            <mat-stepper linear="true" orientation="vertical" #stepper>
+            <mat-stepper linear="true" orientation="vertical" #stepper data-testid="checkout-form">
               <!-- Étape 1 : Livraison -->
               <mat-step [stepControl]="deliveryForm" label="Livraison">
-                <form [formGroup]="deliveryForm" class="step-form">
+                <form [formGroup]="deliveryForm" class="step-form" data-testid="checkout-form-delivery">
                   <mat-form-field appearance="outline">
                     <mat-label>Nom complet</mat-label>
-                    <input matInput formControlName="name" required>
+                    <input matInput formControlName="name" required data-testid="checkout-form-name">
                   </mat-form-field>
 
                   <mat-form-field appearance="outline">
                     <mat-label>Téléphone (+226)</mat-label>
-                    <input matInput formControlName="phone" placeholder="70 12 34 56" required>
+                    <input matInput formControlName="phone" placeholder="70 12 34 56" required
+                           data-testid="checkout-form-phone">
                   </mat-form-field>
 
                   <mat-form-field appearance="outline">
@@ -106,7 +107,8 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
 
                   <mat-form-field appearance="outline" class="full">
                     <mat-label>Adresse de livraison</mat-label>
-                    <textarea matInput rows="2" formControlName="address" required placeholder="Point de repère, secteur…"></textarea>
+                    <textarea matInput rows="2" formControlName="address" required placeholder="Point de repère, secteur…"
+                              data-testid="checkout-form-address"></textarea>
                   </mat-form-field>
 
                   <mat-form-field appearance="outline">
@@ -130,9 +132,10 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
 
               <!-- Étape 2 : Paiement -->
               <mat-step [stepControl]="paymentForm" label="Paiement">
-                <form [formGroup]="paymentForm" class="step-form">
-                  <mat-radio-group formControlName="method" class="methods">
-                    <label class="method">
+                <form [formGroup]="paymentForm" class="step-form" data-testid="checkout-form-payment">
+                  <mat-radio-group formControlName="method" class="methods"
+                                   data-testid="checkout-form-payment-method">
+                    <label class="method" data-testid="checkout-payment-orange-money">
                       <mat-radio-button value="orange_money"></mat-radio-button>
                       <div>
                         <strong>Orange Money</strong>
@@ -140,7 +143,7 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
                       </div>
                       <mat-icon>phone_iphone</mat-icon>
                     </label>
-                    <label class="method">
+                    <label class="method" data-testid="checkout-payment-moov-money">
                       <mat-radio-button value="moov_money"></mat-radio-button>
                       <div>
                         <strong>Moov Money</strong>
@@ -148,7 +151,7 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
                       </div>
                       <mat-icon>phone_iphone</mat-icon>
                     </label>
-                    <label class="method">
+                    <label class="method" data-testid="checkout-payment-cash">
                       <mat-radio-button value="cash"></mat-radio-button>
                       <div>
                         <strong>Espèces à la livraison</strong>
@@ -210,6 +213,7 @@ type PaymentMethod = 'orange_money' | 'moov_money' | 'cash';
                       type="button"
                       (click)="submit()"
                       [disabled]="!acceptedCgv || submitting()"
+                      data-testid="checkout-form-submit"
                     >
                       @if (submitting()) {
                         Envoi…

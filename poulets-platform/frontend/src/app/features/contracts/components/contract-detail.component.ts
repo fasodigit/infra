@@ -44,7 +44,7 @@ import {
     TranslateModule,
   ],
   template: `
-    <div class="contract-detail-page">
+    <div class="contract-detail-page" data-testid="contracts-detail">
       @if (loading()) {
         <div class="loading-container">
           <mat-spinner diameter="48"></mat-spinner>
@@ -194,7 +194,8 @@ import {
 
               @if (!c.signedByInitiator && (c.status === 'EN_ATTENTE' || c.status === 'BROUILLON')) {
                 <button mat-raised-button color="primary" class="full-width-btn"
-                  (click)="signContract()" [disabled]="signing()">
+                  (click)="signContract()" [disabled]="signing()"
+                  data-testid="contracts-action-accept">
                   @if (signing()) {
                     <mat-spinner diameter="20"></mat-spinner>
                   } @else {
@@ -258,13 +259,15 @@ import {
             <mat-card class="actions-card">
               <mat-card-content>
                 @if (c.status === 'ACTIF') {
-                  <button mat-raised-button color="primary" class="action-btn" (click)="renewContract()">
+                  <button mat-raised-button color="primary" class="action-btn" (click)="renewContract()"
+                          data-testid="contracts-action-renew">
                     <mat-icon>autorenew</mat-icon>
                     {{ 'contracts.detail.renew' | translate }}
                   </button>
                 }
                 @if (c.status === 'ACTIF' || c.status === 'EN_ATTENTE') {
-                  <button mat-raised-button color="warn" class="action-btn" (click)="cancelContract()">
+                  <button mat-raised-button color="warn" class="action-btn" (click)="cancelContract()"
+                          data-testid="contracts-action-reject">
                     <mat-icon>cancel</mat-icon>
                     {{ 'contracts.detail.cancel' | translate }}
                   </button>

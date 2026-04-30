@@ -16,24 +16,24 @@ import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.
   imports: [CommonModule, RouterLink, DecimalPipe, MatIconModule, MatButtonModule, EmptyStateComponent],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <section class="page">
+    <section class="page" data-testid="cart-page">
       <div class="container">
         <header class="head">
           <h1>Mon panier</h1>
-          <p>{{ panier.itemCount() }} article{{ panier.itemCount() > 1 ? 's' : '' }}</p>
+          <p data-testid="cart-detail-field-count">{{ panier.itemCount() }} article{{ panier.itemCount() > 1 ? 's' : '' }}</p>
         </header>
 
         @if (panier.items().length === 0) {
-          <app-empty-state icon="shopping_basket" title="Votre panier est vide">
+          <app-empty-state icon="shopping_basket" title="Votre panier est vide" data-testid="cart-empty">
             <a mat-raised-button color="primary" routerLink="/marketplace/annonces">
               Parcourir les annonces
             </a>
           </app-empty-state>
         } @else {
           <div class="grid">
-            <ul class="items">
+            <ul class="items" data-testid="cart-list">
               @for (item of panier.items(); track item.poulet.id) {
-                <li>
+                <li [attr.data-testid]="'cart-list-item-' + item.poulet.id">
                   <img
                     [src]="item.poulet.photos?.[0] || 'assets/img/placeholder-poulet.svg'"
                     [alt]="item.poulet.race"
@@ -65,6 +65,7 @@ import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.
                     class="remove"
                     (click)="panier.retirer(item.poulet.id)"
                     aria-label="Retirer du panier"
+                    [attr.data-testid]="'cart-action-remove-' + item.poulet.id"
                   >
                     <mat-icon>delete_outline</mat-icon>
                   </button>
@@ -72,20 +73,22 @@ import { EmptyStateComponent } from '@shared/components/empty-state/empty-state.
               }
             </ul>
 
-            <aside class="summary">
+            <aside class="summary" data-testid="cart-summary">
               <h2>Récapitulatif</h2>
               <dl>
-                <div><dt>Sous-total</dt><dd>{{ panier.total() | number:'1.0-0' }} FCFA</dd></div>
-                <div><dt>Livraison (estimée)</dt><dd>{{ shipping() | number:'1.0-0' }} FCFA</dd></div>
-                <div class="total"><dt>Total</dt><dd>{{ grandTotal() | number:'1.0-0' }} FCFA</dd></div>
+                <div><dt>Sous-total</dt><dd data-testid="cart-detail-field-subtotal">{{ panier.total() | number:'1.0-0' }} FCFA</dd></div>
+                <div><dt>Livraison (estimée)</dt><dd data-testid="cart-detail-field-shipping">{{ shipping() | number:'1.0-0' }} FCFA</dd></div>
+                <div class="total"><dt>Total</dt><dd data-testid="cart-detail-field-total">{{ grandTotal() | number:'1.0-0' }} FCFA</dd></div>
               </dl>
 
-              <a mat-raised-button color="primary" routerLink="/checkout" class="cta">
+              <a mat-raised-button color="primary" routerLink="/checkout" class="cta"
+                 data-testid="cart-action-checkout">
                 <mat-icon>lock</mat-icon>
                 Passer la commande
               </a>
 
-              <button type="button" mat-button (click)="panier.vider()" class="clear">
+              <button type="button" mat-button (click)="panier.vider()" class="clear"
+                      data-testid="cart-action-clear">
                 <mat-icon>delete_sweep</mat-icon>
                 Vider le panier
               </button>
