@@ -3,7 +3,10 @@ package bf.gov.faso.auth;
 import bf.gov.faso.auth.config.NativeHints;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
+import org.springframework.boot.autoconfigure.domain.EntityScan;
 import org.springframework.context.annotation.ImportRuntimeHints;
+import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
+import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
@@ -24,7 +27,10 @@ import org.springframework.scheduling.annotation.EnableScheduling;
  * Cache:                KAYA (Redis-compatible) on port 6380
  */
 @SpringBootApplication
+@EntityScan(basePackages = {"bf.gov.faso.auth", "bf.gov.faso.audit"})
+@EnableJpaRepositories(basePackages = {"bf.gov.faso.auth", "bf.gov.faso.audit"})
 @EnableScheduling
+@EnableAsync
 @ImportRuntimeHints(NativeHints.class)
 public class AuthMsApplication {
 

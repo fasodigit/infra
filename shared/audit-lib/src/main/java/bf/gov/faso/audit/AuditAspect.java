@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 package bf.gov.faso.audit;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
@@ -11,6 +13,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Component;
 import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
+
+import java.util.Map;
 
 /**
  * AOP aspect that intercepts methods annotated with {@link Audited} and
@@ -22,6 +26,8 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 @Aspect
 @Component
 public class AuditAspect {
+
+    private static final ObjectMapper JSON = new ObjectMapper();
 
     private final AuditService auditService;
 
@@ -47,10 +53,8 @@ public class AuditAspect {
             userAgent = request.getHeader("User-Agent");
         }
 
-        AuditEvent.AuditResult result;
         try {
             Object returnValue = joinPoint.proceed();
-            result = AuditEvent.AuditResult.SUCCESS;
             auditService.record(AuditEvent.builder()
                     .actorId(actorId)
                     .actorType(auth != null ? AuditEvent.ActorType.USER : AuditEvent.ActorType.ANONYMOUS)
@@ -58,10 +62,10 @@ public class AuditAspect {
                     .resourceType(audited.resourceType())
                     .ipAddress(ip)
                     .userAgent(userAgent)
-                    .result(result)
+                    .result(AuditEvent.AuditResult.SUCCESS)
                     .build());
             return returnValue;
-        } catch (Exception e) {
+        } catch (Throwable e) {
             auditService.record(AuditEvent.builder()
                     .actorId(actorId)
                     .actorType(auth != null ? AuditEvent.ActorType.USER : AuditEvent.ActorType.ANONYMOUS)
@@ -70,9 +74,27 @@ public class AuditAspect {
                     .ipAddress(ip)
                     .userAgent(userAgent)
                     .result(AuditEvent.AuditResult.FAILURE)
-                    .metadata("{\"error\":\"" + e.getMessage().replace("\"", "\\\"") + "\"}")
+                    .metadata(serializeError(e))
                     .build());
             throw e;
+        }
+    }
+
+    /**
+     * Build a safe JSON metadata payload describing the failure.
+     *
+     * <p>Handles null exception messages (common with NPE / custom RuntimeException
+     * subclasses) and any control characters in the message via Jackson encoding.
+     */
+    private static String serializeError(Throwable e) {
+        String message = e.getMessage();
+        String fallback = e.getClass().getSimpleName();
+        try {
+            return JSON.writeValueAsString(Map.of(
+                    "error", message != null ? message : fallback,
+                    "type", e.getClass().getName()));
+        } catch (JsonProcessingException ex) {
+            return "{\"error\":\"" + fallback + "\",\"type\":\"" + e.getClass().getName() + "\"}";
         }
     }
 }

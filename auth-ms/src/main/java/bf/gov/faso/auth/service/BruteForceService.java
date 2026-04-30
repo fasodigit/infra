@@ -141,6 +141,29 @@ public class BruteForceService {
     }
 
     /**
+     * Recent failure count, used by Phase 4.b.6 RiskScoringService.
+     * <p>
+     * Reads from KAYA fast counter ({@code auth:bruteforce:{userId}}) which is
+     * already incremented on every failure with a 1d TTL. The {@code window}
+     * argument is informational (the counter spans up to 1 day); for windows
+     * &lt; 1 day the value is best-effort over-approximation, accepted by the
+     * scoring decision tree because we threshold on {@code &gt; 0}.
+     */
+    public int getRecentFailures(UUID userId, Duration window) {
+        if (userId == null) return 0;
+        try {
+            String raw = redisTemplate.opsForValue().get(KEY_PREFIX + userId);
+            if (raw == null || raw.isBlank()) return 0;
+            return Integer.parseInt(raw.trim());
+        } catch (NumberFormatException e) {
+            return 0;
+        } catch (Exception e) {
+            log.debug("getRecentFailures KAYA error: {}", e.getMessage());
+            return 0;
+        }
+    }
+
+    /**
      * Calculate the lock duration based on the number of failed attempts.
      * Returns null if no lock needed, or a negative Duration for permanent suspension.
      */

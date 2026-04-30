@@ -49,6 +49,14 @@ public class User {
     @Column(nullable = false)
     private boolean suspended = false;
 
+    /**
+     * Set true after a recovery flow (self or admin-initiated). The user MUST
+     * re-enrol MFA (TOTP or PassKey) before any other privileged action.
+     * Reset to false once a fresh enrolment succeeds.
+     */
+    @Column(name = "must_reenroll_mfa", nullable = false)
+    private boolean mustReenrollMfa = false;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
         name = "user_roles",
@@ -117,6 +125,9 @@ public class User {
 
     public boolean isSuspended() { return suspended; }
     public void setSuspended(boolean suspended) { this.suspended = suspended; }
+
+    public boolean isMustReenrollMfa() { return mustReenrollMfa; }
+    public void setMustReenrollMfa(boolean mustReenrollMfa) { this.mustReenrollMfa = mustReenrollMfa; }
 
     public Set<Role> getRoles() { return roles; }
     public void setRoles(Set<Role> roles) { this.roles = roles; }

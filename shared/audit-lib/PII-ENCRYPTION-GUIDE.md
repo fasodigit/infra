@@ -115,28 +115,74 @@ breaking running queries:
 Since AES-GCM ciphertext is non-deterministic (random IV), you cannot
 use `WHERE email = ?` on encrypted columns. Two approaches:
 
-### Option A: Blind Index (recommended)
+### Option A: Blind Index (recommended) — IMPLEMENTED
 
-Store a HMAC-SHA256 hash alongside the encrypted value:
+`BlindIndexConverter` ships with `audit-lib`. Use it via JPA `@Convert`:
+
+#### Step 1 — schema migration
 
 ```sql
-ALTER TABLE users ADD COLUMN email_hash BYTEA;
-CREATE UNIQUE INDEX idx_users_email_hash ON users (email_hash);
+ALTER TABLE auth.users ADD COLUMN email_hash CHAR(64);
+CREATE UNIQUE INDEX idx_users_email_hash ON auth.users (email_hash);
+```
+
+#### Step 2 — entity wiring
+
+```java
+import bf.gov.faso.audit.crypto.BlindIndexConverter;
+import bf.gov.faso.audit.crypto.PiiEncryptionConverter;
+
+@Entity
+public class User {
+
+    @Convert(converter = PiiEncryptionConverter.class)
+    @Column(nullable = false)
+    private String email;            // AES-256-GCM, randomized IV
+
+    @Convert(converter = BlindIndexConverter.class)
+    @Column(name = "email_hash", length = 64, nullable = false, unique = true)
+    private String emailHash;        // deterministic HMAC-SHA256
+
+    public void setEmail(String email) {
+        this.email = email;
+        this.emailHash = email;      // converter normalises + hashes
+    }
+}
+```
+
+#### Step 3 — repository
+
+```java
+public interface UserRepository extends JpaRepository<User, UUID> {
+    Optional<User> findByEmailHash(String emailHash);
+}
 ```
 
 ```java
-// At write time:
-String hash = hmacSha256(email, FASO_PII_SEARCH_KEY);
-user.setEmailHash(hash);
-user.setEmail(email); // encrypted by converter
-
-// At query time:
-String hash = hmacSha256(searchEmail, FASO_PII_SEARCH_KEY);
-User user = repo.findByEmailHash(hash);
+// Lookup — pass plaintext, the converter computes the same hash.
+User u = userRepository.findByEmailHash(
+    new BlindIndexConverter().convertToDatabaseColumn("alice@faso.bf"))
+    .orElseThrow();
 ```
 
-This requires a **separate** HMAC key (not the AES key) stored in Vault
-at `faso/shared/pii-search-key`.
+#### Key provisioning
+
+`BlindIndexConverter` uses `FASO_PII_BLIND_INDEX_KEY` — a **separate** 32-byte
+key from the AES one. Both are validated at boot by
+`PiiEncryptionKeyValidator` (fail-fast).
+
+```bash
+# Generate (one-time, store in Vault)
+openssl rand -base64 32 | vault kv put faso/shared/pii-encryption-key  value=-
+openssl rand -base64 32 | vault kv put faso/shared/pii-blind-index-key value=-
+
+# Inject at runtime (Vault Agent template or .env)
+export FASO_PII_ENCRYPTION_KEY=$(vault kv get -field=value faso/shared/pii-encryption-key)
+export FASO_PII_BLIND_INDEX_KEY=$(vault kv get -field=value faso/shared/pii-blind-index-key)
+```
+
+The validator refuses to start if the two keys are equal — they MUST differ
+to avoid weakening either primitive.
 
 ### Option B: Application-level filtering
 

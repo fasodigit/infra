@@ -25,6 +25,13 @@
     </description>
 
     <dependencies>
+        <!-- spring-boot-autoconfigure is required so AuditAutoConfiguration
+             can be picked up by services importing this library. Compile scope
+             so consumers automatically pick up the autoconfig classes. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-autoconfigure</artifactId>
+        </dependency>
         <dependency>
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-jpa</artifactId>
@@ -48,6 +55,23 @@
         <dependency>
             <groupId>io.micrometer</groupId>
             <artifactId>micrometer-core</artifactId>
+            <scope>provided</scope>
+        </dependency>
+        <!-- Tracer: optional. AuditService falls back to null traceId
+             if this is missing. Spring Boot starter-actuator already
+             pulls it in with the otlp tracing bridge. -->
+        <dependency>
+            <groupId>io.micrometer</groupId>
+            <artifactId>micrometer-tracing</artifactId>
+            <scope>provided</scope>
+            <optional>true</optional>
+        </dependency>
+        <!-- Jackson for safe JSON metadata serialization in AuditAspect.
+             Provided by spring-boot-starter-web in consumers, declared here
+             for compile-time safety in case a consumer omits the web starter. -->
+        <dependency>
+            <groupId>com.fasterxml.jackson.core</groupId>
+            <artifactId>jackson-databind</artifactId>
             <scope>provided</scope>
         </dependency>
     </dependencies>
