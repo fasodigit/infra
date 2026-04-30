@@ -41,11 +41,14 @@ use crate::{
 // ---------------------------------------------------------------------------
 
 /// Build the Axum `Router` for all REST endpoints.
-pub fn build_router(state: Arc<AppState>) -> Router {
+///
+/// Routes are exposed both at root (legacy direct-call) and under
+/// `/api/terroir/core/...` (gateway path-preserving forward path).  This way
+/// callers may hit either:
+///   - `http://localhost:8830/producers` (direct, legacy)
+///   - `http://localhost:8080/api/terroir/core/producers` via ARMAGEDDON
+fn build_business_router() -> Router<Arc<AppState>> {
     Router::new()
-        // Health
-        .route("/health/ready", get(health_ready))
-        .route("/health/live", get(health_live))
         // Producers (Module 1)
         .route("/producers", post(create_producer))
         .route("/producers", get(list_producers))
@@ -67,6 +70,15 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         // Agronomy notes
         .route("/parcels/{id}/agronomy-notes", post(create_agronomy_note))
         .route("/parcels/{id}/agronomy-notes", get(list_agronomy_notes))
+}
+
+pub fn build_router(state: Arc<AppState>) -> Router {
+    Router::new()
+        // Health
+        .route("/health/ready", get(health_ready))
+        .route("/health/live", get(health_live))
+        .merge(build_business_router())
+        .nest("/api/terroir/core", build_business_router())
         .with_state(state)
 }
 

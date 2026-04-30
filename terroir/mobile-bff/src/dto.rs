@@ -91,38 +91,50 @@ pub struct SyncBatchRequest {
 }
 
 /// One item in a sync batch — discriminated by `type` field on the wire.
+/// Field names are accepted in camelCase (mobile/JS convention).
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "kebab-case")]
 pub enum SyncItem {
     /// Update parcel polygon via Yjs binary delta (base64).
     ParcelPolygonUpdate {
+        #[serde(alias = "parcelId")]
         parcel_id: Uuid,
         /// Base64-encoded Yjs v1 binary update.
+        #[serde(alias = "yjsDelta")]
         yjs_delta: String,
     },
     /// Update agronomy note via Yjs binary delta (base64).
     AgronomyNoteUpdate {
+        #[serde(alias = "parcelId")]
         parcel_id: Uuid,
         /// Optional note id — None when the note is being created for the first time.
+        #[serde(default, alias = "noteId")]
         note_id: Option<Uuid>,
+        #[serde(alias = "yjsDelta")]
         yjs_delta: String,
     },
     /// LWW-style scalar producer patch (full name / phone / etc.).
     ProducerUpdate {
+        #[serde(alias = "producerId")]
         producer_id: Uuid,
+        #[serde(alias = "lwwVersion")]
         lww_version: i64,
         /// Free-form JSON of fields to patch — passed through to terroir-core.
         patch: serde_json::Value,
     },
     /// LWW-style scalar parcel patch (crop type / surface / planted date).
     ParcelUpdate {
+        #[serde(alias = "parcelId")]
         parcel_id: Uuid,
+        #[serde(alias = "lwwVersion")]
         lww_version: i64,
         patch: serde_json::Value,
     },
     /// Update household via Yjs binary delta (base64).
     HouseholdUpdate {
+        #[serde(alias = "householdId")]
         household_id: Uuid,
+        #[serde(alias = "yjsDelta")]
         yjs_delta: String,
     },
 }

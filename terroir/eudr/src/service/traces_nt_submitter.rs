@@ -35,6 +35,20 @@ pub async fn submit(
     dds_id: Uuid,
     payload: &serde_json::Value,
 ) -> Result<SubmissionResult> {
+    // Stub mode for dev / E2E — `EUDR_TRACES_NT_URL=stub://` returns an
+    // accepted result without touching any external endpoint. Mirrors the
+    // behaviour of a Mailpit-equivalent fixture server but inline.
+    if traces_nt_url.starts_with("stub://") || traces_nt_url.is_empty() {
+        let reference = format!("STUB-{}", dds_id);
+        // Touch the payload to keep linter happy & document data flow.
+        let _ = serde_json::to_string(payload).ok();
+        return Ok(SubmissionResult {
+            http_status: 200,
+            reference: Some(reference.clone()),
+            body: serde_json::json!({"reference": reference, "status": "accepted"})
+                .to_string(),
+        });
+    }
     let url = format!("{traces_nt_url}/submit");
     let backoff = ExponentialBackoff {
         initial_interval: Duration::from_secs(2),

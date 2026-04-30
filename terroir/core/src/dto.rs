@@ -13,6 +13,9 @@ use uuid::Uuid;
 // ---------------------------------------------------------------------------
 
 /// Standard keyset-pagination query params.
+///
+/// Accepts both camelCase (`cooperativeId`, `producerId`) and snake_case
+/// (`cooperative_id`, `producer_id`) variants for client convenience.
 #[derive(Debug, Deserialize)]
 pub struct PaginationParams {
     #[serde(default = "default_page")]
@@ -21,8 +24,10 @@ pub struct PaginationParams {
     pub size: u64,
     pub sort: Option<String>,
     /// Cooperative filter (for /producers).
+    #[serde(alias = "cooperativeId")]
     pub cooperative_id: Option<Uuid>,
     /// Producer filter (for /parcels).
+    #[serde(alias = "producerId")]
     pub producer_id: Option<Uuid>,
 }
 

@@ -269,8 +269,10 @@ export class MobileBffClient {
   async isReachable(): Promise<boolean> {
     try {
       const api = await request.newContext();
-      const res = await api.get(`${this.baseURL}/health`);
-      return res.ok();
+      // Probe the mobile-BFF "compact" /m/health endpoint via the gateway.
+      // Accept any non-5xx status (auth gate vs. dead upstream).
+      const res = await api.get(`${this.baseURL}/api/terroir/mobile-bff/m/health`);
+      return res.status() < 500;
     } catch {
       return false;
     }

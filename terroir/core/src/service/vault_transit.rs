@@ -217,9 +217,18 @@ pub fn dek_cache_key(kid: &str) -> String {
 /// In practice, we cache the ciphertext string itself so that repeated reads
 /// of the same producer field don't re-hit Vault for the unwrap step on cache
 /// miss. This is a "is-it-known" check, not plaintext caching.
-pub async fn cache_dek_mark(kaya: &mut impl redis::AsyncCommands, kid: &str) -> Result<()> {
+pub async fn cache_dek_mark<C>(kaya: &mut C, kid: &str) -> Result<()>
+where
+    C: redis::aio::ConnectionLike + Send,
+{
     let cache_key = dek_cache_key(kid);
-    kaya.set_ex::<_, _, ()>(&cache_key, "1", DEK_CACHE_TTL_SECS)
+    // Use raw SET with EX option for KAYA RESP3 compatibility.
+    let _: () = redis::cmd("SET")
+        .arg(&cache_key)
+        .arg("1")
+        .arg("EX")
+        .arg(DEK_CACHE_TTL_SECS)
+        .query_async(kaya)
         .await
         .context("KAYA SET dek cache mark")?;
     Ok(())

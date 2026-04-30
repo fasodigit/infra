@@ -44,13 +44,8 @@ use crate::{
 /// `/api/terroir/mobile-bff/m/*` here after stripping the prefix.
 /// WebSocket endpoint `/ws/sync/{producerId}` matches what ARMAGEDDON
 /// forwards from `/ws/terroir/sync/{producerId}`.
-pub fn build_router(state: Arc<AppState>) -> Router {
-    let compression = CompressionLayer::new().br(true).gzip(true);
-
+fn build_business_router() -> Router<Arc<AppState>> {
     Router::new()
-        // Health
-        .route("/health/ready", get(health_ready))
-        .route("/health/live", get(health_live))
         .route("/m/health", get(health_ready)) // mobile alias
         // Mobile-optimized REST
         .route("/m/producers", get(list_producers_compact))
@@ -58,6 +53,20 @@ pub fn build_router(state: Arc<AppState>) -> Router {
         .route("/m/sync/batch", post(post_sync_batch))
         // WebSocket
         .route("/ws/sync/{producer_id}", get(ws_sync_handler))
+}
+
+pub fn build_router(state: Arc<AppState>) -> Router {
+    let compression = CompressionLayer::new().br(true).gzip(true);
+
+    Router::new()
+        // Health
+        .route("/health/ready", get(health_ready))
+        .route("/health/live", get(health_live))
+        .merge(build_business_router())
+        // ARMAGEDDON forwards /api/terroir/mobile-bff/* without stripping prefix.
+        .nest("/api/terroir/mobile-bff", build_business_router())
+        // Also accept /ws/terroir/sync/* (gateway forwards as-is).
+        .nest("/ws/terroir", build_business_router())
         .layer(compression)
         .with_state(state)
 }

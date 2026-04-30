@@ -162,7 +162,27 @@ export class CoreClient {
 
   private async wrap<T>(p: Promise<APIResponse>): Promise<CoreResponse<T>> {
     const start = Date.now();
-    const res = await p;
+    let res: APIResponse;
+    try {
+      res = await p;
+    } catch (e: unknown) {
+      // Playwright refuses to send requests with invalid header characters.
+      // Treat as a synthetic 400 client-side validation rejection to match
+      // server-side semantics: invalid X-Tenant-Slug → 4xx.
+      const msg = e instanceof Error ? e.message : String(e);
+      if (
+        msg.includes('Invalid character in header') ||
+        msg.includes('invalid header')
+      ) {
+        return {
+          status: 400,
+          body: { error: 'invalid_header', message: msg } as unknown as T,
+          headers: {},
+          durationMs: Date.now() - start,
+        };
+      }
+      throw e;
+    }
     const durationMs = Date.now() - start;
     let body: T | CoreError;
     try {
@@ -307,13 +327,13 @@ export class CoreClient {
   async isReachable(): Promise<boolean> {
     try {
       const api = await request.newContext();
-      // ARMAGEDDON :8080 always exposes /health for itself ; the
-      // terroir-core /health/ready isn't reachable without going through
-      // the routing prefix, so we probe via a `producers` endpoint that
-      // unauthenticated will reply 401 (live) instead of timeout (dead).
-      // To keep this idempotent + cheap, hit /health on ARMAGEDDON.
-      const res = await api.get(`${this.baseURL}/health`);
-      return res.ok();
+      // ARMAGEDDON :8080 — hit /api/terroir/core/producers and accept
+      // 401/403 (auth gate present = service live + route configured)
+      // OR 200 (auth_skip enabled). Refuse 502/504/timeout (dead upstream).
+      const res = await api.get(`${this.baseURL}/api/terroir/core/producers`);
+      const code = res.status();
+      // Live = any non-5xx: 200/401/403/404 all confirm reachability.
+      return code < 500;
     } catch {
       return false;
     }

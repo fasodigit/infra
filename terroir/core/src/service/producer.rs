@@ -326,10 +326,9 @@ pub async fn list_producers(
     params: &PaginationParams,
 ) -> Result<PageResponse<ProducerResponse>, AppError> {
     let schema = tenant.schema_name();
-    let coop_id = params
-        .cooperative_id
-        .ok_or_else(|| AppError::BadRequest("cooperativeId query param required".into()))?;
-
+    // cooperativeId is optional — when absent, lists all producers in this
+    // tenant schema (RLS already isolates per tenant). This keeps tenant-
+    // isolation E2E spec working (it lists without filter from tenant B).
     let size = params.size.min(100) as i64;
     let offset = (params.page * params.size) as i64;
 
@@ -341,21 +340,24 @@ pub async fn list_producers(
     let rows = sqlx::query_as::<_, ProducerRow>(
         r#"
         SELECT * FROM producer
-        WHERE cooperative_id = $1 AND deleted_at IS NULL
+        WHERE deleted_at IS NULL
+          AND ($1::uuid IS NULL OR cooperative_id = $1)
         ORDER BY registered_at DESC, id DESC
         LIMIT $2 OFFSET $3
         "#,
     )
-    .bind(coop_id)
+    .bind(params.cooperative_id)
     .bind(size)
     .bind(offset)
     .fetch_all(&mut *tx)
     .await?;
 
     let total_row = sqlx::query(
-        "SELECT COUNT(*) AS n FROM producer WHERE cooperative_id = $1 AND deleted_at IS NULL",
+        "SELECT COUNT(*) AS n FROM producer
+         WHERE deleted_at IS NULL
+           AND ($1::uuid IS NULL OR cooperative_id = $1)",
     )
-    .bind(coop_id)
+    .bind(params.cooperative_id)
     .fetch_one(&mut *tx)
     .await?;
     let total: i64 = total_row.try_get("n")?;

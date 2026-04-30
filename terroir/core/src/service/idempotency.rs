@@ -43,10 +43,15 @@ pub async fn is_duplicate(kaya: &mut impl AsyncCommands, key: &str) -> Result<bo
 #[instrument(skip(kaya))]
 pub async fn mark_processed(kaya: &mut impl AsyncCommands, key: &str) {
     let kaya_key = idempotency_key(key);
-    if let Err(e) = kaya
-        .set_ex::<_, _, ()>(&kaya_key, "1", IDEMPOTENCY_TTL_SECS)
-        .await
-    {
+    // Use raw SET with EX option for compatibility with KAYA RESP3.
+    let res: redis::RedisResult<()> = redis::cmd("SET")
+        .arg(&kaya_key)
+        .arg("1")
+        .arg("EX")
+        .arg(IDEMPOTENCY_TTL_SECS)
+        .query_async(kaya)
+        .await;
+    if let Err(e) = res {
         tracing::warn!(key = key, error = %e, "KAYA idempotency SET failed (non-fatal)");
     }
 }

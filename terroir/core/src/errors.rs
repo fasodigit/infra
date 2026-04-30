@@ -98,6 +98,27 @@ impl From<sqlx::Error> for AppError {
     fn from(e: sqlx::Error) -> Self {
         match e {
             sqlx::Error::RowNotFound => AppError::NotFound("row not found".into()),
+            sqlx::Error::Database(ref db_err) => {
+                // PostgreSQL SQLSTATE codes:
+                //   23503 = foreign_key_violation → map to 404 (referenced row absent)
+                //   23505 = unique_violation     → map to 409 (Conflict)
+                //   23514 = check_violation      → map to 400 (BadRequest)
+                match db_err.code().as_deref() {
+                    Some("23503") => AppError::NotFound(format!(
+                        "foreign key violation: {}",
+                        db_err.message()
+                    )),
+                    Some("23505") => AppError::Conflict(format!(
+                        "unique violation: {}",
+                        db_err.message()
+                    )),
+                    Some("23514") => AppError::BadRequest(format!(
+                        "check violation: {}",
+                        db_err.message()
+                    )),
+                    _ => AppError::Internal(anyhow::anyhow!("database error: {}", e)),
+                }
+            }
             other => AppError::Internal(anyhow::anyhow!("database error: {}", other)),
         }
     }

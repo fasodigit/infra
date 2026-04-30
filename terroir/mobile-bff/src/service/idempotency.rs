@@ -31,10 +31,16 @@ pub async fn is_duplicate(kaya: &mut impl AsyncCommands, batch_id: &Uuid) -> Res
 /// Mark a batch as processed (SET EX 24h). Best-effort.
 #[instrument(skip(kaya))]
 pub async fn mark_processed(kaya: &mut impl AsyncCommands, batch_id: &Uuid) {
-    if let Err(e) = kaya
-        .set_ex::<_, _, ()>(key(batch_id), "1", IDEMPOTENCY_TTL_SECS)
-        .await
-    {
+    let k = key(batch_id);
+    // Use raw SET with EX option for KAYA RESP3 compatibility.
+    let res: redis::RedisResult<()> = redis::cmd("SET")
+        .arg(&k)
+        .arg("1")
+        .arg("EX")
+        .arg(IDEMPOTENCY_TTL_SECS)
+        .query_async(kaya)
+        .await;
+    if let Err(e) = res {
         tracing::warn!(batch_id = %batch_id, error = %e, "KAYA idempotency SET failed (non-fatal)");
     }
 }

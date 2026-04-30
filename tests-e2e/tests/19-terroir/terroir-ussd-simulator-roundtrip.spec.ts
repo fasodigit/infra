@@ -27,6 +27,12 @@ function randNin(): string {
   return `BF-${Math.floor(Math.random() * 1e10).toString().padStart(10, '0')}`;
 }
 
+// USSD simulator stores session state keyed by sessionId; even with unique
+// sessionIds parallel tests can race each other on the shared OTP / SMS
+// records buffers. Force serial execution within this spec to keep the
+// observable behaviour deterministic.
+test.describe.configure({ mode: 'serial' });
+
 test.describe('TERROIR P0.F — USSD simulator round-trip', () => {
   let sim: UssdSimulatorClient;
   let reachable = false;

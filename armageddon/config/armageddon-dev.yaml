@@ -68,6 +68,58 @@ gateway:
       auth_skip: true
       retry_policy: null
 
+    # -- TERROIR routes (P1) --
+    # auth_skip: true to allow the X-Tenant-Slug M2M loopback path used by
+    # Playwright suite 19-terroir; in production these are guarded by
+    # KetoAuthzFilter (filter chain wired in armageddon-gateway-admin).
+    - name: terroir-core
+      match_rule:
+        prefix: /api/terroir/core/
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: terroir-core
+      timeout_ms: 10000
+      auth_skip: true
+      retry_policy: null
+
+    - name: terroir-eudr
+      match_rule:
+        prefix: /api/terroir/eudr/
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: terroir-eudr
+      timeout_ms: 60000
+      auth_skip: true
+      retry_policy: null
+
+    - name: terroir-mobile-bff
+      match_rule:
+        prefix: /api/terroir/mobile-bff/
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: terroir-mobile-bff
+      timeout_ms: 15000
+      auth_skip: true
+      retry_policy: null
+
+    - name: terroir-ws-sync
+      match_rule:
+        prefix: /ws/terroir/sync
+        path: null
+        regex: null
+        headers: {}
+        methods: []
+      cluster: terroir-mobile-bff
+      timeout_ms: 60000
+      auth_skip: true
+      retry_policy: null
+
     - name: default
       match_rule:
         prefix: /
@@ -151,6 +203,79 @@ gateway:
         max_pending_requests: 1024
         max_requests: 1024
         max_retries: 3
+      outlier_detection:
+        consecutive_5xx: 5
+        interval_ms: 10000
+        base_ejection_time_ms: 30000
+        max_ejection_percent: 50
+
+    # -- TERROIR clusters (P1) --
+    - name: terroir-core
+      endpoints:
+        - address: 127.0.0.1
+          port: 8830
+          weight: 100
+          healthy: true
+      health_check:
+        interval_ms: 10000
+        timeout_ms: 2000
+        unhealthy_threshold: 3
+        healthy_threshold: 2
+        protocol: Http
+        path: /health/ready
+      circuit_breaker:
+        max_connections: 256
+        max_pending_requests: 256
+        max_requests: 256
+        max_retries: 2
+      outlier_detection:
+        consecutive_5xx: 5
+        interval_ms: 10000
+        base_ejection_time_ms: 30000
+        max_ejection_percent: 50
+
+    - name: terroir-eudr
+      endpoints:
+        - address: 127.0.0.1
+          port: 8831
+          weight: 100
+          healthy: true
+      health_check:
+        interval_ms: 10000
+        timeout_ms: 2000
+        unhealthy_threshold: 3
+        healthy_threshold: 2
+        protocol: Http
+        path: /health/ready
+      circuit_breaker:
+        max_connections: 256
+        max_pending_requests: 256
+        max_requests: 256
+        max_retries: 2
+      outlier_detection:
+        consecutive_5xx: 5
+        interval_ms: 10000
+        base_ejection_time_ms: 30000
+        max_ejection_percent: 50
+
+    - name: terroir-mobile-bff
+      endpoints:
+        - address: 127.0.0.1
+          port: 8833
+          weight: 100
+          healthy: true
+      health_check:
+        interval_ms: 10000
+        timeout_ms: 2000
+        unhealthy_threshold: 3
+        healthy_threshold: 2
+        protocol: Http
+        path: /health/ready
+      circuit_breaker:
+        max_connections: 256
+        max_pending_requests: 256
+        max_requests: 256
+        max_retries: 2
       outlier_detection:
         consecutive_5xx: 5
         interval_ms: 10000

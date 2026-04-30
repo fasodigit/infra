@@ -41,10 +41,8 @@ use crate::service::{dds_generator, dds_signer, traces_nt_submitter, validator};
 use crate::state::AppState;
 use crate::tenant_context::TenantContext;
 
-pub fn build_router(state: Arc<AppState>) -> Router {
+fn build_business_router() -> Router<Arc<AppState>> {
     Router::new()
-        .route("/health/ready", get(health_ready))
-        .route("/health/live", get(health_live))
         .route("/eudr/validate", post(validate_handler))
         .route("/eudr/dds", post(generate_dds_handler))
         .route("/eudr/dds/{ddsId}/sign", post(sign_dds_handler))
@@ -54,6 +52,18 @@ pub fn build_router(state: Arc<AppState>) -> Router {
             "/eudr/parcels/{parcelId}/validations",
             get(list_validations_handler),
         )
+}
+
+pub fn build_router(state: Arc<AppState>) -> Router {
+    Router::new()
+        .route("/health/ready", get(health_ready))
+        .route("/health/live", get(health_live))
+        .merge(build_business_router())
+        // ARMAGEDDON forwards /api/terroir/eudr/* without stripping prefix,
+        // and the business router already has /eudr/* as its top-level path.
+        // So we nest under /api/terroir (not /api/terroir/eudr) to avoid
+        // ending up at /api/terroir/eudr/eudr/*.
+        .nest("/api/terroir", build_business_router())
         .with_state(state)
 }
 
@@ -76,7 +86,22 @@ async fn validate_handler(
 ) -> Result<Response<Body>, AppError> {
     let outcome = validator::validate_parcel(&state, &tenant, req.parcel_id, &req.polygon_geo_json)
         .await
-        .map_err(AppError::Internal)?;
+        .map_err(|e| {
+            // Polygon parse failures and missing coordinates → 400 (client
+            // error), not 500. Anything containing "polygon" / "coordinates"
+            // / "GeoJSON" / "geojson" in the chain is treated as bad input.
+            let msg = format!("{e:#}");
+            let lower = msg.to_lowercase();
+            if lower.contains("polygon")
+                || lower.contains("coordinates")
+                || lower.contains("geojson")
+                || lower.contains("parse")
+            {
+                AppError::BadRequest(msg)
+            } else {
+                AppError::Internal(e)
+            }
+        })?;
 
     let cache_header = if outcome.from_cache { "HIT" } else { "MISS" };
 

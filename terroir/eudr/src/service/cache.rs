@@ -47,6 +47,14 @@ fn cache_key(hash: &str) -> String {
     format!("terroir:eudr:result:{hash}")
 }
 
+/// Cache key scoped per (tenant, parcel) so the MISS/HIT semantics align with
+/// "first call for this specific parcel".  Two parcels with the same polygon
+/// shape are still hashed identically → datasetVersion stable → polygonHash
+/// stable, but the cache key is not shared.
+pub fn parcel_cache_key(tenant_slug: &str, parcel_id: &uuid::Uuid, hash: &str) -> String {
+    format!("terroir:eudr:result:{tenant_slug}:{parcel_id}:{hash}")
+}
+
 /// GET cached `ValidationResponse` for a polygon hash.
 #[instrument(skip(kaya))]
 pub async fn get_cached(
@@ -54,16 +62,24 @@ pub async fn get_cached(
     hash: &str,
 ) -> Result<Option<ValidationResponse>> {
     let key = cache_key(hash);
-    let raw: Option<String> = kaya.get(&key).await.context("KAYA GET cache")?;
+    get_cached_by_key(kaya, &key).await
+}
+
+/// GET cached using a fully-qualified key (already prefixed with namespace).
+pub async fn get_cached_by_key(
+    kaya: &mut impl AsyncCommands,
+    key: &str,
+) -> Result<Option<ValidationResponse>> {
+    let raw: Option<String> = kaya.get(key).await.context("KAYA GET cache")?;
     match raw {
         Some(s) => {
             let parsed: ValidationResponse =
                 serde_json::from_str(&s).context("decode cached ValidationResponse")?;
-            debug!(hash = hash, "EUDR cache HIT");
+            debug!(key = key, "EUDR cache HIT");
             Ok(Some(parsed))
         }
         None => {
-            debug!(hash = hash, "EUDR cache MISS");
+            debug!(key = key, "EUDR cache MISS");
             Ok(None)
         }
     }
@@ -78,6 +94,16 @@ pub async fn put_cached(
     ttl_secs: u64,
 ) {
     let key = cache_key(hash);
+    put_cached_by_key(kaya, &key, value, ttl_secs).await;
+}
+
+/// SET cached using a fully-qualified key (already prefixed with namespace).
+pub async fn put_cached_by_key(
+    kaya: &mut impl AsyncCommands,
+    key: &str,
+    value: &ValidationResponse,
+    ttl_secs: u64,
+) {
     let payload = match serde_json::to_string(value) {
         Ok(p) => p,
         Err(e) => {
@@ -85,8 +111,19 @@ pub async fn put_cached(
             return;
         }
     };
-    if let Err(e) = kaya.set_ex::<_, _, ()>(&key, payload, ttl_secs).await {
-        tracing::warn!(hash = hash, error = %e, "KAYA SET EUDR cache failed (non-fatal)");
+    // Use raw SET with EX option (more widely supported than SETEX, which
+    // KAYA RESP3 may reject). Falls back to SET without TTL if EX rejected.
+    let res: redis::RedisResult<()> = redis::cmd("SET")
+        .arg(&key)
+        .arg(&payload)
+        .arg("EX")
+        .arg(ttl_secs)
+        .query_async(kaya)
+        .await;
+    if let Err(e) = res {
+        tracing::warn!(key = key, error = %e, "KAYA SET EUDR cache failed (non-fatal)");
+        // Fallback: plain SET without TTL.
+        let _: redis::RedisResult<()> = kaya.set::<_, _, ()>(&key, payload).await.map(|_| ());
     }
 }
 

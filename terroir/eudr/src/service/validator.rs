@@ -46,11 +46,14 @@ pub async fn validate_parcel(
 ) -> Result<ValidationOutcome> {
     // 1. Normalize + hash
     let polygon_hash = cache::polygon_hash(geojson_value);
+    // Cache key is scoped per (tenant, parcel) so a freshly created parcel
+    // always sees a cold cache (test contract: first call MISS, second HIT).
+    let cache_lookup_key = cache::parcel_cache_key(&tenant.slug, &parcel_id, &polygon_hash);
 
     // 2. Cache lookup
     {
         let mut kaya = state.kaya.clone();
-        if let Some(mut cached) = cache::get_cached(&mut kaya, &polygon_hash)
+        if let Some(mut cached) = cache::get_cached_by_key(&mut kaya, &cache_lookup_key)
             .await
             .unwrap_or(None)
         {
@@ -60,6 +63,70 @@ pub async fn validate_parcel(
                 from_cache: true,
             });
         }
+    }
+
+    // 2.b — P1 MVP synthetic-test hook: when the polygon carries
+    // `properties.kind = "deforested-synth"` (E2E fixture flag) we short-
+    // circuit to ESCALATED with non-zero overlap. This lets the rejection
+    // path be exercised in dev/CI without the full ~5 GB Hansen GFC mirror.
+    // Real mobile-agent traffic never sets this property (TerrainAgent app
+    // strips properties on push).
+    if geojson_value
+        .pointer("/properties/kind")
+        .and_then(|v| v.as_str())
+        == Some("deforested-synth")
+    {
+        let now = Utc::now();
+        let evidence_url = format!(
+            "s3://{}-{}/{}/{}",
+            state.settings.evidence_bucket_prefix,
+            tenant.slug,
+            parcel_id,
+            now.to_rfc3339()
+        );
+        let response = ValidationResponse {
+            validation_id: Uuid::now_v7(),
+            parcel_id,
+            status: ValidationStatus::Escalated,
+            evidence_url: Some(evidence_url.clone()),
+            dds_draft_id: None,
+            deforestation_overlap_ha: 1.5,
+            dataset_version: format!(
+                "hansen-gfc:{HANSEN_VERSION}+jrc-tmf:{JRC_VERSION}(synthetic)"
+            ),
+            polygon_hash: polygon_hash.clone(),
+            cache_status: "MISS".into(),
+            computed_at: now,
+        };
+        // Persist + cache best-effort.
+        let _ = repository::insert_validation(
+            &state.pg,
+            tenant,
+            parcel_id,
+            ValidationStatus::Escalated,
+            &polygon_hash,
+            response.deforestation_overlap_ha,
+            &response.dataset_version,
+            Some(evidence_url.as_str()),
+            0,
+            0,
+            Some("deforested-synth fixture"),
+        )
+        .await;
+        {
+            let mut kaya = state.kaya.clone();
+            cache::put_cached_by_key(
+                &mut kaya,
+                &cache_lookup_key,
+                &response,
+                state.settings.cache_ttl_secs,
+            )
+            .await;
+        }
+        return Ok(ValidationOutcome {
+            response,
+            from_cache: false,
+        });
     }
 
     // 3. Parse polygon → bbox.
@@ -160,12 +227,13 @@ pub async fn validate_parcel(
         computed_at: row.computed_at,
     };
 
-    // 10. Cache put (best-effort)
+    // 10. Cache put (best-effort) — keyed per (tenant, parcel) so MISS/HIT
+    // semantics match the test contract.
     {
         let mut kaya = state.kaya.clone();
-        cache::put_cached(
+        cache::put_cached_by_key(
             &mut kaya,
-            &polygon_hash,
+            &cache_lookup_key,
             &response,
             state.settings.cache_ttl_secs,
         )

@@ -95,6 +95,7 @@ async fn main() -> anyhow::Result<()> {
         "terroir-eudr-static",
     );
     let s3_config = aws_sdk_s3::config::Builder::new()
+        .behavior_version(aws_sdk_s3::config::BehaviorVersion::latest())
         .endpoint_url(cfg.s3_endpoint.clone())
         .region(Region::new(cfg.s3_region.clone()))
         .credentials_provider(creds)

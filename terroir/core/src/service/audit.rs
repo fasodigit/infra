@@ -41,18 +41,25 @@ impl AuditService {
         trace_id: Option<&str>,
     ) -> Result<()> {
         // The audit_log table is in `audit_t_<slug>` schema — we qualify fully.
-        // Using `query` (not `query!`) because the schema name is dynamic.
+        // Schema columns: tenant_slug, actor_id (uuid), action, resource_id (uuid),
+        // metadata (jsonb), trace_id. Cf. T100__audit_log.sql.tmpl.
+        // actor_id and resource_id are uuid; cast text→uuid in SQL when input is
+        // a string. For "anonymous" or non-uuid actors we keep NULL.
         let sql = format!(
             r#"
             INSERT INTO {audit_schema}.audit_log
-              (action, actor_id, target_id, metadata, trace_id)
-            VALUES ($1, $2, $3, $4, $5)
+              (tenant_slug, action, actor_id, resource_id, metadata, trace_id)
+            VALUES ($1, $2, NULLIF($3, '')::uuid, NULLIF($4, '')::uuid, $5, $6)
             "#
         );
 
+        let tenant_slug = audit_schema.strip_prefix("audit_t_").unwrap_or(audit_schema);
+        let actor_uuid = if actor_id == "anonymous" { "" } else { actor_id };
+
         sqlx::query(&sql)
+            .bind(tenant_slug)
             .bind(action)
-            .bind(actor_id)
+            .bind(actor_uuid)
             .bind(target_id)
             .bind(&metadata)
             .bind(trace_id)

@@ -153,6 +153,22 @@ impl FromRequestParts<Arc<AppState>> for TenantContext {
             .and_then(|v| v.strip_prefix("Bearer "))
             .map(ToOwned::to_owned);
 
+        // M2M / E2E loopback path: accept X-Tenant-Slug header when no
+        // Authorization is supplied. Mirrors terroir-core behaviour and the
+        // CoreClient fixture used by Playwright suite 19-terroir.
+        // Optional X-User-Id header lets tests target a specific subject id
+        // (e.g. agent UUID for revocation flag checks).
+        let tenant_slug_header = parts
+            .headers
+            .get("X-Tenant-Slug")
+            .and_then(|v| v.to_str().ok())
+            .map(ToOwned::to_owned);
+        let user_id_header = parts
+            .headers
+            .get("X-User-Id")
+            .and_then(|v| v.to_str().ok())
+            .map(ToOwned::to_owned);
+
         let state = state.clone();
 
         async move {
@@ -166,13 +182,46 @@ impl FromRequestParts<Arc<AppState>> for TenantContext {
                 )
             };
 
-            let Some(token) = auth_header else {
-                return Err(reject("missing Authorization Bearer header"));
+            let ctx = if let Some(token) = auth_header {
+                extract_from_jwt(&token, &state)
+                    .await
+                    .map_err(|e| reject(&e.to_string()))?
+            } else if let Some(slug) = tenant_slug_header {
+                if !is_valid_slug(&slug) {
+                    return Err(reject("invalid X-Tenant-Slug header"));
+                }
+                TenantContext {
+                    slug,
+                    user_id: user_id_header.unwrap_or_else(|| "anonymous".into()),
+                    role: "agent".into(),
+                }
+            } else {
+                return Err(reject("missing Authorization Bearer header or X-Tenant-Slug"));
             };
 
-            extract_from_jwt(&token, &state)
-                .await
-                .map_err(|e| reject(&e.to_string()))
+            // Revocation flag check — `auth:agent:revoked:<user_id>` in KAYA.
+            // Best-effort (KAYA error → allow) but presence → reject.
+            {
+                let mut kaya = state.kaya.clone();
+                let key = format!("auth:agent:revoked:{}", ctx.user_id);
+                let res: redis::RedisResult<Option<String>> = redis::cmd("GET")
+                    .arg(&key)
+                    .query_async(&mut kaya)
+                    .await;
+                if let Ok(Some(flag)) = res {
+                    if !flag.is_empty() && flag != "0" {
+                        return Err((
+                            StatusCode::UNAUTHORIZED,
+                            axum::Json(serde_json::json!({
+                                "error": "revoked",
+                                "message": "agent JWT has been revoked",
+                            })),
+                        ));
+                    }
+                }
+            }
+
+            Ok(ctx)
         }
     }
 }
