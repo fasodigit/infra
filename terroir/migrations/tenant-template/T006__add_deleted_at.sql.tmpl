@@ -1,0 +1,25 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- T006 — Hotfix P1.A : ajout colonne deleted_at pour soft-delete sur producer.
+--
+-- Le service Rust terroir-core/src/service/producer.rs utilise le pattern
+-- soft-delete (`WHERE deleted_at IS NULL` + `UPDATE … SET deleted_at = now()`),
+-- mais la migration T002 originale ne déclarait pas cette colonne.
+--
+-- Idempotent (IF NOT EXISTS) — peut être appliqué sans danger sur tenants existants.
+-- Pour le tenant pilote `t_pilot` provisionné en P0.J avant ce hotfix :
+--   psql -c "ALTER TABLE terroir_t_t_pilot.producer
+--            ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;"
+
+SET search_path TO {{SCHEMA}};
+
+ALTER TABLE producer ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ;
+
+-- Index partiel sur les producteurs actifs (la majorité des queries filtrent
+-- WHERE deleted_at IS NULL ; ce partial index évite de scanner les rangées soft-deletées).
+CREATE INDEX IF NOT EXISTS idx_producer_active
+  ON producer (cooperative_id)
+  WHERE deleted_at IS NULL;
+
+-- Note : extensible aux autres entités M1 (parcel, household, parts_sociales,
+-- agronomy_note) si futurs besoins soft-delete. Pour l'instant seul producer
+-- l'exige (cf. terroir-core/src/service/producer.rs).

@@ -1,21 +1,108 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// terroir-core gRPC schema (skeleton P0.A — implémenté en P1.1).
-// See INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md §6.
+// terroir-core gRPC schema — P1.A implementation.
+// Consumed by terroir-eudr (P1.B) and terroir-mobile-bff (P1.D).
+// See INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md §6 P1.1.
 
 syntax = "proto3";
 
 package terroir.core.v1;
 
-// CoreService — registre membres + parcelles + ménages.
-//
-// Endpoints détaillés rédigés en P1.1 ; ici uniquement Health.
+// CoreService — registre membres + parcelles.
+// gRPC server binds :8730.
+// Inter-service usage:
+//   - terroir-eudr calls GetProducer + ListParcelsByCooperative + GetParcelPolygon.
+//   - terroir-mobile-bff calls all three for sync batch operations.
 service CoreService {
+  // Health probe.
   rpc Health(HealthRequest) returns (HealthReply);
+
+  // Get a single producer by id. Returns NOT_FOUND if absent or deleted.
+  // PII fields are returned in plaintext (caller must be authorized).
+  rpc GetProducer(GetProducerRequest) returns (Producer);
+
+  // Stream all parcels for a cooperative (used by terroir-eudr batch validation).
+  rpc ListParcelsByCooperative(ListParcelsRequest) returns (stream Parcel);
+
+  // Get parcel polygon (Yjs CRDT state + WKT geometry) for EUDR validation.
+  rpc GetParcelPolygon(GetParcelPolygonRequest) returns (ParcelPolygon);
 }
+
+// -- Health --
 
 message HealthRequest {}
 
 message HealthReply {
-  string status = 1; // "ready" | "live"
+  string status  = 1; // "ready" | "live"
   string version = 2;
+}
+
+// -- Producer --
+
+message GetProducerRequest {
+  // Tenant slug (e.g. "t_pilot"). Required.
+  string tenant_slug = 1;
+  // Producer UUID.
+  string producer_id = 2;
+}
+
+message Producer {
+  string producer_id     = 1;
+  string cooperative_id  = 2;
+  string external_id     = 3;  // optional
+  // PII — decrypted server-side before returning to authorized callers.
+  string full_name       = 4;
+  string nin             = 5;
+  string phone           = 6;
+  string photo_url       = 7;  // optional
+  double gps_domicile_lat = 8;
+  double gps_domicile_lon = 9;
+  string household_id    = 10; // optional
+  string primary_crop    = 11;
+  string registered_at   = 12; // RFC-3339
+  string updated_at      = 13; // RFC-3339
+  int64  lww_version     = 14;
+  bool   deleted         = 15;
+}
+
+// -- Parcel --
+
+message ListParcelsRequest {
+  // Tenant slug. Required.
+  string tenant_slug     = 1;
+  // Filter by cooperative_id (resolves all producers in that cooperative).
+  string cooperative_id  = 2;
+  // Optional: stream only parcels updated after this RFC-3339 timestamp.
+  string updated_after   = 3;
+  // Page size for each stream chunk; server may send fewer.
+  int32  page_size       = 4;
+}
+
+message Parcel {
+  string parcel_id         = 1;
+  string producer_id       = 2;
+  string crop_type         = 3;
+  string planted_at        = 4;  // ISO date YYYY-MM-DD, optional
+  double surface_hectares  = 5;
+  string registered_at     = 6;  // RFC-3339
+  string updated_at        = 7;  // RFC-3339
+  int64  lww_version       = 8;
+}
+
+// -- Parcel Polygon --
+
+message GetParcelPolygonRequest {
+  string tenant_slug = 1;
+  string parcel_id   = 2;
+}
+
+message ParcelPolygon {
+  string parcel_id    = 1;
+  // Yjs CRDT state vector encoded as base64.
+  bytes  yjs_state    = 2;
+  // GeoJSON Feature string (Polygon, EPSG:4326).
+  string geojson      = 3;
+  // WKT geometry string for EUDR spatial operators.
+  string geom_wkt     = 4;
+  int64  yjs_version  = 5;
+  string updated_at   = 6; // RFC-3339
 }

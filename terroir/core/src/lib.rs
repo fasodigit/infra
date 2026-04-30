@@ -1,24 +1,38 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
-// terroir-core — bibliothèque
-//
-// Service principal TERROIR (registre membres + parcelles + ménages).
-// HTTP Axum :8830 + gRPC Tonic :8730.
-//
-// Contrats publics :
-//   - REST : POST /producers, GET /producers, PATCH /producers/{id}, ...
-//   - gRPC : terroir.core.v1.CoreService (proto: ../proto/core.proto)
-//
-// Dépendances runtime :
-//   - PostgreSQL+PostGIS (schema-per-tenant `terroir_t_<slug>`)
-//   - KAYA (cache producteurs + idempotency keys)
-//   - Kratos JWT (validation agent terrain)
-//   - Keto (ABAC namespace `Tenant`/`Cooperative`/`Parcel`)
-//   - Redpanda (publish `terroir.member.*`)
-//   - audit-lib (append-only `audit_t_<slug>.audit_log`)
-//
-// Ce skeleton P0 expose uniquement `version()` + un health endpoint.
+//! terroir-core — bibliothèque principale.
+//!
+//! Service central TERROIR (registre membres + parcelles + ménages).
+//! HTTP Axum :8830 + gRPC Tonic :8730.
+//!
+//! # Modules
+//! - `dto`            : DTOs Serde request/response
+//! - `model`          : entités sqlx (rows PG)
+//! - `errors`         : `AppError` + `IntoResponse`
+//! - `state`          : `AppState` partagé entre handlers
+//! - `tenant_context` : extracteur JWT / X-Tenant-Slug
+//! - `service`        : logique métier (producer, parcel, vault, audit…)
+//! - `events`         : Redpanda producer typé
+//! - `routes`         : Axum router
+//! - `grpc`           : Tonic `CoreService` implementation
+//!
+//! # Architecture
+//! - PostgreSQL schema-per-tenant `terroir_t_<slug>` (ADR-006)
+//! - PII chiffrés via Vault Transit DEK envelope (ADR-005)
+//! - LWW pour scalaires producer/parcel, CRDT Yjs pour polygone/notes (ADR-002)
+//! - KAYA RESP3 pour cache DEK (TTL 1h) + idempotency keys (TTL 24h)
+//! - Redpanda pour events terroir.member.* / terroir.parcel.*
 
 #![forbid(unsafe_code)]
+
+pub mod dto;
+pub mod errors;
+pub mod events;
+pub mod grpc;
+pub mod model;
+pub mod routes;
+pub mod service;
+pub mod state;
+pub mod tenant_context;
 
 /// Retourne la version sémantique du crate (lue depuis Cargo.toml).
 pub fn version() -> &'static str {
@@ -38,5 +52,11 @@ mod tests {
     #[test]
     fn version_is_populated() {
         assert!(!version().is_empty());
+    }
+
+    #[test]
+    fn ports_are_correct() {
+        assert_eq!(HTTP_PORT, 8830);
+        assert_eq!(GRPC_PORT, 8730);
     }
 }

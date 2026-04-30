@@ -24,8 +24,9 @@ repository = "https://github.com/faso-digitalisation/infra"
 
 [workspace.dependencies]
 tokio = { version = "1.45", features = ["full"] }
-axum = "0.8"
-tonic = "0.14"
+axum = { version = "0.8", features = ["macros"] }
+tonic = "0.12"
+tonic-build = "0.12"
 tower = "0.5"
 tower-http = { version = "0.6", features = ["trace", "cors"] }
 serde = { version = "1.0", features = ["derive"] }
@@ -34,10 +35,34 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 anyhow = "1.0"
 thiserror = "2.0"
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json"] }
-prost = "0.14"
-uuid = { version = "1.10", features = ["v4", "serde"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "uuid", "chrono", "json", "macros"] }
+prost = "0.13"
+uuid = { version = "1.10", features = ["v4", "v7", "serde"] }
 chrono = { version = "0.4", features = ["serde"] }
+# HTTP client for Vault Transit API
+reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-features = false }
+# KAYA RESP3 client (KAYA is the sovereign in-memory store; redis-rs is the protocol library)
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+# Redpanda / Kafka producer
+# dynamic-linking avoids cmake-build (which requires curl-dev headers on the build host).
+# On production, ensure librdkafka-dev is installed; in dev/CI without librdkafka, disable the kafka feature.
+rdkafka = { version = "0.36", default-features = false }
+# Yjs CRDT Rust port
+yrs = "0.22"
+# GeoJSON parsing
+geojson = "0.24"
+# JWT validation (JWKS cache)
+jsonwebtoken = "9.3"
+# Base64 for CRDT payloads and cursors
+base64 = "0.22"
+# Bytes for zero-copy slicing
+bytes = "1.9"
+# Async trait helper (used by Axum extractors)
+async-trait = "0.1"
+# Tokio stream utilities (used by gRPC server streaming)
+tokio-stream = { version = "0.1", features = ["net"] }
+# parking_lot RwLock (JWKS cache)
+parking_lot = "0.12"
 
 [profile.release]
 opt-level = 3
