@@ -1,0 +1,63 @@
+{
+  "type": "record",
+  "name": "AuthOtpIssue",
+  "namespace": "bf.faso.auth.otp",
+  "doc": "Émis par auth-ms à chaque génération d'OTP admin (HOTP 8 digits). SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "userId",
+      "type": "string",
+      "doc": "UUID Kratos de l'identité destinataire de l'OTP."
+    },
+    {
+      "name": "otpId",
+      "type": "string",
+      "doc": "UUID v4 unique de cet événement OTP (utilisable comme idempotency key)."
+    },
+    {
+      "name": "method",
+      "type": {
+        "type": "enum",
+        "name": "OtpMethod",
+        "symbols": ["TOTP", "HOTP", "RECOVERY_CODE", "BREAK_GLASS"]
+      },
+      "doc": "Méthode de génération."
+    },
+    {
+      "name": "channel",
+      "type": {
+        "type": "enum",
+        "name": "OtpChannel",
+        "symbols": ["EMAIL", "SMS", "AUTHENTICATOR_APP", "RECOVERY_PRINTED", "OUT_OF_BAND"]
+      },
+      "doc": "Canal de livraison de l'OTP à l'utilisateur."
+    },
+    {
+      "name": "issuedAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp UTC d'émission (epoch ms)."
+    },
+    {
+      "name": "issuedBy",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "UUID Kratos de l'opérateur qui a déclenché l'émission (null si self-service)."
+    },
+    {
+      "name": "expiresAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp UTC d'expiration (issuedAt + lifespan)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars) pour corrélation distribuée."
+    }
+  ]
+}

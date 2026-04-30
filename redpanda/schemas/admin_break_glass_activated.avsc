@@ -1,0 +1,70 @@
+{
+  "type": "record",
+  "name": "AdminBreakGlassActivated",
+  "namespace": "bf.faso.admin.breakglass",
+  "doc": "Activation du break-glass admin (accès d'urgence avec audit renforcé). Conservation 1 an minimum. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 (idempotency)."
+    },
+    {
+      "name": "activatedBy",
+      "type": "string",
+      "doc": "UUID Kratos de l'opérateur qui active le break-glass."
+    },
+    {
+      "name": "activatedAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp UTC d'activation."
+    },
+    {
+      "name": "expiresAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp UTC d'expiration automatique du jeton break-glass."
+    },
+    {
+      "name": "reason",
+      "type": "string",
+      "doc": "Motif obligatoire — repris dans l'audit légal."
+    },
+    {
+      "name": "ticketRef",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Référence ticket incident / change (ITIL)."
+    },
+    {
+      "name": "approvedBy",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "UUID Kratos d'un second super-admin (4-eyes) — null si politique solo."
+    },
+    {
+      "name": "scope",
+      "type": {
+        "type": "array",
+        "items": "string"
+      },
+      "doc": "Liste des permissions/services accordés temporairement."
+    },
+    {
+      "name": "sourceIp",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "IP source de l'activation (IPv4/IPv6)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OTel trace ID."
+    }
+  ]
+}

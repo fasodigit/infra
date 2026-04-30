@@ -1,0 +1,72 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "UssdOtpSent",
+  "doc": "OTP envoyé via USSD à un producteur (canal sans-smartphone). Rétention 7 j (ops courtes). SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug de la coopérative-tenant."
+    },
+    {
+      "name": "sessionId",
+      "type": "string",
+      "doc": "UUID de la session USSD parente."
+    },
+    {
+      "name": "memberId",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "UUID du producteur si identifié au moment de l'envoi. null si en cours d'enrôlement."
+    },
+    {
+      "name": "msisdn",
+      "type": "string",
+      "doc": "Numéro MSISDN destinataire (format E.164, ex: '+22670123456'). Chiffré Vault Transit en prod."
+    },
+    {
+      "name": "otpReference",
+      "type": "string",
+      "doc": "Référence courte non-sensible de l'OTP (hash partiel, pas la valeur claire)."
+    },
+    {
+      "name": "otpPurpose",
+      "type": {
+        "type": "enum",
+        "name": "OtpPurpose",
+        "symbols": ["ENROLLMENT", "PAYMENT_CONFIRMATION", "SESSION_AUTH", "SENSITIVE_ACTION"]
+      },
+      "doc": "Finalité de l'OTP envoyé."
+    },
+    {
+      "name": "expiresAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC d'expiration de l'OTP (epoch ms)."
+    },
+    {
+      "name": "telecomOperator",
+      "type": {
+        "type": "enum",
+        "name": "TelecomOperator",
+        "symbols": ["ORANGE_BF", "MOOV_BF", "TELECEL_BF", "UNKNOWN"]
+      },
+      "doc": "Opérateur télécom détecté via préfixe MSISDN."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC d'envoi (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars)."
+    }
+  ]
+}

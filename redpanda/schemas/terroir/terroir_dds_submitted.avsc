@@ -1,0 +1,58 @@
+{
+  "type": "record",
+  "namespace": "bf.faso.terroir.events.v1",
+  "name": "DdsSubmitted",
+  "doc": "Due Diligence Statement soumise au système TRACES NT (EUDR Art.4). Rétention ~7 ans (Loi 010-2004 BF). SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 — clé d'idempotence."
+    },
+    {
+      "name": "tenantSlug",
+      "type": "string",
+      "doc": "Slug de la coopérative-tenant exportatrice."
+    },
+    {
+      "name": "ddsId",
+      "type": "string",
+      "doc": "UUID interne TERROIR de la DDS."
+    },
+    {
+      "name": "exporterId",
+      "type": "string",
+      "doc": "UUID de l'opérateur exportateur dans le registre TERROIR."
+    },
+    {
+      "name": "tracesNtReference",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Numéro de référence TRACES NT attribué après acceptation. null si PENDING ou REJECTED."
+    },
+    {
+      "name": "submissionStatus",
+      "type": {
+        "type": "enum",
+        "name": "SubmissionStatus",
+        "symbols": ["PENDING", "ACCEPTED", "REJECTED", "ANNULLED"]
+      },
+      "doc": "Statut de la soumission au portail TRACES NT."
+    },
+    {
+      "name": "signatureFingerprint",
+      "type": "string",
+      "doc": "SHA-256 du certificat EORI utilisé pour signer la soumission (non-répudiation)."
+    },
+    {
+      "name": "occurredAt",
+      "type": {"type": "long", "logicalType": "timestamp-millis"},
+      "doc": "Timestamp UTC de l'événement (epoch ms)."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OpenTelemetry trace ID (32 hex chars)."
+    }
+  ]
+}

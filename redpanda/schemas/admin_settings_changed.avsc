@@ -1,0 +1,69 @@
+{
+  "type": "record",
+  "name": "AdminSettingsChanged",
+  "namespace": "bf.faso.admin.settings",
+  "doc": "Modification d'un paramètre admin global (feature flag, threshold, MFA policy). Audit ~7 ans. SPDX-License-Identifier: AGPL-3.0-or-later",
+  "fields": [
+    {
+      "name": "eventId",
+      "type": "string",
+      "doc": "UUID v4 (idempotency)."
+    },
+    {
+      "name": "settingKey",
+      "type": "string",
+      "doc": "Clé canonique du setting (ex: 'auth.mfa.required_for_admin')."
+    },
+    {
+      "name": "settingScope",
+      "type": {
+        "type": "enum",
+        "name": "SettingScope",
+        "symbols": ["GLOBAL", "TENANT", "PLATFORM", "USER"]
+      },
+      "doc": "Portée d'application du paramètre."
+    },
+    {
+      "name": "oldValue",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Valeur précédente (JSON-encoded). Null = setting créé."
+    },
+    {
+      "name": "newValue",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Nouvelle valeur (JSON-encoded). Null = setting supprimé."
+    },
+    {
+      "name": "changedBy",
+      "type": "string",
+      "doc": "UUID Kratos du super-admin qui a modifié."
+    },
+    {
+      "name": "changedAt",
+      "type": {
+        "type": "long",
+        "logicalType": "timestamp-millis"
+      },
+      "doc": "Timestamp UTC du changement."
+    },
+    {
+      "name": "reason",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Motif renseigné dans l'UI admin."
+    },
+    {
+      "name": "ticketRef",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Référence change-management."
+    },
+    {
+      "name": "traceId",
+      "type": "string",
+      "doc": "OTel trace ID."
+    }
+  ]
+}
