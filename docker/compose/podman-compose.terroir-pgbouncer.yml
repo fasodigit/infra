@@ -1,0 +1,70 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# podman-compose.terroir-pgbouncer.yml
+# Override: adds pgbouncer-terroir service to the TERROIR dev stack.
+#
+# Usage:
+#   podman-compose -f podman-compose.yml -f podman-compose.terroir-pgbouncer.yml \
+#     up -d pgbouncer-terroir
+#
+# The terroir services (terroir-admin, terroir-core, ...) connect via:
+#   DATABASE_URL=postgres://terroir_svc:<pass>@pgbouncer-terroir:6432/faso_terroir
+#                ?statement_cache_capacity=0
+#
+# Note: statement_cache_capacity=0 disables sqlx prepared statement cache —
+# mandatory for pgbouncer transaction pooling mode.
+
+version: "3.9"
+
+services:
+  pgbouncer-terroir:
+    image: bitnami/pgbouncer:1.23.1
+    container_name: pgbouncer-terroir
+    restart: unless-stopped
+    ports:
+      # Not exposed to host by default; only accessible within compose network.
+      # Uncomment for local debugging:
+      # - "127.0.0.1:6432:6432"
+    expose:
+      - "6432"
+    environment:
+      # bitnami image reads these and generates pgbouncer.ini + userlist.txt
+      PGBOUNCER_DATABASE: faso_terroir
+      PGBOUNCER_HOST: postgres
+      PGBOUNCER_PORT: "5432"
+      POSTGRESQL_DATABASE: postgres
+      POSTGRESQL_USERNAME: terroir_svc
+      # Secret injected by Vault Agent or compose secret — never hardcoded.
+      POSTGRESQL_PASSWORD_FILE: /run/secrets/terroir_db_password
+      PGBOUNCER_POOL_MODE: transaction
+      PGBOUNCER_MAX_CLIENT_CONN: "5000"
+      PGBOUNCER_DEFAULT_POOL_SIZE: "50"
+      PGBOUNCER_RESERVE_POOL_SIZE: "10"
+      PGBOUNCER_RESERVE_POOL_TIMEOUT: "3"
+      PGBOUNCER_SERVER_IDLE_TIMEOUT: "600"
+      PGBOUNCER_SERVER_LIFETIME: "3600"
+      PGBOUNCER_IGNORE_STARTUP_PARAMETERS: extra_float_digits,options
+      PGBOUNCER_AUTH_TYPE: scram-sha-256
+      PGBOUNCER_LOG_DISCONNECTIONS: "1"
+    secrets:
+      - terroir_db_password
+    volumes:
+      - ./pgbouncer-terroir.ini:/bitnami/pgbouncer/conf/pgbouncer.ini:ro
+    networks:
+      - faso_network
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "localhost", "-p", "6432", "-U", "terroir_svc"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+secrets:
+  terroir_db_password:
+    file: ./secrets/terroir_db_password.txt
+
+networks:
+  faso_network:
+    external: true
