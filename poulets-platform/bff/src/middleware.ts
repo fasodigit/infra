@@ -203,7 +203,13 @@ function corsHeaders(): HeadersInit {
   return {
     'Access-Control-Allow-Origin': frontendUrl,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    // OTel W3C trace context headers must be allowed: the Angular browser
+    // SDK propagates traceparent/tracestate/baggage on every XHR/fetch so
+    // BFF spans can be linked to frontend spans in Jaeger/Tempo. Without
+    // these in Allow-Headers the browser CORS preflight rejects POST/PUT
+    // requests carrying them.
+    'Access-Control-Allow-Headers':
+      'Content-Type, Authorization, traceparent, tracestate, baggage',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Max-Age': '86400',
   };
