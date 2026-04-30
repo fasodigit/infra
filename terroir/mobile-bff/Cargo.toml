@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: AGPL-3.0-or-later
 # terroir-mobile-bff — BFF app agent terrain (offline-first, CRDT sync)
-# HTTP :8833
+# HTTP :8833 (REST mobile-optimized + WebSocket /ws/sync/{producer_id})
 
 [package]
 name = "terroir-mobile-bff"
@@ -8,6 +8,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 authors.workspace = true
+build = "build.rs"
 
 [lib]
 name = "terroir_mobile_bff"
@@ -19,9 +20,10 @@ path = "src/main.rs"
 
 [dependencies]
 tokio = { workspace = true }
-axum = { workspace = true }
+axum = { workspace = true, features = ["ws", "macros"] }
+tonic = { workspace = true }
 tower = { workspace = true }
-tower-http = { workspace = true }
+tower-http = { workspace = true, features = ["compression-br", "compression-gzip", "trace", "cors"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
 tracing = { workspace = true }
@@ -29,5 +31,19 @@ tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
 sqlx = { workspace = true }
+prost = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+reqwest = { workspace = true }
+redis = { workspace = true }
+yrs = { workspace = true }
+jsonwebtoken = { workspace = true }
+base64 = { workspace = true }
+bytes = { workspace = true }
+async-trait = { workspace = true }
+tokio-stream = { workspace = true }
+parking_lot = { workspace = true }
+futures-util = "0.3"
+
+[build-dependencies]
+tonic-build = { workspace = true }
