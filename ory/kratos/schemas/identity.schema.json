@@ -58,7 +58,9 @@
           "type": "string",
           "title": "Role",
           "enum": [
+            "super-admin",
             "admin",
+            "manager",
             "operator",
             "eleveur",
             "client"
