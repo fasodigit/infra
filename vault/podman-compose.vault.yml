@@ -51,6 +51,7 @@ services:
     volumes:
       - vault-data:/vault/data
       - vault-logs:/vault/logs
+      - vault-audit:/vault/audit
       - ../../vault/config:/vault/config:ro
       - ../../vault/policies:/vault/policies:ro
     cap_add:
@@ -72,6 +73,7 @@ volumes:
   consul-data:
   vault-data:
   vault-logs:
+  vault-audit:
 
 networks:
   faso-network:

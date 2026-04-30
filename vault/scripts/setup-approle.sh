@@ -58,6 +58,12 @@ create_policy() {
 
   log "Creating policy: ${policy_name}"
 
+  # The legacy ${db_role} positional argument now refers to the *base* role
+  # name (without -runtime/-flyway suffix). The policy grants read on both
+  # paths because Vault Agent injects two separate sidecar templates.
+  local runtime_role="${db_role%-role}-runtime-role"
+  local flyway_role="${db_role%-role}-flyway-role"
+
   local policy_hcl
   policy_hcl=$(cat <<HCL
 # Auto-generated policy for ${service}
@@ -71,8 +77,13 @@ path "faso/metadata/${service}/*" {
   capabilities = ["read", "list"]
 }
 
-# Database dynamic credentials
-path "database/creds/${db_role}" {
+# Database dynamic credentials — runtime (DML, long-lived HikariCP pool)
+path "database/creds/${runtime_role}" {
+  capabilities = ["read"]
+}
+
+# Database dynamic credentials — flyway (DDL, one-shot at boot)
+path "database/creds/${flyway_role}" {
   capabilities = ["read"]
 }
 
