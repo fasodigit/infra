@@ -63,6 +63,25 @@ async-trait = "0.1"
 tokio-stream = { version = "0.1", features = ["net"] }
 # parking_lot RwLock (JWKS cache)
 parking_lot = "0.12"
+# SHA-256 hashing (polygon hash for KAYA cache key, evidence integrity)
+sha2 = "0.10"
+# Hex encoding (polygon hash → hex string)
+hex = "0.4"
+# AWS SDK S3 client (MinIO compatibility with force_path_style)
+aws-sdk-s3 = { version = "1.50", default-features = false, features = ["rt-tokio", "rustls"] }
+aws-config = { version = "1.5", default-features = false, features = ["rt-tokio", "rustls"] }
+aws-credential-types = "1.2"
+aws-smithy-types = "1.2"
+# Pure-Rust GeoTIFF reader (no GDAL native dep)
+tiff = "0.9"
+# geo crate for polygon ops (centroid, bbox, contains)
+geo = "0.30"
+# pure-Rust PDF generator for DDS evidence
+printpdf = { version = "0.7", default-features = false }
+# Async retry helper for TRACES NT submission
+backoff = { version = "0.4", features = ["tokio"] }
+# Mini LRU for in-memory tile cache
+lru = "0.12"
 
 [profile.release]
 opt-level = 3
