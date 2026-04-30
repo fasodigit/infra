@@ -353,3 +353,17 @@ git worktree remove .claude/worktrees/agent-aee7be17
 ---
 
 *Generated 2026-04-24 by Phase 1 status audit*
+
+---
+
+## SPIFFE Peer Auth — Activation Status (2026-04-28)
+
+| Service | Config wiring | Code wiring | Activation |
+|---------|---------------|-------------|------------|
+| auth-ms | `application.yml` lines 101-112 (env: `SPIFFE_ENABLED`) | `JwtAuthenticationFilter` + gRPC TLS | Set `SPIFFE_ENABLED=true` once SPIRE socket reachable |
+| poulets-api | `application.yml` (added 2026-04-28, env: `SPIFFE_ENABLED`) | Pending (no Spring SPIFFE filter) | K8s migration |
+| ARMAGEDDON | `armageddon-mesh` crate, `gateway.mesh` config | Production-grade | Uncomment `mesh:` block in armageddon-dev.yaml |
+
+**Dev limitation**: SPIRE agent socket lives in the `spire-sockets` docker volume. Java services run on host in dev so the socket isn't reachable. Compose now bind-mounts to `${SPIRE_HOST_SOCKET_DIR:-./sockets}/agent.sock`; activate by recreating the SPIRE agent container with the new mount and exporting `SPIFFE_ENDPOINT_SOCKET=unix:/home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA/spire/sockets/agent.sock` for each Java service.
+
+**Prod path (K8s)**: SPIRE deployed as DaemonSet, socket in `hostPath` `/run/spire/sockets`, Java pods mount via volumeMount, set `SPIFFE_ENABLED=true` in the Helm values.
