@@ -1,0 +1,65 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- T100__audit_log.sql.tmpl
+-- Audit log — append-only, per-tenant isolated schema.
+-- Immutability enforced at DB level via UPDATE/DELETE triggers
+-- (Loi 010-2004 BF — protection données personnelles, art. 24).
+-- Schema: {{AUDIT_SCHEMA}} (e.g. audit_t_uph_hounde)
+
+SET search_path TO {{AUDIT_SCHEMA}};
+
+CREATE TABLE audit_log (
+  id            UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  tenant_slug   VARCHAR(60) NOT NULL,
+  actor_id      UUID,                  -- NULL for system-generated events
+  action        VARCHAR(80) NOT NULL,  -- e.g. 'producer.create', 'parcel.update'
+  resource_type VARCHAR(50),
+  resource_id   UUID,
+  old_value     JSONB,
+  new_value     JSONB,
+  metadata      JSONB,
+  ip_address    VARCHAR(45),
+  user_agent    TEXT,
+  trace_id      VARCHAR(32),
+  occurred_at   TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Optimised for time-ordered audit queries (most recent first).
+CREATE INDEX idx_audit_action_time
+  ON audit_log(action, occurred_at DESC);
+
+CREATE INDEX idx_audit_actor
+  ON audit_log(actor_id, occurred_at DESC)
+  WHERE actor_id IS NOT NULL;
+
+CREATE INDEX idx_audit_resource
+  ON audit_log(resource_type, resource_id)
+  WHERE resource_type IS NOT NULL;
+
+-- ---------------------------------------------------------------------------
+-- Immutability enforcement (Loi 010-2004 BF compliance)
+-- Both UPDATE and DELETE are blocked unconditionally; only INSERT is allowed.
+-- TRUNCATE is blocked at role level (terroir_app has no TRUNCATE privilege).
+-- ---------------------------------------------------------------------------
+CREATE OR REPLACE FUNCTION audit_log_prevent_mutation()
+RETURNS trigger
+LANGUAGE plpgsql AS $$
+BEGIN
+  RAISE EXCEPTION
+    'audit_log is append-only (Loi 010-2004 BF compliance) — operation % denied',
+    TG_OP
+    USING ERRCODE = '42501';  -- insufficient_privilege
+  RETURN NULL;
+END;
+$$;
+
+CREATE TRIGGER audit_log_no_update
+  BEFORE UPDATE ON audit_log
+  FOR EACH ROW EXECUTE FUNCTION audit_log_prevent_mutation();
+
+CREATE TRIGGER audit_log_no_delete
+  BEFORE DELETE ON audit_log
+  FOR EACH ROW EXECUTE FUNCTION audit_log_prevent_mutation();
+
+-- Grants: terroir_app may INSERT and SELECT but never UPDATE/DELETE.
+GRANT USAGE ON SCHEMA {{AUDIT_SCHEMA}} TO terroir_app;
+GRANT SELECT, INSERT ON audit_log TO terroir_app;

@@ -1,0 +1,49 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- T002__producer.sql.tmpl
+-- Producer table (M1) — LWW sync strategy.
+-- PII fields encrypted via Vault Transit envelope (DEK per-record AES-256-GCM).
+-- See ADR-005 : Vault Transit, KEK terroir-pii-master rotation 90j auto.
+-- RLS enabled : isolation is at schema level, policy grants terroir_app full access.
+
+SET search_path TO {{SCHEMA}};
+
+CREATE TABLE producer (
+  id                         UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  cooperative_id             UUID        NOT NULL,
+  external_id                VARCHAR(40),
+
+  -- PII chiffrés (Vault Transit DEK envelope)
+  full_name_encrypted        BYTEA,
+  full_name_dek_kid          TEXT,
+  nin_encrypted              BYTEA,       -- Numéro d'Identification National
+  nin_dek_kid                TEXT,
+  phone_encrypted            BYTEA,
+  phone_dek_kid              TEXT,
+  photo_url_encrypted        BYTEA,
+  photo_url_dek_kid          TEXT,
+  gps_domicile_lat_encrypted BYTEA,
+  gps_domicile_lat_dek_kid   TEXT,
+  gps_domicile_lon_encrypted BYTEA,
+  gps_domicile_lon_dek_kid   TEXT,
+
+  -- Métadonnées non-PII
+  household_id               UUID,
+  primary_crop               VARCHAR(40),
+  registered_at              TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at                 TIMESTAMPTZ NOT NULL DEFAULT now(),
+
+  -- LWW vector clock — incremented on every sync write
+  lww_version                BIGINT      NOT NULL DEFAULT 1
+);
+
+CREATE INDEX idx_producer_coop ON producer(cooperative_id);
+CREATE INDEX idx_producer_external ON producer(external_id) WHERE external_id IS NOT NULL;
+
+ALTER TABLE producer ENABLE ROW LEVEL SECURITY;
+
+-- Schema-level isolation: terroir_app accesses all rows within this schema.
+-- Cross-schema access is blocked at the Postgres schema grant level (ADR-006).
+CREATE POLICY producer_app_all ON producer
+  FOR ALL TO terroir_app
+  USING (true)
+  WITH CHECK (true);

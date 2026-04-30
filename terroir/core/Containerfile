@@ -1,0 +1,54 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# terroir-core — multi-stage container build (Rust 1.85 + distroless runtime)
+#
+# Build context : `INFRA/terroir/` (workspace root) — see docker-compose override.
+
+# ── Stage 1: builder ────────────────────────────────────────────
+FROM docker.io/library/rust:1.85-alpine AS builder
+
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev openssl-libs-static \
+    && rustup target add x86_64-unknown-linux-musl
+
+WORKDIR /build
+
+# Cache deps : copy workspace manifest + every member Cargo.toml first.
+COPY Cargo.toml ./
+COPY core/Cargo.toml core/
+COPY eudr/Cargo.toml eudr/
+COPY mobile-bff/Cargo.toml mobile-bff/
+COPY ussd/Cargo.toml ussd/
+COPY ussd-simulator/Cargo.toml ussd-simulator/
+COPY buyer/Cargo.toml buyer/
+COPY admin/Cargo.toml admin/
+
+# Stub bins to allow dependency-only compilation.
+RUN mkdir -p core/src eudr/src mobile-bff/src ussd/src ussd-simulator/src buyer/src admin/src \
+ && for c in core eudr mobile-bff ussd ussd-simulator buyer admin; do \
+        echo 'fn main() {}' > $c/src/main.rs; \
+        echo '' > $c/src/lib.rs; \
+    done \
+ && cargo build --release --target x86_64-unknown-linux-musl -p terroir-core \
+ && rm -rf core/src eudr/src mobile-bff/src ussd/src ussd-simulator/src buyer/src admin/src
+
+# Real sources.
+COPY core/ core/
+RUN cargo build --release --target x86_64-unknown-linux-musl -p terroir-core
+
+# ── Stage 2: runtime ────────────────────────────────────────────
+FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+
+WORKDIR /app
+COPY --from=builder /build/target/x86_64-unknown-linux-musl/release/terroir-core /app/terroir-core
+
+EXPOSE 8830 8730
+
+USER nonroot:nonroot
+ENTRYPOINT ["/app/terroir-core"]
+
+LABEL org.opencontainers.image.title="terroir-core" \
+      org.opencontainers.image.description="TERROIR — registre membres et parcelles (Rust Axum + Tonic)" \
+      org.opencontainers.image.vendor="FASO DIGITALISATION" \
+      org.opencontainers.image.licenses="AGPL-3.0-or-later"
+
+HEALTHCHECK --interval=15s --timeout=5s --start-period=20s --retries=3 \
+  CMD ["/app/terroir-core", "--healthcheck"]

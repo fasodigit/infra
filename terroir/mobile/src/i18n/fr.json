@@ -1,0 +1,43 @@
+{
+  "app": {
+    "name": "TERROIR",
+    "version": "v0.1.0"
+  },
+  "auth": {
+    "login_title": "Connexion",
+    "email": "Email",
+    "password": "Mot de passe",
+    "submit": "Se connecter",
+    "logout": "Déconnexion",
+    "logout_confirm": "Confirmer la déconnexion ?",
+    "errors": {
+      "required": "Email et mot de passe sont obligatoires.",
+      "invalid": "Identifiants invalides.",
+      "offline": "Pas de connexion réseau."
+    }
+  },
+  "home": {
+    "greeting": "Bonjour, agent.",
+    "subtitle": "Tableau de bord TERROIR",
+    "sync_card_title": "Synchronisation",
+    "sync_last": "Dernière synchronisation : {{when}}",
+    "sync_never": "jamais",
+    "sync_pending_uploads": "Uploads en attente : {{count}}",
+    "sync_link": "Voir le détail sync",
+    "modules_p1": "Modules P1"
+  },
+  "sync": {
+    "title": "État de la synchronisation",
+    "pending_uploads": "Uploads en attente",
+    "pending_downloads": "Downloads en attente",
+    "conflicts": "Conflits CRDT",
+    "docs_section": "Documents Yjs locaux",
+    "docs_empty": "Aucun document local pour l'instant."
+  },
+  "health": {
+    "checking": "Vérification...",
+    "up": "BFF accessible",
+    "degraded": "BFF dégradé",
+    "down": "Hors ligne"
+  }
+}

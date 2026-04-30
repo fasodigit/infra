@@ -1,0 +1,193 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# =============================================================================
+# Podman Compose override — TERROIR (digitalisation coopératives agricoles BF)
+# =============================================================================
+# Module : digitalisation chaîne de valeur coton/sésame/karité/anacarde, BF.
+# Référence : INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md
+# Port-policy : INFRA/port-policy.yaml (8830-8835 HTTP, 8730-8731 gRPC,
+#               9004 actuator Java, 9904 admin Rust, 4810-4811 frontend).
+#
+# Usage :
+#   cd INFRA/docker/compose
+#   podman-compose -f podman-compose.yml \
+#                  -f ../../terroir/podman-compose.terroir.yml \
+#                  --profile terroir up -d
+#
+# Sur machine contributeur sans podman :
+#   docker compose -f podman-compose.yml \
+#                  -f ../../terroir/podman-compose.terroir.yml \
+#                  --profile terroir up -d
+#
+# Tous les services TERROIR sont sous le profile `terroir` — donc inactifs
+# par défaut. Ils peuvent être démarrés individuellement :
+#   podman-compose -f podman-compose.yml \
+#                  -f ../../terroir/podman-compose.terroir.yml \
+#                  up -d terroir-admin
+# =============================================================================
+
+services:
+
+  # ---------------------------------------------------------------------------
+  # terroir-core — registre membres + parcelles + ménages (Rust Axum + Tonic)
+  # ---------------------------------------------------------------------------
+  terroir-core:
+    profiles: [terroir]
+    build:
+      context: .
+      dockerfile: core/Containerfile
+    container_name: faso-terroir-core
+    ports:
+      - "8830:8830"  # HTTP
+      - "8730:8730"  # gRPC
+    depends_on:
+      - postgres
+      - kaya
+      - kratos
+      - keto
+      - redpanda
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://faso:${POSTGRES_PASSWORD:-faso}@postgres:5432/faso_terroir
+      KAYA_URL: redis://kaya:6380
+      KRATOS_PUBLIC_URL: http://kratos:4433
+      KETO_READ_URL: http://keto:4466
+      REDPANDA_BROKERS: redpanda:9092
+      VAULT_ADDR: http://vault:8200
+    healthcheck:
+      test: ["CMD", "/app/terroir-core", "--healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+  # ---------------------------------------------------------------------------
+  # terroir-eudr — validation EUDR (Hansen GFC + JRC TMF) + DDS (Rust)
+  # ---------------------------------------------------------------------------
+  terroir-eudr:
+    profiles: [terroir]
+    build:
+      context: .
+      dockerfile: eudr/Containerfile
+    container_name: faso-terroir-eudr
+    ports:
+      - "8831:8831"  # HTTP
+      - "8731:8731"  # gRPC
+    depends_on:
+      - terroir-core
+      - redpanda
+    environment:
+      RUST_LOG: info
+      TERROIR_CORE_GRPC: http://terroir-core:8730
+      VAULT_ADDR: http://vault:8200
+      MINIO_ENDPOINT: http://minio:9000
+
+  # ---------------------------------------------------------------------------
+  # terroir-mobile-bff — BFF agent terrain offline-first (Rust)
+  # ---------------------------------------------------------------------------
+  terroir-mobile-bff:
+    profiles: [terroir]
+    build:
+      context: .
+      dockerfile: mobile-bff/Containerfile
+    container_name: faso-terroir-mobile-bff
+    ports:
+      - "8833:8833"
+    depends_on:
+      - terroir-core
+      - kaya
+    environment:
+      RUST_LOG: info
+      TERROIR_CORE_GRPC: http://terroir-core:8730
+      KAYA_URL: redis://kaya:6380
+
+  # ---------------------------------------------------------------------------
+  # terroir-ussd — gateway USSD/SMS (Rust, P3+)
+  # ---------------------------------------------------------------------------
+  terroir-ussd:
+    profiles: [terroir]
+    build:
+      context: .
+      dockerfile: ussd/Containerfile
+    container_name: faso-terroir-ussd
+    ports:
+      - "8834:8834"
+    depends_on:
+      - terroir-core
+      - terroir-ussd-simulator
+    environment:
+      RUST_LOG: info
+      TERROIR_CORE_GRPC: http://terroir-core:8730
+      USSD_SIMULATOR_URL: http://terroir-ussd-simulator:1080
+
+  # ---------------------------------------------------------------------------
+  # terroir-ussd-simulator — mock Hub2/AT/Twilio (loopback dev/test)
+  # ---------------------------------------------------------------------------
+  terroir-ussd-simulator:
+    profiles: [terroir]
+    build:
+      context: .
+      dockerfile: ussd-simulator/Containerfile
+    container_name: faso-terroir-ussd-simulator
+    ports:
+      - "127.0.0.1:1080:1080"
+    depends_on:
+      - kaya
+    environment:
+      RUST_LOG: info
+      KAYA_URL: redis://kaya:6380
+
+  # ---------------------------------------------------------------------------
+  # terroir-buyer — portail acheteurs/exportateurs (Rust, P3)
+  # ---------------------------------------------------------------------------
+  terroir-buyer:
+    profiles: [terroir]
+    build:
+      context: .
+      dockerfile: buyer/Containerfile
+    container_name: faso-terroir-buyer
+    ports:
+      - "8835:8835"
+    depends_on:
+      - terroir-core
+      - terroir-eudr
+    environment:
+      RUST_LOG: info
+      TERROIR_CORE_GRPC: http://terroir-core:8730
+      TERROIR_EUDR_GRPC: http://terroir-eudr:8731
+      VAULT_ADDR: http://vault:8200
+
+  # ---------------------------------------------------------------------------
+  # terroir-admin — loopback admin API (feature flags, tenant onboarding)
+  # ---------------------------------------------------------------------------
+  terroir-admin:
+    profiles: [terroir]
+    build:
+      context: .
+      dockerfile: admin/Containerfile
+    container_name: faso-terroir-admin
+    ports:
+      - "127.0.0.1:9904:9904"
+    depends_on:
+      - postgres
+    environment:
+      RUST_LOG: info
+      DATABASE_URL: postgres://faso:${POSTGRES_PASSWORD:-faso}@postgres:5432/faso_terroir
+
+  # ---------------------------------------------------------------------------
+  # terroir-payment — orchestration mobile money (Java Spring Boot, P2)
+  # Container build différé : implémentation Phase TERROIR P2.
+  # Le placeholder est défini ici pour réserver le slot dans le profil.
+  # ---------------------------------------------------------------------------
+  terroir-payment:
+    profiles: [terroir, terroir-payment-placeholder]
+    image: docker.io/library/eclipse-temurin:21-jre-alpine
+    container_name: faso-terroir-payment
+    command: ["sh", "-c", "echo 'terroir-payment placeholder — implementation P2 (cf. INFRA/terroir/payment/README.md)' && sleep infinity"]
+    ports:
+      - "8832:8832"
+      - "127.0.0.1:9004:9004"
+    depends_on:
+      - terroir-core
+      - redpanda
+    environment:
+      SPRING_PROFILES_ACTIVE: dev

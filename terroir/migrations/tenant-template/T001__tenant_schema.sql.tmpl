@@ -1,0 +1,19 @@
+-- SPDX-License-Identifier: AGPL-3.0-or-later
+-- T001__tenant_schema.sql.tmpl
+-- Creates the per-tenant schema pair.
+-- Placeholders substituted by terroir-admin tenant_template module:
+--   {{SCHEMA}}       -> terroir_t_<slug>
+--   {{AUDIT_SCHEMA}} -> audit_t_<slug>
+
+CREATE SCHEMA IF NOT EXISTS {{SCHEMA}};
+CREATE SCHEMA IF NOT EXISTS {{AUDIT_SCHEMA}};
+
+GRANT USAGE ON SCHEMA {{SCHEMA}} TO terroir_app;
+GRANT USAGE ON SCHEMA {{AUDIT_SCHEMA}} TO terroir_app;
+
+-- Future tables get the grant automatically.
+ALTER DEFAULT PRIVILEGES IN SCHEMA {{SCHEMA}}
+  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO terroir_app;
+
+ALTER DEFAULT PRIVILEGES IN SCHEMA {{AUDIT_SCHEMA}}
+  GRANT SELECT, INSERT ON TABLES TO terroir_app;

@@ -1,0 +1,43 @@
+{
+  "app": {
+    "name": "TERROIR",
+    "version": "v0.1.0"
+  },
+  "auth": {
+    "login_title": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in",
+    "logout": "Log out",
+    "logout_confirm": "Confirm logout?",
+    "errors": {
+      "required": "Email and password are required.",
+      "invalid": "Invalid credentials.",
+      "offline": "No network connection."
+    }
+  },
+  "home": {
+    "greeting": "Hello, agent.",
+    "subtitle": "TERROIR dashboard",
+    "sync_card_title": "Sync",
+    "sync_last": "Last sync: {{when}}",
+    "sync_never": "never",
+    "sync_pending_uploads": "Pending uploads: {{count}}",
+    "sync_link": "View sync details",
+    "modules_p1": "P1 modules"
+  },
+  "sync": {
+    "title": "Sync status",
+    "pending_uploads": "Pending uploads",
+    "pending_downloads": "Pending downloads",
+    "conflicts": "CRDT conflicts",
+    "docs_section": "Local Yjs documents",
+    "docs_empty": "No local documents yet."
+  },
+  "health": {
+    "checking": "Checking...",
+    "up": "BFF reachable",
+    "degraded": "BFF degraded",
+    "down": "Offline"
+  }
+}

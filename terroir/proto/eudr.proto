@@ -1,0 +1,19 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+// terroir-eudr gRPC schema (skeleton P0.A — implémenté en P1.3).
+// See INFRA/terroir/docs/ULTRAPLAN-TERROIR-2026-04-30.md §6.
+
+syntax = "proto3";
+
+package terroir.eudr.v1;
+
+// EudrService — validation parcelles vs Hansen GFC + JRC TMF, génération DDS.
+service EudrService {
+  rpc Health(HealthRequest) returns (HealthReply);
+}
+
+message HealthRequest {}
+
+message HealthReply {
+  string status = 1;
+  string version = 2;
+}
