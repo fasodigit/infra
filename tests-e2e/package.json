@@ -14,6 +14,8 @@
     "test:chrome:smoke": "playwright test --project=chrome-headless-new -g @smoke",
     "simulation": "bun run scripts/run-simulation.ts --project=chrome-headless-new",
     "simulation:quick": "bun run scripts/run-simulation.ts --project=chromium-headless --max-iterations=3",
+    "simulation:full": "WIPE_IDENTITIES=true playwright test --project=chrome-headless-new tests/01-signup tests/02-security tests/03-profile tests/04-business tests/06-payments tests/07-navigation tests/08-auth-flows tests/09-dashboards tests/10-validation tests/11-api-health tests/12-latency-tracing tests/13-error-pages tests/14-mobile-responsive --workers=1 --retries=1",
+    "simulation:ultrathink": "WIPE_IDENTITIES=true playwright test --project=chrome-headless-new --workers=2 --retries=1",
     "load:small": "SIM_BATCH=10 SIM_TX_PER_CLIENT=2 playwright test tests/05-load",
     "load:medium": "SIM_BATCH=100 SIM_TX_PER_CLIENT=3 playwright test tests/05-load --workers=8",
     "load:full": "SIM_BATCH=1000 SIM_TX_PER_CLIENT=5 playwright test tests/05-load --workers=20",

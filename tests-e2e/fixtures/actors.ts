@@ -7,6 +7,8 @@ export type ActorRole =
   | 'vaccins'
   | 'client'
   | 'admin'
+  | 'super-admin'
+  | 'manager'
   | 'veterinaire'
   | 'transporteur';
 
@@ -128,7 +130,46 @@ export const actors25: Actor[] = [
   ...Array.from({ length: 5 }, (_, i) => makeActor('client', i + 1)),
 ];
 
+/**
+ * SUPER-ADMIN seedés en Phase 4.c suite (Postgres reset + Kratos identités + Keto tuples).
+ * Email = identifiant primaire pour tous les flows auth (cf. CLAUDE.md §12).
+ * Password lu depuis env (E2E_<NAME>_PASSWORD) avec fallback dev.
+ * Mot de passe par défaut sécuritairement faible — à override en CI prod.
+ */
+export interface SeededAdmin extends Actor {
+  /** UUID Kratos (subject_id pour tuples Keto AdminRole + Capability). */
+  kratosId: string;
+}
+
+export const seededSuperAdmins: SeededAdmin[] = [
+  {
+    id: 'sa-aminata',
+    kratosId: '253ec814-1e10-44c7-b7a7-fd44581e4393',
+    role: 'super-admin',
+    firstName: 'Aminata',
+    lastName: 'Ouédraogo',
+    email: 'aminata.ouedraogo@faso.bf',
+    phone: '+22670123456',
+    password: process.env.E2E_AMINATA_PASSWORD ?? 'ChangeMe!2026SuperAdmin',
+    city: 'Ouagadougou',
+    region: 'Centre',
+  },
+  {
+    id: 'sa-souleymane',
+    kratosId: '5d621b0c-f611-45d8-afe3-2d299d2eb82d',
+    role: 'super-admin',
+    firstName: 'Souleymane',
+    lastName: 'Sawadogo',
+    email: 's.sawadogo@faso.bf',
+    phone: '+22670987654',
+    password: process.env.E2E_SOULEYMANE_PASSWORD ?? 'ChangeMe!2026SecurityLead',
+    city: 'Ouagadougou',
+    region: 'Centre',
+  },
+];
+
 export function actorsByRole(role: ActorRole): Actor[] {
+  if (role === 'super-admin') return seededSuperAdmins;
   return actors25.filter((a) => a.role === role);
 }
 

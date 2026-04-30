@@ -24,18 +24,20 @@ export class SignupPage {
 
   constructor(page: Page) {
     this.page = page;
-    this.nomInput = page.locator('input[formcontrolname="nom"]');
-    this.emailInput = page.locator('input[formcontrolname="email"]');
-    this.phoneInput = page.locator('input[formcontrolname="phone"]');
-    this.passwordInput = page.locator('input[formcontrolname="password"]');
-    this.confirmPasswordInput = page.locator('input[formcontrolname="confirmPassword"]');
-    this.localisationInput = page.locator('input[formcontrolname="localisation"]');
-    this.capaciteInput = page.locator('input[formcontrolname="capacite"]');
-    this.clientTypeSelect = page.locator('select[formcontrolname="clientType"]');
-    this.zoneDistributionInput = page.locator('input[formcontrolname="zoneDistribution"]');
-    this.groupementNomInput = page.locator('input[formcontrolname="groupementNom"]');
-    this.submitButton = page.getByRole('button', { name: /créer mon compte|create.*account/i });
-    this.errorAlert = page.locator('.error[role="alert"]');
+    // Use data-testid (stable across UI refactors). Each input also keeps its
+    // formcontrolname for accessibility / Angular Reactive Forms wiring.
+    this.nomInput = page.getByTestId('signup-name');
+    this.emailInput = page.getByTestId('signup-email');
+    this.phoneInput = page.getByTestId('signup-phone');
+    this.passwordInput = page.getByTestId('signup-password');
+    this.confirmPasswordInput = page.getByTestId('signup-password-confirm');
+    this.localisationInput = page.getByTestId('signup-localisation');
+    this.capaciteInput = page.getByTestId('signup-capacite');
+    this.clientTypeSelect = page.getByTestId('signup-client-type');
+    this.zoneDistributionInput = page.getByTestId('signup-zone-distribution');
+    this.groupementNomInput = page.getByTestId('signup-groupement-nom');
+    this.submitButton = page.getByTestId('signup-submit');
+    this.errorAlert = page.getByTestId('signup-error');
   }
 
   async goto(): Promise<void> {
@@ -58,11 +60,11 @@ export class SignupPage {
 
   /**
    * Avance à l'étape suivante en cliquant sur « Continuer ».
-   * Le filtre `:visible` + `.first()` cible le bouton de l'étape active
-   * (les autres Continuer restent en DOM mais en `visibility: hidden`).
+   * Plusieurs boutons portent data-testid="signup-stepper-next" (un par step) ;
+   * `:visible` + `.first()` cible celui de l'étape active.
    */
   async next(): Promise<void> {
-    const btn = this.page.locator('button:visible:has-text("Continuer")').first();
+    const btn = this.page.getByTestId('signup-stepper-next').locator('visible=true').first();
     await btn.waitFor({ state: 'visible', timeout: 5_000 });
     await btn.click();
     // Laisser l'animation du stepper se terminer (CSS transition ~300ms).
