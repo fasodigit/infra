@@ -185,7 +185,7 @@ jobs:
           find release-assets/ -name "*.sha256" -exec cat {} \; | sort > release-assets/SHA256SUMS.txt
 
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           name: "FASO DIGITALISATION ${{ github.ref_name }}"
           tag_name: ${{ github.ref_name }}
