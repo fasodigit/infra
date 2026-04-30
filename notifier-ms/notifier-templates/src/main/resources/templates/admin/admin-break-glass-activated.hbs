@@ -1,0 +1,68 @@
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+  Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+-->
+<!DOCTYPE html>
+<html lang="{{#if lang}}{{lang}}{{else}}fr{{/if}}">
+<head>
+  <meta charset="UTF-8"/>
+  <title>{{#eq lang "en"}}FASO ADMIN — BREAK-GLASS activated (HIGH){{else}}FASO ADMIN — BREAK-GLASS activé (priorité haute){{/eq}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f6f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:32px 0;">
+    <tr><td align="center">
+      <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 4px 24px rgba(229,57,53,0.4);border:3px solid #E53935;">
+        <tr>
+          <td style="background:#E53935;color:#ffffff;padding:28px 32px;">
+            <h1 style="margin:0;font-size:24px;letter-spacing:0.5px;">
+              {{#eq lang "en"}}BREAK-GLASS ACTIVATED{{else}}BREAK-GLASS ACTIVÉ{{/eq}}
+            </h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#FFD700;font-weight:bold;">
+              {{#eq lang "en"}}High priority — Privileged emergency access in use{{else}}Priorité haute — Accès privilégié d'urgence en cours{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#222;">
+            <p style="font-size:15px;line-height:1.55;color:#b71c1c;font-weight:bold;">
+              {{#eq lang "en"}}A SUPER-ADMIN has just activated break-glass capability. Verify the legitimacy of this operation immediately.{{else}}Un SUPER-ADMIN vient d'activer une capacité break-glass. Vérifier immédiatement la légitimité de cette opération.{{/eq}}
+            </p>
+
+            <table width="100%" style="margin:20px 0;border-collapse:collapse;background:#fafafa;border:1px solid #eee;border-radius:6px;">
+              <tr><td style="padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#666;width:35%;">
+                {{#eq lang "en"}}Activated by{{else}}Activé par{{/eq}}
+              </td><td style="padding:12px;border-bottom:1px solid #eee;font-size:14px;"><strong>{{activator}}</strong></td></tr>
+              <tr><td style="padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#666;">
+                {{#eq lang "en"}}Capability{{else}}Capacité{{/eq}}
+              </td><td style="padding:12px;border-bottom:1px solid #eee;font-size:14px;">
+                <span style="background:#E53935;color:#ffffff;padding:4px 10px;border-radius:4px;font-weight:bold;font-family:monospace;">{{capability}}</span>
+              </td></tr>
+              <tr><td style="padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#666;vertical-align:top;">
+                {{#eq lang "en"}}Justification{{else}}Justification{{/eq}}
+              </td><td style="padding:12px;border-bottom:1px solid #eee;font-size:14px;font-style:italic;color:#333;">{{justification}}</td></tr>
+              <tr><td style="padding:12px;border-bottom:1px solid #eee;font-size:13px;color:#666;">
+                {{#eq lang "en"}}Auto-revoke at{{else}}Révocation automatique{{/eq}}
+              </td><td style="padding:12px;border-bottom:1px solid #eee;font-size:14px;"><strong>{{expiresAt}}</strong></td></tr>
+              <tr><td style="padding:12px;font-size:13px;color:#666;">
+                {{#eq lang "en"}}Trace ID{{else}}Identifiant trace{{/eq}}
+              </td><td style="padding:12px;font-size:13px;font-family:monospace;color:#444;">{{traceId}}</td></tr>
+            </table>
+
+            <div style="background:#fff8e1;border-left:4px solid #FFD700;padding:14px 18px;margin-top:24px;border-radius:4px;">
+              <p style="margin:0;font-size:13px;color:#5d4037;">
+                {{#eq lang "en"}}<strong>What to do?</strong> Review the action audit trail in the admin console (<em>Audit &gt; Break-Glass</em>). If this activation is unauthorized, immediately revoke and contact security@faso.bf.{{else}}<strong>Que faire ?</strong> Consultez le journal d'audit dans la console (<em>Audit &gt; Break-Glass</em>). Si cette activation n'est pas autorisée, révoquez immédiatement et contactez security@faso.bf.{{/eq}}
+              </p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#1b5e20;color:#FFD700;padding:14px 32px;font-size:12px;text-align:center;">
+            FASO DIGITALISATION — République du Burkina Faso<br/>
+            <a href="https://faso.bf/security" style="color:#FFD700;text-decoration:underline;">https://faso.bf/security</a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

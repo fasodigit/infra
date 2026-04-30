@@ -22,7 +22,8 @@ spring:
         default-context: notifier-ms
       database:
         enabled: true
-        role: notifier-ms-role
+        # Runtime role: DML only. Flyway uses a separate role with DDL grants.
+        role: notifier-ms-runtime-role
         backend: database
       fail-fast: true
       connection-timeout: 5000
@@ -46,6 +47,13 @@ spring:
         enabled: true
         prefix: config
         default-context: faso
+
+  # Flyway uses a separate dynamic credential with DDL grants (one-shot at
+  # boot). Operators inject these via FASO_FLYWAY_USER / FASO_FLYWAY_PASSWORD
+  # from `vault read database/creds/notifier-ms-flyway-role`.
+  flyway:
+    user: ${FASO_FLYWAY_USER:}
+    password: ${FASO_FLYWAY_PASSWORD:}
 
   config:
     import: "vault://,consul:"

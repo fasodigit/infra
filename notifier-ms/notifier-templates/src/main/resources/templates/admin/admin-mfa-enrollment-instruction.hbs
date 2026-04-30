@@ -1,0 +1,66 @@
+<!--
+  SPDX-License-Identifier: AGPL-3.0-only
+  Copyright (C) 2026 FASO DIGITALISATION - Ministère du Numérique, Burkina Faso
+-->
+<!DOCTYPE html>
+<html lang="{{#if lang}}{{lang}}{{else}}fr{{/if}}">
+<head>
+  <meta charset="UTF-8"/>
+  <title>{{#eq lang "en"}}FASO ADMIN — MFA enrollment{{else}}FASO ADMIN — Enrôlement MFA{{/eq}}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f6f4;font-family:Arial,Helvetica,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f3f6f4;padding:32px 0;">
+    <tr><td align="center">
+      <table width="640" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:10px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.08);">
+        <tr>
+          <td style="background:#1b5e20;color:#ffffff;padding:28px 32px;">
+            <h1 style="margin:0;font-size:22px;">FASO ADMIN</h1>
+            <p style="margin:6px 0 0;font-size:13px;color:#FFD700;">
+              {{#eq lang "en"}}Multi-factor authentication setup{{else}}Configuration de l'authentification multi-facteurs{{/eq}}
+            </p>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:32px;color:#222;">
+            <p style="font-size:15px;line-height:1.55;">
+              {{#eq lang "en"}}To secure your administrator account, you must enroll at least <strong>one PassKey (FIDO2)</strong> and <strong>one TOTP authenticator</strong>.{{else}}Pour sécuriser votre compte administrateur, vous devez enrôler au minimum <strong>un PassKey (FIDO2)</strong> et <strong>un authentificateur TOTP</strong>.{{/eq}}
+            </p>
+            <h3 style="color:#1b5e20;margin-top:24px;border-bottom:2px solid #FFD700;padding-bottom:6px;">
+              {{#eq lang "en"}}Step 1 — PassKey / FIDO2{{else}}Étape 1 — PassKey / FIDO2{{/eq}}
+            </h3>
+            <ol style="font-size:14px;line-height:1.7;color:#333;">
+              <li>{{#eq lang "en"}}Open the FASO admin console{{else}}Ouvrez la console FASO Admin{{/eq}} (<a href="https://admin.faso.bf" style="color:#1b5e20;">admin.faso.bf</a>)</li>
+              <li>{{#eq lang "en"}}Go to <em>Security &gt; PassKeys &gt; Register</em>{{else}}Allez dans <em>Sécurité &gt; PassKeys &gt; Enregistrer</em>{{/eq}}</li>
+              <li>{{#eq lang "en"}}Use your security key (YubiKey, Solokey, Windows Hello, Touch ID...){{else}}Utilisez votre clé de sécurité (YubiKey, Solokey, Windows Hello, Touch ID...){{/eq}}</li>
+              <li>{{#eq lang "en"}}Name the device (e.g. "YubiKey 5 NFC office"){{else}}Nommez l'appareil (ex : "YubiKey 5 NFC bureau"){{/eq}}</li>
+            </ol>
+
+            <h3 style="color:#1b5e20;margin-top:24px;border-bottom:2px solid #FFD700;padding-bottom:6px;">
+              {{#eq lang "en"}}Step 2 — TOTP (backup factor){{else}}Étape 2 — TOTP (facteur secours){{/eq}}
+            </h3>
+            <ol style="font-size:14px;line-height:1.7;color:#333;">
+              <li>{{#eq lang "en"}}Install an authenticator app: Aegis (Android), Raivo (iOS), or 2FAS{{else}}Installez une application : Aegis (Android), Raivo (iOS) ou 2FAS{{/eq}}</li>
+              <li>{{#eq lang "en"}}Scan the QR code shown in <em>Security &gt; TOTP &gt; Setup</em>{{else}}Scannez le QR code affiché dans <em>Sécurité &gt; TOTP &gt; Configuration</em>{{/eq}}</li>
+              <li>{{#eq lang "en"}}Confirm by typing the 6-digit code{{else}}Confirmez en saisissant le code à 6 chiffres{{/eq}}</li>
+              <li>{{#eq lang "en"}}<strong>Save the recovery codes</strong> in a secure place (printed copy / password manager){{else}}<strong>Sauvegardez les codes de récupération</strong> dans un endroit sûr (copie papier / gestionnaire de mots de passe){{/eq}}</li>
+            </ol>
+
+            <div style="background:#fff8e1;border-left:4px solid #FFD700;padding:14px 18px;margin-top:24px;border-radius:4px;">
+              <p style="margin:0;font-size:13px;color:#5d4037;">
+                <strong>{{#eq lang "en"}}Sovereignty &amp; security{{else}}Souveraineté et sécurité{{/eq}}</strong> &mdash;
+                {{#eq lang "en"}}FASO uses standard FIDO2/WebAuthn protocols. No third-party MFA service. Recovery codes are hashed (Argon2id) at rest.{{else}}FASO utilise les protocoles standards FIDO2/WebAuthn. Aucun service MFA tiers. Les codes de récupération sont hachés (Argon2id) au repos.{{/eq}}
+              </p>
+            </div>
+          </td>
+        </tr>
+        <tr>
+          <td style="background:#1b5e20;color:#FFD700;padding:14px 32px;font-size:12px;text-align:center;">
+            FASO DIGITALISATION — République du Burkina Faso<br/>
+            <a href="https://faso.bf/security" style="color:#FFD700;text-decoration:underline;">https://faso.bf/security</a>
+          </td>
+        </tr>
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

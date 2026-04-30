@@ -7,6 +7,7 @@ package bf.gov.faso.notifier.service;
 import com.github.jknack.handlebars.Options;
 
 import java.io.IOException;
+import java.util.Objects;
 
 /**
  * HandlebarsHelpers — custom Handlebars helpers registered at startup.
@@ -30,5 +31,13 @@ public class HandlebarsHelpers {
     public static CharSequence shortSha(String sha) {
         if (sha == null || sha.length() < 7) return sha != null ? sha : "";
         return sha.substring(0, 7);
+    }
+
+    /**
+     * Block helper {{#eq a b}}...{{else}}...{{/eq}} — renders the inverse block when
+     * the two operands differ (Object#equals). Used for language switching in admin templates.
+     */
+    public static CharSequence eq(Object a, Object b, Options options) throws IOException {
+        return Objects.equals(a, b) ? options.fn() : options.inverse();
     }
 }

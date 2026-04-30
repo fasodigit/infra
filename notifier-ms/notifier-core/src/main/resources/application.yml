@@ -57,7 +57,9 @@ spring:
   # ── Flyway ──────────────────────────────────────────────────
   flyway:
     enabled: true
-    locations: classpath:db/migration
+    locations:
+      - classpath:db/migration            # service-owned schema (notifier)
+      - classpath:db/audit-migration      # shared audit schema (Loi 010-2004)
     baseline-on-migrate: false
     validate-on-migrate: true
 
@@ -133,9 +135,14 @@ management:
       show-details: when_authorized
       probes:
         enabled: true
+      # Probe groups: liveness must NOT depend on Vault/Kafka — Vault failures
+      # are recoverable, Kafka degradation should be visible via metrics, not
+      # a pod restart loop. Readiness drains traffic if Kafka is KO.
       group:
+        liveness:
+          include: livenessState,db,ping
         readiness:
-          include: db, kafka, diskSpace
+          include: readinessState,db,kafka,diskSpace
   health:
     livenessstate:
       enabled: true
@@ -143,6 +150,10 @@ management:
       enabled: true
     kafka:
       enabled: true
+    # Vault HealthIndicator defaults to https://localhost:8200 — disable to
+    # avoid spurious 503 on global /actuator/health when Vault is on http.
+    vault:
+      enabled: false
   metrics:
     export:
       prometheus:
@@ -226,6 +237,16 @@ notifier:
   topics:
     github-events: ${GITHUB_EVENTS_TOPIC:github.events.v1}
     dlq: ${GITHUB_EVENTS_DLQ_TOPIC:github.events.v1.dlq}
+    # Phase 4.b admin-UI streams (Stream B)
+    otp-issue: ${OTP_ISSUE_TOPIC:auth.otp.issue}
+    role-granted: ${ROLE_GRANTED_TOPIC:auth.role.granted}
+    break-glass: ${BREAK_GLASS_TOPIC:admin.break_glass.activated}
+    session-revoked: ${SESSION_REVOKED_TOPIC:auth.session.revoked}
+    # Account recovery streams (delta 2026-04-30, section 5)
+    recovery-self-initiated: ${RECOVERY_SELF_INITIATED_TOPIC:auth.recovery.self_initiated}
+    recovery-admin-initiated: ${RECOVERY_ADMIN_INITIATED_TOPIC:auth.recovery.admin_initiated}
+    recovery-completed: ${RECOVERY_COMPLETED_TOPIC:auth.recovery.completed}
+    recovery-used: ${RECOVERY_USED_TOPIC:auth.recovery.used}
   dedupe:
     ttl-seconds: 604800   # 7 days
     key-prefix: "delivery:"
@@ -234,6 +255,13 @@ notifier:
     from-name: ${MAIL_FROM_NAME:FASO DIGITALISATION}
   context-rules:
     file: ${CONTEXT_RULES_FILE:classpath:context-rules.json}
+  # Phase 4.b — admin clients
+  auth-ms:
+    base-url: ${AUTH_MS_BASE_URL:http://auth-ms:8801}
+  slack:
+    # Optional Slack webhook for high-priority security alerts (BREAK-GLASS).
+    # Leave blank in dev; production reads from Vault path faso/notifier/slack.
+    webhook-url: ${SLACK_WEBHOOK_URL:}
 
 # ── Auth-ms JWKS endpoint for token validation ──────────────────
 spring.security.oauth2.resourceserver:
@@ -260,7 +288,7 @@ spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/notifier
     username: notifier
-    password: notifier
+    password: ${POSTGRES_PASSWORD:notifier}
 
   flyway:
     baseline-on-migrate: true
@@ -284,6 +312,10 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: ${AUTH_MS_JWKS_URI:http://localhost:8801/.well-known/jwks.json}
+
+notifier:
+  auth-ms:
+    base-url: ${AUTH_MS_BASE_URL:http://localhost:8801}
 
 ---
 # ── Production profile (Mailersend) ─────────────────────────────

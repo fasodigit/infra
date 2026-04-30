@@ -4,6 +4,7 @@
  */
 package bf.gov.faso.notifier.service;
 
+import bf.gov.faso.audit.Audited;
 import bf.gov.faso.notifier.domain.GithubEventPayload;
 import bf.gov.faso.notifier.domain.NotificationDelivery;
 import bf.gov.faso.notifier.domain.NotificationDelivery.Status;
@@ -86,6 +87,7 @@ public class NotificationService {
     // ── Internal dispatch with retry ──────────────────────────────────────────
 
     @Transactional
+    @Audited(action = "SEND_NOTIFICATION", resourceType = "NotificationDelivery")
     public void dispatch(
             String deliveryId,
             String recipient,
