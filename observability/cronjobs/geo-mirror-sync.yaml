@@ -1,0 +1,168 @@
+# SPDX-FileCopyrightText: 2026 FASO DIGITALISATION
+# SPDX-License-Identifier: AGPL-3.0-or-later
+#
+# CronJob : geo-mirror-sync (TERROIR P1.C)
+# ===========================================================================
+# Run hebdomadaire (samedi 02:00 UTC) qui exécute :
+#   - INFRA/scripts/sync-hansen-gfc.sh (Hansen Global Forest Change v1.11)
+#   - INFRA/scripts/sync-jrc-tmf.sh    (JRC Tropical Moist Forest v1_2024)
+#
+# Si le job détecte une nouvelle version upstream (ETag/Last-Modified), il
+# expose la métrique `geo_mirror_version_drift_total` au Pushgateway et
+# émet un événement Redpanda `terroir.geo.mirror.drift.detected` consommé
+# par notifier-ms (alerte SRE → bascule version manuelle).
+#
+# Buckets MinIO ciblés :
+#   geo-mirror/hansen-gfc/v1.11/
+#   geo-mirror/jrc-tmf/v1_2024/
+#
+# Versioning figé : aucune bascule v automatique. L'opérateur valide via
+# RUNBOOK-GEO-MIRRORS.md §refresh-policy avant de bumper la variable
+# d'environnement HANSEN_VERSION / JRC_TMF_VERSION.
+# ===========================================================================
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: faso-geo-mirror-scripts
+  namespace: faso-terroir
+  labels:
+    app.kubernetes.io/name: geo-mirror-sync
+    app.kubernetes.io/part-of: faso-digitalisation
+    app.kubernetes.io/component: geo-mirror
+data:
+  # Les scripts sont injectés via ConfigMap pour rester en source-of-truth
+  # dans le repo (INFRA/scripts/). En CD réel, la pipeline génère le CM
+  # à partir des fichiers committés (kustomize / kubectl create cm --from-file).
+  sync-hansen-gfc.sh: |
+    # See INFRA/scripts/sync-hansen-gfc.sh — content rendered by CD pipeline
+  sync-jrc-tmf.sh: |
+    # See INFRA/scripts/sync-jrc-tmf.sh — content rendered by CD pipeline
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: faso-geo-mirror-sync
+  namespace: faso-terroir
+  labels:
+    app.kubernetes.io/name: geo-mirror-sync
+    app.kubernetes.io/part-of: faso-digitalisation
+    app.kubernetes.io/component: geo-mirror
+spec:
+  # Samedi 02:00 UTC (hebdo, hors heures pic mobile-money)
+  schedule: "0 2 * * 6"
+  timeZone: "UTC"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 5
+  startingDeadlineSeconds: 3600
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 14400  # 4h max (Hansen ~5GB sur réseau lent)
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: geo-mirror-sync
+            app.kubernetes.io/component: geo-mirror
+          annotations:
+            vault.hashicorp.com/agent-inject: "true"
+            vault.hashicorp.com/role: "faso-terroir-geo-mirror"
+            vault.hashicorp.com/agent-inject-secret-minio-credentials: "faso/data/minio/geo-mirror-readonly"
+            vault.hashicorp.com/agent-inject-template-minio-credentials: |
+              {{- with secret "faso/data/minio/geo-mirror-readonly" -}}
+              export MINIO_ACCESS_KEY={{ .Data.data.access_key }}
+              export MINIO_SECRET_KEY={{ .Data.data.secret_key }}
+              {{- end -}}
+        spec:
+          serviceAccountName: faso-terroir-geo-mirror
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            runAsGroup: 1000
+            fsGroup: 1000
+          containers:
+            - name: geo-mirror-sync
+              # Image faso/geo-mirror-tools : alpine + mc + curl + jq
+              # Build via Containerfile dédié (à scaffolder en P1.C extension)
+              image: faso/geo-mirror-tools:1.0.0
+              command:
+                - /bin/sh
+                - -c
+                - |
+                  set -e
+                  source /vault/secrets/minio-credentials
+
+                  echo "[geo-mirror-sync] === Hansen GFC ==="
+                  bash /scripts/sync-hansen-gfc.sh || EXIT_HANSEN=$?
+
+                  echo "[geo-mirror-sync] === JRC TMF ==="
+                  bash /scripts/sync-jrc-tmf.sh || EXIT_JRC=$?
+
+                  # Push Prometheus metric pour drift detection
+                  if [[ -n "${EXIT_HANSEN:-}" || -n "${EXIT_JRC:-}" ]]; then
+                    cat <<METRIC | curl --data-binary @- "${PUSHGATEWAY_URL}/metrics/job/geo_mirror_sync"
+                  # TYPE geo_mirror_version_drift_total counter
+                  geo_mirror_version_drift_total{dataset="hansen-gfc"} ${EXIT_HANSEN:-0}
+                  geo_mirror_version_drift_total{dataset="jrc-tmf"} ${EXIT_JRC:-0}
+                  METRIC
+                  fi
+
+                  # Exit non-zéro si Hansen a échoué (JRC est best-effort)
+                  exit ${EXIT_HANSEN:-0}
+              env:
+                - name: MINIO_ENDPOINT
+                  value: "http://faso-minio.faso-observability.svc.cluster.local:9000"
+                - name: MINIO_ALIAS
+                  value: "faso"
+                - name: MINIO_BUCKET
+                  value: "geo-mirror"
+                - name: HANSEN_VERSION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: faso-geo-mirror-config
+                      key: hansen-version
+                - name: JRC_TMF_VERSION
+                  valueFrom:
+                    configMapKeyRef:
+                      name: faso-geo-mirror-config
+                      key: jrc-tmf-version
+                - name: PUSHGATEWAY_URL
+                  value: "http://prometheus-pushgateway.faso-observability.svc.cluster.local:9091"
+              resources:
+                requests:
+                  cpu: 250m
+                  memory: 256Mi
+                limits:
+                  cpu: 1000m
+                  memory: 1Gi
+              securityContext:
+                readOnlyRootFilesystem: true
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop:
+                    - ALL
+              volumeMounts:
+                - name: tmp
+                  mountPath: /tmp
+                - name: scripts
+                  mountPath: /scripts
+                  readOnly: true
+          volumes:
+            - name: tmp
+              emptyDir:
+                sizeLimit: 8Gi  # Hansen ~5GB max (4 tiles × 3 layers × ~400MB)
+            - name: scripts
+              configMap:
+                name: faso-geo-mirror-scripts
+                defaultMode: 0755
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: faso-geo-mirror-config
+  namespace: faso-terroir
+data:
+  hansen-version: "v1.11"
+  jrc-tmf-version: "v1_2024"

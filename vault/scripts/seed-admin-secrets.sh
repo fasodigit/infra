@@ -102,9 +102,27 @@ put "terroir/maxmind-license-key"        "value" "${MAXMIND_LICENSE_KEY:-disable
 put "terroir/eas-update-secret"          "value" "$(openssl rand -hex 32)"
 put "terroir/apk-keystore-password"      "value" "$(openssl rand -base64 32)"
 
-log "OK — 9 secrets admin écrits sous faso/auth-ms/ + 4 secrets TERROIR sous faso/terroir/."
+# ---- TERROIR P1.C — credentials MinIO geo-mirror -------------------------
+# Path lu en runtime par terroir-eudr (read-only) et par le CronJob
+# faso-geo-mirror-sync (writer).
+# Cf. INFRA/terroir/docs/RUNBOOK-GEO-MIRRORS.md §vault-paths.
+log ""
+log "Seed des credentials MinIO geo-mirror (TERROIR P1.C) ..."
+GEO_MIRROR_RO_KEY="${GEO_MIRROR_RO_KEY:-$(openssl rand -hex 32)}"
+GEO_MIRROR_RW_KEY="${GEO_MIRROR_RW_KEY:-$(openssl rand -hex 32)}"
+vault kv put faso/minio/geo-mirror-readonly \
+  access_key="terroir-eudr-readonly" \
+  secret_key="${GEO_MIRROR_RO_KEY}" >/dev/null
+log "  vault kv put faso/minio/geo-mirror-readonly access_key=terroir-eudr-readonly secret_key=****"
+vault kv put faso/minio/geo-mirror-writer \
+  access_key="geo-mirror-writer" \
+  secret_key="${GEO_MIRROR_RW_KEY}" >/dev/null
+log "  vault kv put faso/minio/geo-mirror-writer    access_key=geo-mirror-writer    secret_key=****"
+
+log "OK — 9 secrets admin écrits sous faso/auth-ms/ + 4 secrets TERROIR sous faso/terroir/ + 2 credentials MinIO sous faso/minio/."
 log ""
 log "Vérification :"
 log "  vault kv list faso/auth-ms/"
 log "  vault kv list faso/terroir/"
+log "  vault kv list faso/minio/"
 log "  vault kv get  faso/auth-ms/otp-hmac-key"
