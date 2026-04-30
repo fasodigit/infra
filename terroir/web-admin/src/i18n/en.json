@@ -1,0 +1,145 @@
+{
+  "_license": "AGPL-3.0-or-later",
+  "terroir": {
+    "brand": "TERROIR",
+    "tagline": "Cooperative union — Burkina Faso",
+    "nav": {
+      "dashboard": "Dashboard",
+      "producers": "Producers",
+      "parcels": "Parcels",
+      "audit": "Audit log",
+      "logout": "Sign out"
+    },
+    "login": {
+      "title": "Manager sign-in",
+      "subtitle": "Sign in to access the union back-office",
+      "email": "Email address",
+      "password": "Password",
+      "submit": "Sign in",
+      "submitting": "Signing in…",
+      "error_generic": "Invalid credentials or session expired"
+    },
+    "topbar": {
+      "role_admin": "Administrator",
+      "role_manager": "Union manager",
+      "role_cooperative": "Cooperative manager"
+    },
+    "dashboard": {
+      "title": "Union dashboard",
+      "kpi": {
+        "producers_total": "Producers",
+        "parcels_validated": "Parcels validated (EUDR)",
+        "dds_submitted": "DDS submitted (TRACES NT)",
+        "eudr_alerts_rejected": "EUDR alerts rejected"
+      },
+      "chart_7d_title": "Last 7 days activity"
+    },
+    "producers": {
+      "title": "Producers",
+      "search_placeholder": "Search (name, NIN, phone)…",
+      "filter_cooperative": "All cooperatives",
+      "filter_kyc": "All KYC statuses",
+      "table": {
+        "name": "Full name",
+        "nin": "NIN",
+        "phone": "Phone",
+        "department": "Department",
+        "mfa": "MFA",
+        "kyc": "KYC",
+        "updated_at": "Updated"
+      },
+      "empty": "No producer found",
+      "mfa_yes": "Yes",
+      "mfa_no": "No"
+    },
+    "producer_detail": {
+      "back": "← Back to list",
+      "title": "Producer profile",
+      "section_profile": "Identity",
+      "section_parcels": "Parcels",
+      "section_audit": "History",
+      "actions": {
+        "approve_kyc": "Approve KYC",
+        "suspend": "Suspend",
+        "reset_mfa": "Reset MFA"
+      },
+      "confirm_suspend": "Suspension reason",
+      "loading": "Loading profile…"
+    },
+    "parcels": {
+      "title": "Parcels",
+      "filter_status_all": "All EUDR statuses",
+      "filter_status_validated": "Validated",
+      "filter_status_rejected": "Rejected",
+      "filter_status_escalated": "Escalated",
+      "filter_status_pending": "Pending",
+      "popup": {
+        "producer": "Producer",
+        "crop": "Crop",
+        "surface": "Area",
+        "status": "EUDR status",
+        "open": "Open detail"
+      },
+      "empty": "No parcels for these filters"
+    },
+    "parcel_detail": {
+      "back": "← Back to parcels",
+      "title": "Parcel",
+      "section_map": "Geometry",
+      "section_eudr": "EUDR validation",
+      "section_dds": "Due Diligence Statement (DDS)",
+      "evidence_link": "View evidence (MinIO)",
+      "submit_traces_nt": "Submit to TRACES NT",
+      "submitting": "Submitting…",
+      "no_dds": "No DDS generated for this parcel"
+    },
+    "eudr": {
+      "status": {
+        "pending": "Pending",
+        "validated": "Validated",
+        "rejected": "Rejected",
+        "escalated": "Escalated",
+        "expired": "Expired"
+      },
+      "hansen_loss": "Hansen forest loss (year)",
+      "jrc_eufo_hit": "JRC EU forest map 2020 (hit)",
+      "rejection_reason": "Rejection reason",
+      "reviewer": "Reviewer"
+    },
+    "kyc": {
+      "status": {
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "suspended": "Suspended",
+        "expired": "Expired"
+      }
+    },
+    "audit": {
+      "title": "Audit log",
+      "filter_from": "From",
+      "filter_to": "To",
+      "filter_actor": "Actor",
+      "filter_action": "Action",
+      "actor": "Actor",
+      "action": "Action",
+      "resource": "Resource",
+      "trace": "Trace",
+      "empty": "No audit events"
+    },
+    "common": {
+      "loading": "Loading…",
+      "error": "Error",
+      "retry": "Retry",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "save": "Save",
+      "previous": "Previous",
+      "next": "Next",
+      "page_of": "Page {{page}} of {{total}}"
+    },
+    "footer": {
+      "attribution": "Geo data: Hansen Global Forest Change v1.11 (CC BY 4.0) — JRC EU forest map 2020 (CC BY 4.0). See LICENSES-GEO.md."
+    }
+  }
+}
