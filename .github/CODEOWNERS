@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — CODEOWNERS
+#
+# Default ownership: assign every PR to @fasodigit for review.
+# As contributors join, scope-specific ownership rules can be added below
+# (e.g., `kaya/  @kaya-team`, `armageddon/  @gateway-team`).
+#
+# Order matters: the LAST matching pattern wins for a given file.
+
+# Default — every file in the repo
+*  @fasodigit
+
+# Security-sensitive surface gets explicit attention
+/SECURITY.md           @fasodigit
+/.github/              @fasodigit
+/scripts/spdx-*.sh     @fasodigit
+/scripts/bfg-*         @fasodigit
+/scripts/remediate-*   @fasodigit
+/.gitleaks.toml        @fasodigit
+/.trivyignore          @fasodigit
+/deny.toml             @fasodigit
+/renovate.json         @fasodigit
+/.github/dependabot.yml @fasodigit

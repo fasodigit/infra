@@ -1,0 +1,75 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: "🐛 Bug report"
+description: Signaler un comportement incorrect dans la stack FASO DIGITALISATION
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de prendre le temps de signaler ce bug.
+
+        ⚠️ **Pour une vulnérabilité de sécurité, n'utilisez PAS ce formulaire.**
+        Utilisez plutôt : https://github.com/fasodigit/infra/security/advisories/new
+        (cf. SECURITY.md).
+
+  - type: input
+    id: component
+    attributes:
+      label: Composant affecté
+      description: "Ex: KAYA, ARMAGEDDON, auth-ms, poulets-api, BFF, frontend, observability, ory, vault, scripts…"
+      placeholder: "ex: KAYA / kaya-store"
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Version / commit SHA
+      description: "Sortie de `git rev-parse HEAD` ou tag de release"
+      placeholder: "ex: dd9c737d ou v0.4.2"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Description du bug
+      description: "Que s'est-il passé ? Que devrait-il se passer ?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Étapes pour reproduire
+      description: "Commandes / requêtes / actions UI exactes"
+      placeholder: |
+        1. cd docker/compose && podman-compose -f podman-compose.yml up -d
+        2. curl http://localhost:8080/api/poulets/health
+        3. Observé : 503 ; Attendu : 200
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / traces pertinents
+      description: "Coller les lignes utiles. Si trace Jaeger, inclure le trace-id."
+      render: shell
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environnement
+      description: |
+        - OS / version
+        - Podman / Rust / Java / Bun version
+        - K8s ? Bare-metal ? Local podman-compose ?
+      placeholder: |
+        OS: Ubuntu 26.04
+        podman: 5.x
+        cargo: 1.83
+        java: 21 Temurin
+    validations:
+      required: true

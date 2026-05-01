@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# Disable blank issues — force contributors through a structured form.
+blank_issues_enabled: false
+
+contact_links:
+  - name: "🔒 Vulnérabilité de sécurité (NE PAS ouvrir d'issue publique)"
+    url: https://github.com/fasodigit/infra/security/advisories/new
+    about: "Utilise GitHub Private Vulnerability Reporting (chiffré + coordiné). Voir SECURITY.md."
+
+  - name: "💬 Discussion ouverte / question architecture"
+    url: https://github.com/fasodigit/infra/discussions
+    about: "Pour une question / idée qui n'est pas un bug ni une feature concrète, utilise les Discussions."
