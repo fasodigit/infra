@@ -28,7 +28,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: INFRA/${{ matrix.service }}
+        working-directory: ${{ matrix.service }}
 
     steps:
       - uses: actions/checkout@v4
@@ -64,7 +64,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: surefire-${{ matrix.service == 'poulets-platform/backend' && 'poulets-backend' || matrix.service }}-java${{ matrix.java-version }}
-          path: INFRA/${{ matrix.service }}/target/surefire-reports/
+          path: ${{ matrix.service }}/target/surefire-reports/
           retention-days: 30
 
       # ── Upload OWASP HTML report ───────────────────────────────────────────
@@ -73,5 +73,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: owasp-${{ matrix.service == 'poulets-platform/backend' && 'poulets-backend' || matrix.service }}-java${{ matrix.java-version }}
-          path: INFRA/${{ matrix.service }}/target/dependency-check-report.html
+          path: ${{ matrix.service }}/target/dependency-check-report.html
           retention-days: 30

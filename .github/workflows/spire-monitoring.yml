@@ -30,7 +30,7 @@ jobs:
       - name: Run check-svid-expiry
         env:
           PROM_PUSHGATEWAY_URL: ${{ secrets.PROM_PUSHGATEWAY_URL }}
-        run: bash INFRA/spire/scripts/check-svid-expiry.sh
+        run: bash spire/scripts/check-svid-expiry.sh
 
       - name: Create incident on failure
         if: failure()
@@ -41,5 +41,5 @@ jobs:
               owner: context.repo.owner, repo: context.repo.repo,
               title: `SPIRE SVID expiring (< 72h) — ${new Date().toISOString().slice(0,10)}`,
               labels: ['incident', 'P1', 'spire', 'mTLS'],
-              body: `At least one workload SVID expires within 72h.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nRunbook: INFRA/spire/SPIRE-README.md`,
+              body: `At least one workload SVID expires within 72h.\n\nRun: ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}\n\nRunbook: spire/SPIRE-README.md`,
             });
