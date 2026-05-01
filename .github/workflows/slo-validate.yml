@@ -5,8 +5,8 @@ name: SLO Validate
 on:
   pull_request:
     paths:
-      - 'INFRA/observability/slo/**'
-      - 'INFRA/observability/prometheus/rules/**'
+      - 'observability/slo/**'
+      - 'observability/prometheus/rules/**'
       - '.github/workflows/slo-validate.yml'
   workflow_dispatch:
 
@@ -22,11 +22,11 @@ jobs:
           tar -xzf sloth.tar.gz
           sudo mv sloth /usr/local/bin/sloth
       - name: Validate SLO definitions
-        run: sloth validate -i INFRA/observability/slo/
+        run: sloth validate -i observability/slo/
       - name: Generate rules and check for drift
         run: |
-          bash INFRA/observability/scripts/generate-prometheus-rules.sh
-          if ! git diff --exit-code INFRA/observability/prometheus/rules/; then
+          bash observability/scripts/generate-prometheus-rules.sh
+          if ! git diff --exit-code observability/prometheus/rules/; then
             echo "::error::Prometheus rules are out of sync with SLO definitions. Run scripts/generate-prometheus-rules.sh"
             exit 1
           fi

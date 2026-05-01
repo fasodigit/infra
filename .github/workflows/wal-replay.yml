@@ -34,7 +34,7 @@ jobs:
     timeout-minutes: 30
     defaults:
       run:
-        working-directory: INFRA/kaya
+        working-directory: kaya
 
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +43,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: INFRA/kaya
+          workspaces: kaya
           cache-on-failure: true
 
       - name: Build kaya-server + kaya-cli (release)
@@ -55,8 +55,8 @@ jobs:
         with:
           name: kaya-binaries
           path: |
-            INFRA/kaya/target/release/kaya-server
-            INFRA/kaya/target/release/kaya-cli
+            kaya/target/release/kaya-server
+            kaya/target/release/kaya-cli
           retention-days: 1
 
   # --------------------------------------------------------------------------
@@ -79,10 +79,10 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: kaya-binaries
-          path: INFRA/kaya/target/release/
+          path: kaya/target/release/
 
       - name: Fix binary permissions
-        run: chmod +x INFRA/kaya/target/release/kaya-server INFRA/kaya/target/release/kaya-cli
+        run: chmod +x kaya/target/release/kaya-server kaya/target/release/kaya-cli
 
       - name: Install b3sum (optional, falls back to sha256sum)
         run: |
@@ -91,9 +91,9 @@ jobs:
       - name: Run WAL replay smoke test
         env:
           KAYA_FSYNC_POLICY: ${{ matrix.fsync_policy }}
-          KAYA_BIN_DIR: ${{ github.workspace }}/INFRA/kaya/target/release
+          KAYA_BIN_DIR: ${{ github.workspace }}/kaya/target/release
         run: |
-          bash INFRA/scripts/wal-replay-test.sh --smoke \
+          bash scripts/wal-replay-test.sh --smoke \
                --data-dir /tmp/kaya-wal-replay-smoke-${{ matrix.fsync_policy }} \
                --port 6399 2>&1 | tee smoke-${{ matrix.fsync_policy }}.log
           grep -qE '^PASS' smoke-${{ matrix.fsync_policy }}.log
@@ -120,7 +120,7 @@ jobs:
         fsync_policy: [always, everysec]
     defaults:
       run:
-        working-directory: INFRA/kaya
+        working-directory: kaya
 
     steps:
       - uses: actions/checkout@v4
@@ -129,7 +129,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: INFRA/kaya
+          workspaces: kaya
           cache-on-failure: true
 
       - name: Run WAL replay integration tests (including #[ignore])
@@ -158,8 +158,8 @@ jobs:
         with:
           name: rust-replay-logs-${{ matrix.fsync_policy }}
           path: |
-            INFRA/kaya/replay-rust-${{ matrix.fsync_policy }}.log
-            INFRA/kaya/smoke-rust-${{ matrix.fsync_policy }}.log
+            kaya/replay-rust-${{ matrix.fsync_policy }}.log
+            kaya/smoke-rust-${{ matrix.fsync_policy }}.log
           retention-days: 7
 
   # --------------------------------------------------------------------------
@@ -268,7 +268,7 @@ jobs:
               '1. Download the `kaya-wal-replay-logs` artifact from the failing run.',
               '2. Check `replay.log` for `DIVERGENCE` lines and the diff section.',
               '3. Inspect WAL segments via `cargo run -p kaya-cli -- persistence inspect --data-dir <path>`.',
-              '4. See runbook: `INFRA/scripts/WAL-REPLAY-README.md`',
+              '4. See runbook: `scripts/WAL-REPLAY-README.md`',
               '',
               '## Checklist',
               '- [ ] Root cause identified',

@@ -22,7 +22,7 @@ jobs:
       image: mcr.microsoft.com/playwright:v1.48.0-jammy
     defaults:
       run:
-        working-directory: INFRA/synthetic-monitoring/playwright
+        working-directory: synthetic-monitoring/playwright
     steps:
       - uses: actions/checkout@v4
 
@@ -45,8 +45,8 @@ jobs:
         with:
           name: synthetic-traces-${{ github.run_id }}
           path: |
-            INFRA/synthetic-monitoring/playwright/test-results/
-            INFRA/synthetic-monitoring/playwright/results.json
+            synthetic-monitoring/playwright/test-results/
+            synthetic-monitoring/playwright/results.json
           retention-days: 7
 
       - name: Create incident issue on failure

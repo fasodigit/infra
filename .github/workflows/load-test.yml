@@ -8,8 +8,8 @@ name: Load Test (k6)
 on:
   pull_request:
     paths:
-      - 'INFRA/armageddon/**'
-      - 'INFRA/load-testing/**'
+      - 'armageddon/**'
+      - 'load-testing/**'
       - '.github/workflows/load-test.yml'
   workflow_dispatch:
 
@@ -22,7 +22,7 @@ jobs:
 
       - name: Start ARMAGEDDON + KAYA + auth-ms
         run: |
-          cd INFRA/docker/compose
+          cd docker/compose
           bash scripts/init-secrets.sh
           podman-compose up -d kaya auth-ms armageddon
           timeout 60 bash -c 'until curl -fsS http://localhost:8080/api/poulets/health; do sleep 2; done'
@@ -30,7 +30,7 @@ jobs:
       - name: Run k6 baseline
         uses: grafana/k6-action@v0.3.1
         with:
-          filename: INFRA/load-testing/k6/scenarios/armageddon-baseline.ts
+          filename: load-testing/k6/scenarios/armageddon-baseline.ts
         env:
           ARMAGEDDON_URL: http://localhost:8080
 
@@ -51,4 +51,4 @@ jobs:
 
       - name: Stop compose
         if: always()
-        run: cd INFRA/docker/compose && podman-compose down -v
+        run: cd docker/compose && podman-compose down -v
