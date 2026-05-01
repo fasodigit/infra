@@ -22,4 +22,4 @@ jobs:
         with:
           command: check advisories bans licenses sources
           arguments: --config deny.toml
-          # deny.toml is located at the workspace root (INFRA/deny.toml)
+          # deny.toml is located at the repo root

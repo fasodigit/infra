@@ -27,7 +27,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: INFRA/${{ matrix.app }}
+        working-directory: ${{ matrix.app }}
 
     steps:
       - uses: actions/checkout@v4
@@ -65,7 +65,7 @@ jobs:
         with:
           name: build-${{ matrix.app == 'poulets-platform/bff' && 'bff' || 'angular' }}-${{ github.sha }}
           path: |
-            INFRA/${{ matrix.app }}/.next/
-            INFRA/${{ matrix.app }}/dist/
+            ${{ matrix.app }}/.next/
+            ${{ matrix.app }}/dist/
           retention-days: 7
           if-no-files-found: ignore
