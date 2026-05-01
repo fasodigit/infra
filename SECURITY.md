@@ -13,13 +13,17 @@ personnes qui la signalent.
 
 **Ne jamais ouvrir d'issue publique pour une vulnérabilité.**
 
-### Canaux de contact préférés
+### Canal de contact
 
-| Canal | Adresse | Usage |
-|-------|---------|-------|
-| GitHub Private Vulnerability Reporting | https://github.com/fasodigit/infra/security/advisories/new | ✅ préféré |
-| Email chiffré PGP | `security@faso.gov.bf` (clé PGP : [TODO à publier]) | alternatives |
-| Encrypted Signal / WhatsApp | contact via l'email ci-dessus pour obtenir le numéro | urgences critiques |
+**Canal unique et préféré** :
+[GitHub Private Vulnerability Reporting](https://github.com/fasodigit/infra/security/advisories/new)
+
+C'est le seul canal officiellement supporté :
+- Chiffré de bout en bout en transit
+- Authentification GitHub forte (2FA recommandé côté reporter)
+- Trace coordinée dans Security Advisories
+- Aucune clé PGP à gérer / faire tourner
+- Notification immédiate aux mainteneurs
 
 Merci d'inclure :
 
@@ -59,8 +63,14 @@ Merci d'inclure :
 ## Reconnaissance
 
 Les personnes signalant de manière responsable peuvent être listées dans
-`ACKNOWLEDGMENTS.md` (sauf demande d'anonymat). Un programme de bug-bounty
-sera annoncé courant 2026.
+`ACKNOWLEDGMENTS.md` (sauf demande d'anonymat).
+
+## Programme bug bounty
+
+Non disponible à ce jour. Cette section sera mise à jour si/quand un
+programme officiel est lancé (avec montants, périmètre, conditions).
+En attendant, les rapports responsables sont accueillis par GitHub
+Private Vulnerability Reporting et reconnus dans `ACKNOWLEDGMENTS.md`.
 
 ## Vulnérabilités connues
 
@@ -79,10 +89,6 @@ Les vulnérabilités divulguées publiquement sont publiées dans :
 - **SPDX AGPL** — chaque fichier source signe sa licence
 - **CI** — cargo-audit + cargo-deny + Trivy + Grype + SBOM CycloneDX sur chaque PR
 - **Chaos Mesh** — kill KAYA replica nightly, partition réseau, clock skew
-
-## Clé publique PGP
-
-À publier. En attendant, utilisez GitHub Private Vulnerability Reporting.
 
 ---
 
