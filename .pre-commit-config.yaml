@@ -64,7 +64,7 @@ repos:
       - id: cargo-deny
         name: cargo deny
         language: system
-        entry: cargo deny --manifest-path INFRA/kaya/Cargo.toml check advisories bans licenses sources
+        entry: cargo deny --manifest-path kaya/Cargo.toml check advisories bans licenses sources
         types: [rust]
         pass_filenames: false
         stages: [pre-push]
@@ -82,7 +82,7 @@ repos:
       - id: spdx-check
         name: SPDX license header check
         language: script
-        entry: INFRA/scripts/spdx-check.sh
+        entry: scripts/spdx-check.sh
         pass_filenames: true
         types_or: [rust, java, typescript, javascript]
 
