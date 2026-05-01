@@ -1,19 +1,36 @@
-version: 2
-# Renovate is the primary dependency update tool.
-# Dependabot is kept as fallback for security alerts on GitHub Actions and Docker only.
-updates:
-  - package-ecosystem: "github-actions"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-    labels:
-      - "dependencies"
-      - "github-actions"
+# SPDX-License-Identifier: AGPL-3.0-or-later
+# FASO DIGITALISATION — Dependabot configuration
+#
+# Renovate (renovate.json) handles cargo / maven / gradle / npm / bun /
+# dockerfile / docker-compose. Dependabot is restricted to GitHub Actions
+# only, to avoid duplicate PRs from both bots on the same ecosystem.
+#
+# Security advisories: GitHub Dependabot's security-update channel still
+# fires for all ecosystems regardless of `enabledManagers`. That's the
+# desired behaviour — we want CVEs to land both as Renovate vulnerabilityAlerts
+# AND as Dependabot security PRs (defense in depth).
 
-  - package-ecosystem: "docker"
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
     directory: "/"
     schedule:
-      interval: "weekly"
+      interval: weekly
+      day: monday
+      time: "05:00"
+      timezone: "Africa/Ouagadougou"
     labels:
-      - "dependencies"
-      - "docker"
+      - "deps"
+      - "github-actions"
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(deps)"
+      include: "scope"
+    groups:
+      actions-minor-patch:
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"

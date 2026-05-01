@@ -3,12 +3,15 @@
   "extends": [
     "config:base",
     ":semanticCommits",
-    ":maintainLockFilesMonthly"
+    ":maintainLockFilesMonthly",
+    ":dependencyDashboard"
   ],
   "separateMinorPatch": true,
   "rangeStrategy": "bump",
   "schedule": ["before 6am every weekday"],
   "enabledManagers": ["cargo", "maven", "gradle", "npm", "bun", "dockerfile", "docker-compose"],
+  "prConcurrentLimit": 10,
+  "prHourlyLimit": 4,
   "vulnerabilityAlerts": {
     "enabled": true,
     "addLabels": ["security"],
@@ -23,12 +26,19 @@
       "requiredStatusChecks": ["ci"]
     },
     {
-      "description": "Auto-merge major dev/test dependencies",
+      "description": "Auto-merge minor and patch dev/test dependencies",
       "matchDepTypes": ["devDependencies", "dev-dependencies"],
-      "matchUpdateTypes": ["major", "minor", "patch"],
+      "matchUpdateTypes": ["minor", "patch"],
       "automerge": true,
       "automergeType": "pr",
       "requiredStatusChecks": ["ci"]
+    },
+    {
+      "description": "Major dev/test dependency updates require explicit review (supply-chain protection)",
+      "matchDepTypes": ["devDependencies", "dev-dependencies"],
+      "matchUpdateTypes": ["major"],
+      "automerge": false,
+      "addLabels": ["deps:major-review"]
     },
     {
       "description": "Block auto-merge on RustSec advisories",
