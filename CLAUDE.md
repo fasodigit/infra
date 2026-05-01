@@ -42,17 +42,17 @@ Fichiers compose canoniques (au 2026-04-17) :
 
 | Chemin | Rôle |
 |--------|------|
-| `INFRA/docker/compose/podman-compose.yml` | stack principale (postgres, kratos, keto, mailhog, oathkeeper, armageddon, auth-ms, poulets, bff, frontend, jaeger) |
-| `INFRA/docker/compose/podman-compose.dev.yml` | override dev (logs verbeux, LOG_LEAK_SENSITIVE_VALUES) |
-| `INFRA/vault/podman-compose.vault.yml` | Consul + Vault |
-| `INFRA/ory/podman-compose.ory.yml` | ORY stack standalone |
-| `INFRA/growthbook/podman-compose.growthbook.yml` | GrowthBook + MongoDB |
-| `INFRA/observability/grafana/podman-compose.observability.yml` | Grafana + Prom + Loki + Tempo + OTel |
+| `docker/compose/podman-compose.yml` | stack principale (postgres, kratos, keto, mailhog, oathkeeper, armageddon, auth-ms, poulets, bff, frontend, jaeger) |
+| `docker/compose/podman-compose.dev.yml` | override dev (logs verbeux, LOG_LEAK_SENSITIVE_VALUES) |
+| `vault/podman-compose.vault.yml` | Consul + Vault |
+| `ory/podman-compose.ory.yml` | ORY stack standalone |
+| `growthbook/podman-compose.growthbook.yml` | GrowthBook + MongoDB |
+| `observability/grafana/podman-compose.observability.yml` | Grafana + Prom + Loki + Tempo + OTel |
 
 Commandes usuelles :
 
 ```bash
-cd INFRA/docker/compose
+cd docker/compose
 
 # Bootstrap complet (tous les services)
 bash scripts/init-secrets.sh
@@ -71,7 +71,7 @@ podman-compose -f podman-compose.yml -f ../../observability/grafana/podman-compo
 ## 2. Gestion des secrets : Vault (+ Consul backend) est la source de vérité
 
 Depuis 2026-04-17, **tous** les nouveaux secrets FASO sont stockés dans
-Vault (`INFRA/vault/`). Les fichiers `INFRA/docker/compose/secrets/*.txt`
+Vault (`vault/`). Les fichiers `docker/compose/secrets/*.txt`
 sont conservés comme **bootstrap** uniquement — en production ils sont
 injectés via Vault Agent / Spring Cloud Vault / `vaultrs`.
 
@@ -79,7 +79,7 @@ Workflow contributeur :
 
 ```bash
 # 1. Démarrer Consul + Vault
-cd INFRA/docker/compose
+cd docker/compose
 podman-compose -f podman-compose.yml -f ../../vault/podman-compose.vault.yml up -d consul vault
 
 # 2. Initialiser (une seule fois par machine)
@@ -95,7 +95,7 @@ bash ../../vault/scripts/configure-database.sh
 bash ../../vault/scripts/configure-pki.sh
 ```
 
-Politique KV : `faso/<service>/<usage>` (cf. `INFRA/vault/README.md`).
+Politique KV : `faso/<service>/<usage>` (cf. `vault/README.md`).
 Policies read-only par service (principe du moindre privilège).
 
 ## 3. Souveraineté (règle absolue)
@@ -132,9 +132,9 @@ future : `openbao` (fork Vault) si stable.
 - Password de test : via variable `E2E_TEST_PASSWORD` uniquement
 - Rotation SVID SPIRE 24 h, monitoring < 72 h (alerte auto)
 - Revue sécurité via GitHub Private Vulnerability Reporting
-- Bootstrap dev : `bash INFRA/scripts/bootstrap-dev.sh` (idempotent)
-- Bootstrap dev avec reset : `bash INFRA/scripts/bootstrap-dev.sh --reset` (DROPS auth_ms + poulets_db data)
-- Vault paths pour la prod : voir `INFRA/scripts/bootstrap-dev.README.md`
+- Bootstrap dev : `bash scripts/bootstrap-dev.sh` (idempotent)
+- Bootstrap dev avec reset : `bash scripts/bootstrap-dev.sh --reset` (DROPS auth_ms + poulets_db data)
+- Vault paths pour la prod : voir `scripts/bootstrap-dev.README.md`
 
 ## 6. Documentation
 
@@ -142,26 +142,26 @@ future : `openbao` (fork Vault) si stable.
 - SECURITY.md = politique divulgation responsable
 - CONTRIBUTING.md = workflow
 - CODE_OF_CONDUCT.md = Contributor Covenant 2.1 FR
-- Guide architectural v3.1 : `INFRA/docs/v3.1-souverain/GUIDE-ARCHITECTURAL-v3.1-SOUVERAIN.md`
-- SLOs Sloth : `INFRA/observability/slo/*.slo.yaml`
-- Runbooks : `INFRA/observability/alertmanager/runbooks/*.md`
+- Guide architectural v3.1 : `docs/v3.1-souverain/GUIDE-ARCHITECTURAL-v3.1-SOUVERAIN.md`
+- SLOs Sloth : `observability/slo/*.slo.yaml`
+- Runbooks : `observability/alertmanager/runbooks/*.md`
 
 ## 7. Environnement Claude Code
 
 - MCP servers actifs : `context7` (doc libraries), `serena` (IDE-assistant)
-- Hook `PostToolUse` cargo check après édition Rust dans `INFRA/kaya/`
+- Hook `PostToolUse` cargo check après édition Rust dans `kaya/`
 - Agents persistants : `kaya-rust-implementer`, `distributed-systems-rust`,
   `database-internals-rust`, `prompt-engineer`
 
 ### Discipline CWD pour les slash-commands
 
-Toujours démarrer Claude Code **depuis `INFRA/`** (pas depuis le parent
-`DEVELOPMENT-CLAUDE/`). Les slash-commands cloud (ex : `/ultrareview`,
-`/security-review` quand il délègue au web-runner) utilisent le primary
-working directory du processus, **pas** le CWD de la Bash tool.
+Toujours démarrer Claude Code **depuis la racine du repo `infra/`**. Les
+slash-commands cloud (ex : `/ultrareview`, `/security-review` quand il
+délègue au web-runner) utilisent le primary working directory du
+processus, **pas** le CWD de la Bash tool.
 
 ```bash
-cd /home/lyna/Documents/DEVELOPMENT-CLAUDE/INFRA
+cd /path/to/infra
 claude   # (ou ta commande de launch)
 ```
 
@@ -173,7 +173,7 @@ un git repo, pas d'un vrai problème de branche.
 
 `/ultrareview` (web-runner, ~5-10 min, $5-20 USD) compare `HEAD` vs
 `main` via `git merge-base`. Il faut donc :
-1. Être dans INFRA/ (cf. discipline CWD ci-dessus).
+1. Être dans la racine du repo (cf. discipline CWD ci-dessus).
 2. Être sur une **branche qui diverge de `main`** (topic branch /
    feature branch). Si HEAD = main, le command refuse parce qu'il n'y
    a rien à reviewer.
@@ -191,7 +191,7 @@ tant qu'il n'y a pas besoin de bump explicite.
 
 | Skill | Usage |
 |-------|-------|
-| `/ports` | Rapport port-policy + conflits (lit `INFRA/port-policy.yaml`) |
+| `/ports` | Rapport port-policy + conflits (lit `port-policy.yaml`) |
 | `/stack-up [rust\|java\|ui]` | Boot séquence complète (containers → Vault → Java → Rust → UI) |
 | `/stack-down [soft]` | Arrêt propre (kill safe sans `pkill -f`) |
 | `/restart-impacted [since 15m]` | Rebuild + restart services dont le code a été modifié |
@@ -201,10 +201,10 @@ tant qu'il n'y a pas besoin de bump explicite.
 
 ## 8. Port policy (source de vérité)
 
-`INFRA/port-policy.yaml` — TOUS les ports du stack y sont déclarés.
+`port-policy.yaml` — TOUS les ports du stack y sont déclarés.
 
 - Avant d'ajouter un service, **réserver le port ICI d'abord**, puis coder
-- Validator CI : `bash INFRA/scripts/validate-ports.sh`
+- Validator CI : `bash scripts/validate-ports.sh`
 - Les plages sont **owned** par tier ; un service qui squatte un port
   hors de sa plage = violation bloquante
 - Plages clés :

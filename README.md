@@ -53,7 +53,7 @@ dont le code source est intégralement lisible par les citoyens.
 ## Structure du dépôt
 
 ```
-INFRA/
+infra/
 ├── kaya/                # Base in-memory souveraine (Rust, 23 crates)
 ├── armageddon/          # Gateway sécurité (Rust, 19 crates)
 ├── xds-controller/      # Control plane xDS v3 (Rust, 5 crates)
@@ -78,7 +78,7 @@ INFRA/
 ```bash
 # Prérequis : podman, podman-compose, Rust 1.83+, Java 21, Node 22 + Bun 1.2
 git clone https://github.com/fasodigit/infra
-cd infra/INFRA/docker/compose
+cd infra/docker/compose
 
 # 1. Générer les secrets locaux (jamais commités — voir secrets/.gitignore)
 bash scripts/init-secrets.sh
