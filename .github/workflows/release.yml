@@ -19,7 +19,7 @@ env:
   RUSTFLAGS: "-D warnings"
 
 jobs:
-  # ── Cross-compile binaries ────────────────────────────────────────────────
+  # ── Cross-compile binaries ─────────────────────────────────────────────
   build-binaries:
     name: build · ${{ matrix.binary }} · ${{ matrix.target }}
     runs-on: ${{ matrix.runner }}
@@ -72,7 +72,7 @@ jobs:
 
     defaults:
       run:
-        working-directory: INFRA/${{ matrix.workspace }}
+        working-directory: ${{ matrix.workspace }}
 
     steps:
       - uses: actions/checkout@v4
@@ -86,7 +86,7 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           key: ${{ runner.os }}-cargo-release-${{ matrix.target }}
-          workspaces: INFRA/${{ matrix.workspace }}
+          workspaces: ${{ matrix.workspace }}
 
       # Cross (Linux cross-compilation via Docker)
       - name: Install cross
@@ -119,11 +119,11 @@ jobs:
         with:
           name: ${{ env.ARTIFACT }}
           path: |
-            INFRA/${{ matrix.workspace }}/${{ env.ARTIFACT }}
-            INFRA/${{ matrix.workspace }}/${{ env.ARTIFACT }}.sha256
+            ${{ matrix.workspace }}/${{ env.ARTIFACT }}
+            ${{ matrix.workspace }}/${{ env.ARTIFACT }}.sha256
           retention-days: 7
 
-  # ── SBOM for each workspace ───────────────────────────────────────────────
+  # ── SBOM for each workspace ────────────────────────────────────────────
   sbom-release:
     name: sbom · ${{ matrix.workspace }}
     runs-on: ubuntu-latest
@@ -141,7 +141,7 @@ jobs:
       - name: Generate SBOM CycloneDX
         uses: anchore/sbom-action@v0
         with:
-          path: INFRA/${{ matrix.workspace }}
+          path: ${{ matrix.workspace }}
           format: cyclonedx-json
           output-file: sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json
           artifact-name: sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json
@@ -160,7 +160,7 @@ jobs:
             sbom-${{ matrix.workspace }}-${{ github.ref_name }}.cdx.json.sha256
           retention-days: 90
 
-  # ── Publish GitHub Release ────────────────────────────────────────────────
+  # ── Publish GitHub Release ─────────────────────────────────────────────
   github-release:
     name: GitHub Release ${{ github.ref_name }}
     needs: [build-binaries, sbom-release]

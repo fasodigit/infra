@@ -4,8 +4,8 @@ on:
   push:
     branches: [main]
     paths:
-      - "INFRA/kaya/**"
-      - "INFRA/armageddon/**"
+      - "kaya/**"
+      - "armageddon/**"
 
 permissions:
   contents: write
@@ -26,17 +26,17 @@ jobs:
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: |
-            INFRA/kaya -> target
-            INFRA/armageddon -> target
+            kaya -> target
+            armageddon -> target
 
       - name: Build docs — kaya
-        working-directory: INFRA/kaya
+        working-directory: kaya
         run: cargo doc --workspace --no-deps --all-features
         env:
           RUSTDOCFLAGS: "--cfg docsrs"
 
       - name: Build docs — armageddon
-        working-directory: INFRA/armageddon
+        working-directory: armageddon
         run: cargo doc --workspace --no-deps --all-features
         env:
           RUSTDOCFLAGS: "--cfg docsrs"
@@ -44,8 +44,8 @@ jobs:
       - name: Generate root index.html
         run: |
           mkdir -p gh-pages
-          cp -r INFRA/kaya/target/doc gh-pages/kaya
-          cp -r INFRA/armageddon/target/doc gh-pages/armageddon
+          cp -r kaya/target/doc gh-pages/kaya
+          cp -r armageddon/target/doc gh-pages/armageddon
           cat > gh-pages/index.html <<'EOF'
           <!DOCTYPE html>
           <html lang="en">

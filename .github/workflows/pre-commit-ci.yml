@@ -55,8 +55,8 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            INFRA/kaya/target
-          key: cargo-${{ runner.os }}-${{ hashFiles('INFRA/kaya/Cargo.lock') }}
+            kaya/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('kaya/Cargo.lock') }}
           restore-keys: |
             cargo-${{ runner.os }}-
 
