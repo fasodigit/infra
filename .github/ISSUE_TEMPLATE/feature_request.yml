@@ -1,0 +1,51 @@
+# SPDX-License-Identifier: AGPL-3.0-or-later
+name: "✨ Feature request"
+description: Proposer une fonctionnalité, amélioration ou nouveau composant souverain
+labels: ["enhancement", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Merci de proposer une amélioration. Avant d'écrire du code, ouvrir
+        cette issue permet d'aligner sur la souveraineté (cf. CLAUDE.md §3)
+        et le port-policy (cf. CLAUDE.md §8).
+
+  - type: input
+    id: scope
+    attributes:
+      label: Scope concerné
+      description: "Ex: KAYA, ARMAGEDDON, infra-souveraine, frontend, observability…"
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problème / besoin
+      description: "Quelle douleur cette feature résout-elle ?"
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposition
+      description: "Approche envisagée (peut être un brouillon à affiner)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considérées
+      description: "Quelles autres approches as-tu évaluées ?"
+
+  - type: textarea
+    id: sovereignty
+    attributes:
+      label: Conformité souveraineté
+      description: |
+        Si la proposition introduit une nouvelle dépendance externe,
+        décrire pourquoi aucune alternative Rust souveraine n'est
+        viable (cf. CLAUDE.md §3).
+      placeholder: "N/A si la feature n'introduit pas de nouvelle dépendance"
