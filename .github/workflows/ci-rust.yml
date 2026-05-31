@@ -206,7 +206,7 @@ jobs:
           artifact-name: sbom-${{ matrix.workspace }}-${{ github.sha }}.cdx.json
 
       - name: Upload SBOM artifact (90 days)
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: sbom-${{ matrix.workspace }}-${{ github.sha }}
           path: INFRA/${{ matrix.workspace }}/sbom-${{ matrix.workspace }}.cdx.json
