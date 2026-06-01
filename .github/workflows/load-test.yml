@@ -36,7 +36,7 @@ jobs:
 
       - name: Comment PR with summary
         if: always()
-        uses: peter-evans/commit-comment@v3
+        uses: peter-evans/commit-comment@v4
         with:
           body-path: summary.json
           reactions: eyes
